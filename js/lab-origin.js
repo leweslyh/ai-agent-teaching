@@ -529,55 +529,47 @@ AgentLab.LabOrigin = (function () {
     var understandSteps = LLM_STEPS.filter(function (s) { return s.stage === "understand"; });
     var generateSteps = LLM_STEPS.filter(function (s) { return s.stage === "generate"; });
     html += LP.card("ori", "④ 大模型工作原理：从你打一句话到 AI 回答，中间发生了什么？",
-      "你有没有想过：你在对话框里打一句话，AI 是怎么生成回答的？大模型（LLM）的工作过程分成两大阶段、6 个步骤——每一步都有它的道理。我们用经典例子（输入今天天气很，让 AI 接下去写）来走一遍完整流程！",
-      /* 顶部总览条 */
-      '<div class="llm-overview">' +
-        '<div class="llm-ov-box llm-ov-input">' + U.icon("keyboard", 16) + ' 输入</div>' +
-        '<div class="llm-ov-arrow">→</div>' +
-        '<div class="llm-ov-box llm-ov-understand">' + U.icon("search", 16) + ' 理解阶段（步骤 1-3）</div>' +
-        '<div class="llm-ov-arrow">→</div>' +
-        '<div class="llm-ov-box llm-ov-generate">' + U.icon("dice", 16) + ' 生成阶段（步骤 4-6）</div>' +
-        '<div class="llm-ov-arrow">→</div>' +
-        '<div class="llm-ov-box llm-ov-output">' + U.icon("check", 16) + ' 输出回答</div>' +
-      '</div>' +
-      /* 纵向流程：理解阶段 */
-      '<div class="llm-stage-divider llm-stage-understand">' + U.icon("search", 16) + ' 🔍 理解阶段：AI 怎么读懂你的话（把文字转换成 AI 能理解的数字表示）</div>' +
-      '<div class="llm-vertical">' +
-        understandSteps.map(function (s) {
-          return '<div class="llm-step llm-step-understand">' +
-            '<div class="ls-top">' +
-              '<div class="ls-num">' + s.num + '</div>' +
-              '<div class="ls-icon">' + U.icon(s.icon, 18) + '</div>' +
-              '<div class="ls-title-wrap">' +
-                '<div class="ls-title">' + s.title + '</div>' +
-                '<div class="ls-keyterm">关键词：' + s.key_term + '</div>' +
-              '</div>' +
+      "你有没有想过：你在对话框里打一句话，AI 是怎么生成回答的？大模型（LLM）的工作过程分成两大阶段、6 个步骤——每一步都有它的道理。下面用流程图完整展示从输入到输出的全过程！",
+      /* 横向流程图：理解阶段（步骤1-3） */
+      '<div style="margin:20px 0 8px;text-align:center;font-weight:bold;color:#4f8cff;font-size:15px;letter-spacing:0.5px">🔍 理解阶段（步骤 1-3）：把文字转换成 AI 能理解的数字表示</div>' +
+      '<div style="display:flex;align-items:stretch;gap:6px;justify-content:center;margin:12px 0">' +
+        understandSteps.map(function (s, idx) {
+          var box = '<div style="flex:1;min-width:0;background:linear-gradient(135deg,#f0f7ff 0%,#e3efff 100%);border:2px solid #4f8cff;border-radius:14px;padding:14px 12px;box-shadow:0 4px 12px rgba(79,140,255,0.15)">' +
+            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+              '<div style="width:30px;height:30px;background:linear-gradient(135deg,#4f8cff,#3b6fd4);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:15px;flex-shrink:0;box-shadow:0 2px 6px rgba(79,140,255,0.3)">' + s.num + '</div>' +
+              '<div style="font-weight:bold;font-size:14px;color:#1a1a2e;line-height:1.3">' + s.title + '</div>' +
             '</div>' +
-            '<div class="ls-desc">' + s.desc + '</div>' +
-            '<div class="ls-example">📝 <b>例子：</b>' + s.example + '</div>' +
-            '<div class="ls-analogy">💡 <b>类比：</b>' + s.analogy + '</div>' +
+            '<div style="font-size:11px;color:#4f8cff;font-weight:bold;margin-bottom:8px;padding:3px 8px;background:rgba(79,140,255,0.1);border-radius:6px;display:inline-block">关键词：' + s.key_term + '</div>' +
+            '<div style="font-size:12px;color:#555;line-height:1.6">' + s.desc + '</div>' +
           '</div>';
+          if (idx < understandSteps.length - 1) {
+            box += '<div style="display:flex;align-items:center;font-size:22px;color:#4f8cff;font-weight:bold;flex-shrink:0;padding:0 2px">→</div>';
+          }
+          return box;
         }).join("") +
       '</div>' +
-      /* 纵向流程：生成阶段 */
-      '<div class="llm-stage-divider llm-stage-generate">' + U.icon("dice", 16) + ' ✍️ 生成阶段：AI 怎么写出回答（通过神经网络预测下一个词，循环生成完整回答）</div>' +
-      '<div class="llm-vertical">' +
-        generateSteps.map(function (s) {
-          return '<div class="llm-step llm-step-generate">' +
-            '<div class="ls-top">' +
-              '<div class="ls-num">' + s.num + '</div>' +
-              '<div class="ls-icon">' + U.icon(s.icon, 18) + '</div>' +
-              '<div class="ls-title-wrap">' +
-                '<div class="ls-title">' + s.title + '</div>' +
-                '<div class="ls-keyterm">关键词：' + s.key_term + '</div>' +
-              '</div>' +
+      /* 中间连接箭头 */
+      '<div style="text-align:center;margin:8px 0"><div style="display:inline-flex;align-items:center;gap:10px;background:linear-gradient(90deg,#4f8cff,#8a5cf6);color:white;padding:8px 24px;border-radius:20px;font-size:13px;font-weight:bold;box-shadow:0 4px 12px rgba(138,92,246,0.25)">理解完成 ↓ 进入生成阶段</div></div>' +
+      /* 横向流程图：生成阶段（步骤4-6） */
+      '<div style="margin:16px 0 8px;text-align:center;font-weight:bold;color:#f59e0b;font-size:15px;letter-spacing:0.5px">✍️ 生成阶段（步骤 4-6）：通过神经网络预测下一个词，循环生成完整回答</div>' +
+      '<div style="display:flex;align-items:stretch;gap:6px;justify-content:center;margin:12px 0">' +
+        generateSteps.map(function (s, idx) {
+          var box = '<div style="flex:1;min-width:0;background:linear-gradient(135deg,#fff8eb 0%,#fff1d6 100%);border:2px solid #f59e0b;border-radius:14px;padding:14px 12px;box-shadow:0 4px 12px rgba(245,158,11,0.15)">' +
+            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+              '<div style="width:30px;height:30px;background:linear-gradient(135deg,#f59e0b,#d97706);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:15px;flex-shrink:0;box-shadow:0 2px 6px rgba(245,158,11,0.3)">' + s.num + '</div>' +
+              '<div style="font-weight:bold;font-size:14px;color:#1a1a2e;line-height:1.3">' + s.title + '</div>' +
             '</div>' +
-            '<div class="ls-desc">' + s.desc + '</div>' +
-            '<div class="ls-example">📝 <b>例子：</b>' + s.example + '</div>' +
-            '<div class="ls-analogy">💡 <b>类比：</b>' + s.analogy + '</div>' +
+            '<div style="font-size:11px;color:#d97706;font-weight:bold;margin-bottom:8px;padding:3px 8px;background:rgba(245,158,11,0.1);border-radius:6px;display:inline-block">关键词：' + s.key_term + '</div>' +
+            '<div style="font-size:12px;color:#555;line-height:1.6">' + s.desc + '</div>' +
           '</div>';
+          if (idx < generateSteps.length - 1) {
+            box += '<div style="display:flex;align-items:center;font-size:22px;color:#f59e0b;font-weight:bold;flex-shrink:0;padding:0 2px">→</div>';
+          }
+          return box;
         }).join("") +
       '</div>' +
+      /* 输出箭头 */
+      '<div style="text-align:center;margin:12px 0 20px"><div style="display:inline-flex;align-items:center;gap:10px;background:linear-gradient(90deg,#10b981,#059669);color:white;padding:8px 24px;border-radius:20px;font-size:13px;font-weight:bold;box-shadow:0 4px 12px rgba(16,185,129,0.25)">生成完成 ↓ 输出回答 ✅</div></div>' +
       /* 底部完整演示：生成过程可视化 */
       '<div class="llm-demo">' +
         '<div class="llm-demo-title">' + U.icon("play", 18) + ' 🎬 完整演示：输入"今天天气很"，AI 怎么一步步生成"今天天气很好"</div>' +
