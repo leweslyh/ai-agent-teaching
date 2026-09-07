@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI智能体互动学习实验室</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ================= 顶部导航 ================= -->
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="logo" id="brand-logo"><svg class="icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="7" width="14" height="11" rx="3"/><circle cx="9.5" cy="12.5" r="1.4"/><circle cx="14.5" cy="12.5" r="1.4"/><path d="M12 7V4.5M12 4.5h-2.2M9.8 18v1.8a1 1 0 0 0 1 1h2.4a1 1 0 0 0 1-1V18" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg></span>
+      <span>AI智能体互动学习实验室<small>五年级 · AI智能体科普实践课配套系统</small></span>
+    </div>
+    <nav class="nav" id="main-nav">
+      <button class="nav-tab active" data-sec="origin">起源</button>
+      <button class="nav-tab" data-sec="home">总装图</button>
+      <button class="nav-tab" data-sec="perception">感知器</button>
+      <button class="nav-tab" data-sec="planner">规划器</button>
+      <button class="nav-tab" data-sec="memory">记忆器</button>
+      <button class="nav-tab" data-sec="executor">执行器</button>
+      <button class="nav-tab" data-sec="playground">智能体实验室</button>
+    </nav>
+    <button class="icon-btn" id="btn-settings" title="设置"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6z"/><path d="M19.4 13.5l1.5 1.2-1.8 3.1-1.9-.7a7 7 0 0 1-1.6.9l-.3 2H10.7l-.3-2a7 7 0 0 1-1.6-.9l-1.9.7-1.8-3.1 1.5-1.2a6.9 6.9 0 0 1 0-1.8L5.1 10.5l1.8-3.1 1.9.7a7 7 0 0 1 1.6-.9l.3-2h2.6l.3 2a7 7 0 0 1 1.6.9l1.9-.7 1.8 3.1-1.5 1.2a6.9 6.9 0 0 1 0 1.8z"/></svg></button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ================= 起源实验室（L01 起源 + L02 身边的智能体） ================= -->
+  <section class="section active" id="sec-origin"></section>
+
+  <!-- ================= 首页：架构实验室（总装图 L03 + 案例拆解 L04） ================= -->
+  <section class="section" id="sec-home"></section>
+
+  <!-- ================= 感知器 ================= -->
+  <section class="section" id="sec-perception"></section>
+
+  <!-- ================= 规划器 ================= -->
+  <section class="section" id="sec-planner"></section>
+
+  <!-- ================= 记忆器 ================= -->
+  <section class="section" id="sec-memory"></section>
+
+  <!-- ================= 执行器 ================= -->
+  <section class="section" id="sec-executor"></section>
+
+  <!-- ================= 智能体实验室 ================= -->
+  <section class="section" id="sec-playground"></section>
+
+</main>
+
+<footer>
+  <div><b>AI智能体互动学习实验室</b> · 配套《AI智能体科普实践课》课程大纲与教案（L01–L02 起源篇 / L03–L04 架构篇 / L05–L12 组件篇 / L13–L16 实战展示篇）</div>
+  <div style="margin-top:4px">外接 DeepSeek 大模型 · 现代智能体公式 Agent = LLM + 上下文 + 工具 · 静态版可直接部署到 GitHub Pages / Vercel / Netlify</div>
+</footer>
+
+<!-- ================= 提示与弹窗 ================= -->
+<div class="toast-box" id="toast-box"></div>
+
+<!-- 首次使用 API Key 引导弹窗 -->
+<div class="modal-mask" id="apikey-mask" style="display:none">
+  <div class="modal" style="max-width:520px">
+    <h3 style="color:#8a5cf6">👋 欢迎使用 AI智能体互动学习实验室</h3>
+    <div style="margin:16px 0;line-height:1.8;color:#555;font-size:14px">
+      <p>这是一个<b>静态版</b>教学系统，可以直接部署到 GitHub Pages / Vercel / Netlify 等免费平台，<b>不需要服务器</b>。</p>
+      <p style="margin-top:10px">要使用 AI 对话功能，需要你自己的 <b>DeepSeek API Key</b>：</p>
+      <ol style="margin:8px 0 8px 20px;padding:0">
+        <li>打开 <a href="https://platform.deepseek.com/" target="_blank" style="color:#8a5cf6">DeepSeek 开放平台</a>，注册/登录</li>
+        <li>在「API Keys」页面创建一个新的 Key（sk- 开头）</li>
+        <li>复制 Key，粘贴到下面的输入框</li>
+      </ol>
+      <p style="margin-top:10px;background:#f5f3ff;padding:10px 14px;border-radius:8px;font-size:13px">
+        🔒 <b>安全提示</b>：你的 API Key 只保存在<b>本机浏览器</b>（localStorage），不会上传到任何服务器。知识讲解、游戏、小测验等功能<b>不需要 API Key</b> 也能使用。
+      </p>
+    </div>
+    <label class="field">
+      DeepSeek API Key
+      <input type="password" id="apikey-input" placeholder="sk-xxxxxxxxxxxxxxxx" style="font-family:monospace">
+    </label>
+    <div class="m-actions">
+      <button class="btn btn-ghost" id="apikey-skip">稍后再说（先逛实验室）</button>
+      <button class="btn btn-brain" id="apikey-save">保存并开始使用</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-mask" id="settings-mask">
+  <div class="modal">
+    <h3>⚙ 系统设置</h3>
+    <label class="field">DeepSeek API 密钥
+      <input type="password" id="set-key" placeholder="sk-...">
+      <small>密钥保存在本机浏览器（localStorage），浏览器直连 DeepSeek 官方 API，不经过任何中间服务器。</small>
+    </label>
+    <label class="field">大模型
+      <select id="set-model">
+        <option value="deepseek-v4-flash">deepseek-v4-flash（快，推荐课堂用）</option>
+        <option value="deepseek-v4-pro">deepseek-v4-pro（更强，稍慢）</option>
+      </select>
+    </label>
+    <div class="m-actions">
+      <button class="btn btn-ghost" id="set-cancel">取消</button>
+      <button class="btn btn-brain" id="set-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/store.js"></script>
+<script src="js/api.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/agent.js"></script>
+<script src="js/lab-origin.js"></script>
+<script src="js/lab-home.js"></script>
+<script src="js/lab-perception.js"></script>
+<script src="js/lab-planner.js"></script>
+<script src="js/lab-memory.js"></script>
+<script src="js/lab-executor.js"></script>
+<script src="js/lab-playground.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
