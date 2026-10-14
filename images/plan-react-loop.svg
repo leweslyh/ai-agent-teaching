@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 500" width="460" height="500" font-family="'Microsoft YaHei','PingFang SC','Noto Sans SC',sans-serif">
+  <rect x="0" y="0" width="460" height="500" rx="14" fill="#FFFFFF" stroke="#B9D9FF" stroke-width="1.4"/>
+
+  <!-- ============ 循环区 ============ -->
+  <rect x="18" y="16" width="424" height="334" rx="14" fill="#FDFEFF" stroke="#B9D9FF" stroke-width="1.4"/>
+  <text x="32" y="42" font-size="11.5" fill="#9AA7B8">思维链 CoT = 只“想”不“做”；ReAct = 边想边做</text>
+
+  <!-- 节点 1：思考（左上，顺时针起点） -->
+  <rect x="64" y="61" width="132" height="70" rx="11" fill="#FFF4E5" stroke="#FFDCA8" stroke-width="1.4"/>
+  <text x="130" y="86" font-size="14.5" font-weight="700" fill="#98550A" text-anchor="middle">思考 <tspan font-size="11" font-weight="400" fill="#C08A4A">Thought</tspan></text>
+  <text x="130" y="110" font-size="12.5" fill="#E07E0A" text-anchor="middle">想清楚下一步做什么</text>
+
+  <!-- 节点 2：行动（右上） -->
+  <rect x="264" y="61" width="132" height="70" rx="11" fill="#FFF4E5" stroke="#FFDCA8" stroke-width="1.4"/>
+  <text x="330" y="86" font-size="14.5" font-weight="700" fill="#98550A" text-anchor="middle">行动 <tspan font-size="11" font-weight="400" fill="#C08A4A">Action</tspan></text>
+  <text x="330" y="110" font-size="12.5" fill="#E07E0A" text-anchor="middle">调用一个工具去做</text>
+
+  <!-- 节点 3：观察（右下） -->
+  <rect x="264" y="225" width="132" height="70" rx="11" fill="#FFF4E5" stroke="#FFDCA8" stroke-width="1.4"/>
+  <text x="330" y="250" font-size="14.5" font-weight="700" fill="#98550A" text-anchor="middle">观察 <tspan font-size="11" font-weight="400" fill="#C08A4A">Observation</tspan></text>
+  <text x="330" y="274" font-size="12.5" fill="#E07E0A" text-anchor="middle">看工具返回了什么</text>
+
+  <!-- 节点 4：再思考（左下） -->
+  <rect x="64" y="225" width="132" height="70" rx="11" fill="#FFF4E5" stroke="#FFDCA8" stroke-width="1.4"/>
+  <text x="130" y="250" font-size="14.5" font-weight="700" fill="#98550A" text-anchor="middle">再思考</text>
+  <text x="130" y="269" font-size="12" fill="#E07E0A" text-anchor="middle">够了吗？</text>
+  <text x="130" y="285" font-size="12" fill="#E07E0A" text-anchor="middle">不够就再来一圈</text>
+
+  <!-- 环上箭头（顺时针） -->
+  <path d="M198,96 L262,96 M254,88.5 L262.5,96 L254,103.5" fill="none" stroke="#FF9F2E" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M330,135 L330,221 M322,212 L330,220.5 L338,212" fill="none" stroke="#FF9F2E" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M262,260 L199,260 M207,252.5 L198.5,260 L207,267.5" fill="none" stroke="#FF9F2E" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M130,221 L130,135 M122,144 L130,135.5 L138,144" fill="none" stroke="#FF9F2E" stroke-width="2.2" stroke-linecap="round"/>
+
+  <text x="230" y="176" font-size="18" font-weight="700" fill="#E07E0A" text-anchor="middle">ReAct</text>
+  <text x="230" y="198" font-size="11.5" fill="#9AA7B8" text-anchor="middle">边想边做</text>
+
+  <!-- 出口：够了 → 交付 -->
+  <path d="M64,96 L42,96 L42,378 L142,378 M134,370.5 L142.5,378 L134,385.5" fill="none" stroke="#E07E0A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="46" y="368" font-size="11.5" font-weight="700" fill="#98550A">够了 → 交付</text>
+  <rect x="150" y="354" width="206" height="48" rx="24" fill="#E8F5EC" stroke="#1F7A45" stroke-width="1.6"/>
+  <circle cx="178" cy="378" r="12" fill="#1F7A45"/>
+  <text x="178" y="382.5" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="middle">✓</text>
+  <text x="200" y="383" font-size="15" font-weight="700" fill="#1F7A45">交付完成</text>
+
+  <!-- 关键提醒 -->
+  <rect x="18" y="412" width="424" height="56" rx="10" fill="#FFF4E5" stroke="#FFDCA8" stroke-width="1.2"/>
+  <text x="34" y="434" font-size="12.5" fill="#98550A">循环要有边界：<tspan font-weight="700">最大轮数（约 12 轮）+ 停止条件</tspan></text>
+  <text x="34" y="454" font-size="12.5" fill="#E07E0A">—— 不然会一直转下去，越转越贵</text>
+</svg>

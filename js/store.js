@@ -11,7 +11,8 @@ AgentLab.Store = (function () {
     classInfo: "agentlab_class_info_v1",
     manual: "agentlab_manual_v1",
     tools: "agentlab_tools_v1",
-    api: "agentlab_api_v1"
+    api: "agentlab_api_v1",
+    cloud: "agentlab_cloud_v1"
   };
 
   function read(key, fallback) {
@@ -97,6 +98,14 @@ AgentLab.Store = (function () {
     },
     saveApi: function (api) {
       return write(KEYS.api, api);
+    },
+
+    /* ---------- 云端能力密钥（语音识别 + 图片识别共用同一个 Key） ---------- */
+    getCloud: function () {
+      return read(KEYS.cloud, { key: AgentLab.CONFIG.cloud.key });
+    },
+    saveCloud: function (cloud) {
+      return write(KEYS.cloud, cloud);
     }
   };
 })();

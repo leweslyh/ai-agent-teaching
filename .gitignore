@@ -11,3 +11,6 @@ desktop.ini
 
 # 日志文件
 *.log
+
+# 本地服务运行时标记（由 _server.ps1 / _start_bg.ps1 生成）
+_runtime.json

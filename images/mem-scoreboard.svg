@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 500" width="460" height="500" font-family="'Microsoft YaHei','PingFang SC','Noto Sans SC',sans-serif">
+  <rect x="0" y="0" width="460" height="500" rx="14" fill="#FFFFFF" stroke="#B9D9FF" stroke-width="1.4"/>
+
+  <rect x="20" y="40" width="420" height="320" rx="10" fill="#FDFEFF" stroke="#B9D9FF" stroke-width="1.2"/>
+
+  <rect x="98" y="57" width="11" height="11" rx="2.5" fill="#179A55"/>
+  <text x="114" y="68" font-size="12" fill="#5D6B7C">结构化</text>
+  <text x="152" y="68" font-size="12" font-weight="700" fill="#14629E">68.3%</text>
+  <rect x="192" y="57" width="11" height="11" rx="2.5" fill="#9AA7B8"/>
+  <text x="208" y="68" font-size="12" fill="#5D6B7C">纯 RAG</text>
+  <text x="246" y="68" font-size="12" font-weight="700" fill="#14629E">48.3%</text>
+  <rect x="282" y="57" width="11" height="11" rx="2.5" fill="#2FBF71"/>
+  <text x="298" y="68" font-size="12" fill="#5D6B7C">混合</text>
+  <text x="328" y="68" font-size="12" font-weight="700" fill="#14629E">66.7%</text>
+
+  <path d="M70,90 L445,90" stroke="#E4E9F0" stroke-width="1" stroke-dasharray="4 4"/>
+  <path d="M70,152.5 L445,152.5" stroke="#E4E9F0" stroke-width="1" stroke-dasharray="4 4"/>
+  <path d="M70,215 L445,215" stroke="#E4E9F0" stroke-width="1" stroke-dasharray="4 4"/>
+  <path d="M70,277.5 L445,277.5" stroke="#E4E9F0" stroke-width="1" stroke-dasharray="4 4"/>
+  <path d="M70,340 L445,340" stroke="#B9D9FF" stroke-width="1.2"/>
+
+  <text x="62" y="93.5" font-size="11" fill="#9AA7B8" text-anchor="end">100%</text>
+  <text x="62" y="156" font-size="11" fill="#9AA7B8" text-anchor="end">75%</text>
+  <text x="62" y="218.5" font-size="11" fill="#9AA7B8" text-anchor="end">50%</text>
+  <text x="62" y="281" font-size="11" fill="#9AA7B8" text-anchor="end">25%</text>
+  <text x="62" y="343.5" font-size="11" fill="#9AA7B8" text-anchor="end">0%</text>
+
+  <rect x="85" y="102.5" width="26" height="237.5" rx="3" fill="#179A55"/>
+  <rect x="119" y="115" width="26" height="225" rx="3" fill="#9AA7B8"/>
+  <rect x="153" y="140" width="26" height="200" rx="3" fill="#2FBF71"/>
+  <text x="98" y="96.5" font-size="12" fill="#5D6B7C" text-anchor="middle">95%</text>
+  <text x="132" y="109" font-size="12" fill="#5D6B7C" text-anchor="middle">90%</text>
+  <text x="166" y="134" font-size="12" fill="#5D6B7C" text-anchor="middle">80%</text>
+
+  <rect x="210" y="190" width="26" height="150" rx="3" fill="#179A55"/>
+  <rect x="244" y="240" width="26" height="100" rx="3" fill="#9AA7B8"/>
+  <rect x="278" y="165" width="26" height="175" rx="3" fill="#2FBF71"/>
+  <text x="223" y="184" font-size="12" fill="#5D6B7C" text-anchor="middle">60%</text>
+  <text x="257" y="234" font-size="12" fill="#5D6B7C" text-anchor="middle">40%</text>
+  <text x="291" y="159" font-size="12" fill="#5D6B7C" text-anchor="middle">70%</text>
+
+  <rect x="335" y="215" width="26" height="125" rx="3" fill="#179A55"/>
+  <rect x="369" y="302.5" width="26" height="37.5" rx="3" fill="#9AA7B8" stroke="#E4572E" stroke-width="1.6"/>
+  <rect x="403" y="215" width="26" height="125" rx="3" fill="#2FBF71"/>
+  <rect x="364" y="297" width="36" height="43" rx="4" fill="none" stroke="#E4572E" stroke-width="1.4" stroke-dasharray="4 3"/>
+  <text x="348" y="209" font-size="12" fill="#5D6B7C" text-anchor="middle">50%</text>
+  <text x="382" y="296.5" font-size="12" font-weight="700" fill="#E4572E" text-anchor="middle">15%</text>
+  <text x="416" y="209" font-size="12" fill="#5D6B7C" text-anchor="middle">50%</text>
+
+  <text x="132" y="356" font-size="11.5" fill="#5D6B7C" text-anchor="middle">L1 基础回忆</text>
+  <text x="257" y="356" font-size="11.5" fill="#5D6B7C" text-anchor="middle">L2 多会话检索</text>
+  <text x="382" y="356" font-size="11.5" fill="#5D6B7C" text-anchor="middle">L3 跨会话隐藏关联</text>
+
+  <rect x="20" y="372" width="420" height="34" rx="8" fill="#FFF6F4" stroke="#E4572E" stroke-width="1.4"/>
+  <text x="32" y="393" font-size="12.5" font-weight="700" fill="#C0553F">最刺眼的一格：L3 跨会话隐藏关联，纯 RAG 只有 15%</text>
+
+  <text x="24" y="424" font-size="12.5" font-weight="700" fill="#14629E">总分最高的是结构化记忆 68.3%，但混合方案并没有自然胜出</text>
+  <text x="24" y="444" font-size="12.5" fill="#C0553F">（混合只在 3 题上赢、却在 8 题上输）</text>
+  <text x="24" y="464" font-size="12.5" font-weight="700" fill="#106B3D">没有万能方案：好不好，要看测的是哪种能力</text>
+</svg>

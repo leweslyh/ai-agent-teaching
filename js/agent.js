@@ -31,12 +31,152 @@ AgentLab.Agent = (function () {
     return null;
   }
 
+  /* ---------- 计时器：时长解析 + 识别 ----------
+   * 计时器是最容易被漏调的工具，所以单独抽出来、放在所有规则最前面判定。
+   * 因为别的规则关键词更“宽”，很容易把它截胡：
+   *   “计时的时候外面下雨吗”  → 被天气规则抢走；
+   *   “25分钟提醒我去喝水”    → 被提醒规则抢走；
+   *   “计时25分钟，然后25×4等于多少” → 被计算器规则抢走。
+   * 漏掉的代价是“明明说了要计时，却只聊天不调工具”，这在课堂上最伤。 */
+
+  /* 单位 → 秒。“分”“钟”都可省略：学生最常写的是「10分后」这种省字说法，
+   * 写得太死板（只认「分钟」）就会大面积漏判。 */
+  var DUR_SEC = { "小时": 3600, "钟头": 3600, "分钟": 60, "分": 60, "秒钟": 1, "秒": 1 };
+
+  /* 数字 + 单位。「半」也算一个数，所以「半小时」「半分钟」都能识别。 */
+  var DUR_RE = /([0-9]+(?:\.[0-9]+)?|半|[一二两三四五六七八九十百]+)\s*(小时|钟头|分钟|秒钟|秒|分)/g;
+
+  /* 「一刻钟」「一个半小时」这类整体说法：必须先判，否则会被拆成「半小时」少算一半。 */
+  var DUR_FRAG = [
+    { re: /一个半(?:小时|钟头|钟)/, sec: 5400 },
+    { re: /一刻钟/, sec: 900 }
+  ];
+
+  /**
+   * 把一句话里的时长解析成秒数。
+   * 多个时长直接相加——「1小时后30分钟」「5分2秒」都算得对。
+   * @returns {?{seconds:number, minutes:number}} 解析不出来返回 null
+   */
+  function parseDuration(t) {
+    if (!t) return null;
+    var i, m;
+    for (i = 0; i < DUR_FRAG.length; i++) {
+      if (DUR_FRAG[i].re.test(t)) return durObj(DUR_FRAG[i].sec);
+    }
+    var sec = 0, hit = false;
+    DUR_RE.lastIndex = 0;              // 正则带 /g，必须手动复位，否则第二次调用会漏
+    while ((m = DUR_RE.exec(t)) !== null) {
+      var num = m[1];
+      var v = /^[0-9]/.test(num) ? parseFloat(num) : (num === "半" ? 0.5 : parseCnNum(num));
+      if (v === null || isNaN(v)) continue;
+      sec += v * DUR_SEC[m[2]];
+      hit = true;
+    }
+    if (!hit || sec < 1) return null;
+    /* 超上限只做钳制，不静默丢弃——丢弃就又退回“只聊天不调工具”了。
+     * 标签用真实秒数重新格式化，所以钳到 24 小时学生也能看懂。 */
+    return durObj(Math.min(Math.round(sec), 86400));
+  }
+
+  function durObj(sec) {
+    return { seconds: sec, minutes: Math.round(sec / 60 * 10) / 10 };
+  }
+
+  /* 把句子里所有时长片段都抠掉，看看还剩什么——
+   * 剩下的如果是语气词/祈使前缀（「来一个」「我想要」），说明这就是一句计时请求；
+   * 如果还剩实质内容（「每天」「能做完吗」），那它只是一句话里的时间状语，不该起计时器。 */
+  function durResidue(t) {
+    return t.replace(DUR_RE, "")
+      .replace(/一个半(?:小时|钟头|钟)/g, "")
+      .replace(/一刻钟/g, "")
+      .replace(/[。！!，,、？?；;：:\s]/g, "");
+  }
+
+  /* 允许的“残渣”：纯语气、礼貌用语和起手式 */
+  var DUR_RESIDUE_OK = /^(帮我|给我|我要|我想|我需要|想要|来一个|来个|来|开始|启动|设一个|定一个|定个|加一个|安排|再|先|的|一个|个|吧|了|啊|呀|请|please)?$/;
+
+  /* 秒数 → 人话标签（25分钟 / 1.5小时 / 30秒） */
+  function fmtDuration(sec) {
+    if (sec < 60) return sec + "秒";
+    if (sec >= 3600) return (Math.round(sec / 3600 * 10) / 10) + "小时";
+    return (Math.round(sec / 60 * 10) / 10) + "分钟";
+  }
+
+  /* 触发词：宁可多召回也别漏，误召回还有澄清问题兜着。 */
+  var TIMER_RE = /(计时|计个?时|倒计时|倒着?数|定时|闹钟|番茄|沙漏|秒表|专注|数一?数|分钟?后|秒钟?后|小时?后|钟头?后|以后提醒|之后提醒|后提醒|后叫|后喊|后告诉|到点|时间到)/;
+  /* 兜底①：祈使句 + 动作 + 时长——“帮我背单词20分钟”“我想专注25分钟”。 */
+  var TIMER_ACT = /(?:帮我|给我|我要|我想|来一?个|开始|先|再|然后)?\s*(?:看|背|读|写|练|跑|跳|睡|站|蹲|复习|预习|锻炼|专注|冥想|数|计时|倒计时)\D{0,8}[0-9]/;
+  /* 兜底②：有明确时长 + 有“提醒/叫我”这类动作词——“25分钟提醒我去喝水”。 */
+  var TIMER_IMP = /(提醒我|叫我|喊我|告诉我|别忘|记着)/;
+
+  /* 从句子里抽出“到点要做什么”，抽不出就返回空串（不要把“提醒我”本身当成内容） */
+  function parseRemindText(t) {
+    /* 前缀用贪婪的 .*，让它锚定“最后一个时长词后面的内容”——
+     * 「1小时后30分钟提醒我写作业」要抓的是“写作业”，不能从“小时后”开始一路吞下去。 */
+    var m = t.match(/.*(?:秒钟|秒|分钟|分|小时|钟头)后(?:之后|以后)?\s*(?:再)?\s*(?:提醒我|叫我|喊我|告诉我)?\s*(?:该|要|得|去)?\s*(.+)/) ||
+            t.match(/(?:提醒我|叫我|喊我|告诉我)\s*(?:在)?\s*(?:该|要|得|去)?\s*(.+)/);
+    if (!m) return "";
+    /* 抽取区间里可能还夹着别的时长（「1小时后30分钟提醒我写作业」），
+     * 所以先把残留的时长片段清掉，再剥掉开头的动作词和结尾的语气词。 */
+    var s = m[1]
+      .replace(DUR_RE, "")
+      .replace(/^(再|去|该|要|得|提醒我|叫我|喊我|告诉我)/, "")
+      .replace(/(了|啊|呀|吧|哦|嘛|喔)$/, "")
+      .replace(/[。！？，,、.\s；;：:！!]+$/, "")
+      .trim();
+    /* “25分钟后提醒我” 只有动作没有内容，不要把“提醒我”当成提醒内容 */
+    if (!s || /^(提醒我|叫我|喊我|告诉我|再|该|要|得|去)$/.test(s)) return "";
+    return s;
+  }
+
+  /**
+   * 计时器意图判定（放在 detectIntent 最前面调用）
+   * @returns {?Object} 命中返回 intent，否则 null
+   */
+  function detectTimer(t, tools) {
+    if (!tools.timer) return null;
+    var dur = parseDuration(t);
+    /* 触发条件只要满足其一：命中关键词；有时长 + 祈使动作；有时长 + “提醒/叫我”；
+     * 或时长就是句子的全部（“25分钟”“来一个一刻钟”）。
+     * 最后这条靠“抠掉时长看残渣”实现，能挡住“每天25分钟”“3小时能做完吗”这类误判。 */
+    var onlyDur = !!dur && DUR_RESIDUE_OK.test(durResidue(t));
+    if (!TIMER_RE.test(t) && !(dur && (TIMER_ACT.test(t) || TIMER_IMP.test(t) || onlyDur))) return null;
+
+    var intent = { needTool: true, toolName: "timer", params: {}, plan: [] };
+    var pomodoro = /番茄|专注/.test(t);
+
+    /* 听出是计时请求、但同学没说计多久：照样把工具调出来，让大脑去反问。
+     * 这样这一轮工作台里能看到“执行器真的参与了”，而不是“什么都没发生”。 */
+    if (!dur) {
+      intent.needDuration = true;
+      intent.plan = ["听出这是要计时/倒计时", "调出计时器工具", "发现还没说计时多久", "反问同学要计多长时间"];
+      return intent;
+    }
+
+    var remindText = parseRemindText(t);
+    var lbl = fmtDuration(dur.seconds);
+    intent.params = {
+      seconds: dur.seconds,
+      minutes: dur.minutes,
+      label: remindText ? (lbl + "·" + remindText) : lbl,
+      remindText: remindText,
+      pomodoro: pomodoro
+    };
+    intent.plan = ["听懂要计时多久" + (remindText ? "（提醒：" + remindText + "）" : ""),
+      "调出计时器工具", "开始倒计时", "时间到提醒同学"];
+    return intent;
+  }
+
   /* ---------- 意图识别（本地规则，相当于“规划器”的第一步） ---------- */
 
   function detectIntent(text) {
     var t = (text || "").replace(/\s+/g, "");
     var tools = AgentLab.Store.getTools();
     var intent = { needTool: false, toolName: "", params: {}, plan: [] };
+
+    /* 计时器抢在所有规则前面（原因见 detectTimer 上方注释） */
+    var timerIntent = detectTimer(t, tools);
+    if (timerIntent) return timerIntent;
 
     // 1) 计算题 → 计算器工具（支持“25乘4加10”这类中文算式）
     var calcSrc = t
@@ -77,29 +217,7 @@ AgentLab.Agent = (function () {
       return intent;
     }
 
-    // 3) 计时 / 倒计时 / 番茄钟 / 延时提醒 → 计时器工具（真实倒计时，配合番茄工作法）
-    //    注意：必须在"提醒工具"之前检测，否则"10秒后提醒我写作业"会被误判为提醒工具
-    var timerRe = /(计时|倒计时|定时|闹钟|番茄|沙漏|后提醒|之后提醒|后叫我|之后叫我|后告诉我|之后告诉我|分钟后|秒后|小时后)/;
-    if (tools.timer && timerRe.test(t)) {
-      var dur = parseDuration(t);
-      if (dur) {
-        var lbl = dur.seconds < 60 ? dur.seconds + "秒" : (dur.seconds >= 3600 ? (dur.seconds / 3600) + "小时" : dur.minutes + "分钟");
-        // 提取提醒内容（如"10秒后提醒我写作业"→"写作业"）
-        var remindText = "";
-        var rm = t.match(/(?:后|之后)(?:提醒我|叫我|告诉我)(.+)/);
-        if (rm) remindText = rm[1].replace(/[。！？，,.\s]+$/, "").trim();
-        intent.needTool = true;
-        intent.toolName = "timer";
-        intent.params.seconds = dur.seconds;
-        intent.params.label = remindText ? (lbl + "·" + remindText) : lbl;
-        intent.params.remindText = remindText;
-        intent.params.pomodoro = /番茄/.test(t);
-        intent.plan = ["听懂要计时多久" + (remindText ? "（提醒：" + remindText + "）" : ""), "调出计时器工具", "开始倒计时", "时间到提醒同学"];
-        return intent;
-      }
-    }
-
-    // 4) 提醒任务 → 提醒工具（仅记下内容，不启动真实倒计时）
+    // 3) 提醒任务 → 提醒工具（仅记下内容，不启动真实倒计时）
     if (tools.remind && /(提醒|别忘了|记得.*(带|提醒|交)|帮我记)/.test(t)) {
       intent.needTool = true;
       intent.toolName = "remind";
@@ -250,97 +368,12 @@ AgentLab.Agent = (function () {
       }
     }
 
-    // 11) 猜数字游戏 → 猜数字工具（游戏状态在本次会话内保持）
-    if (tools.game && (/(猜数字|猜数|玩猜|我想个数字|数字游戏)/.test(t) || (gameState && /我猜|猜[0-9]|猜是|答案是|猜的|不玩了|结束|退出|停/.test(t)))) {
-      if (/不玩了|结束|退出|停/.test(t) && gameState) {
-        intent.needTool = true;
-        intent.toolName = "game";
-        intent.params.action = "stop";
-        intent.plan = ["听懂要结束游戏", "调出猜数字工具", "结算游戏", "告诉同学答案和猜的次数"];
-        return intent;
-      }
-      if (/猜数字|猜数|玩猜|我想个数字|数字游戏/.test(t) && !gameState) {
-        intent.needTool = true;
-        intent.toolName = "game";
-        intent.params.action = "start";
-        intent.plan = ["听懂要玩猜数字", "调出猜数字工具", "想好一个1到100的数字", "开始游戏"];
-        return intent;
-      }
-      if (gameState) {
-        var gM = t.match(/(\d+(?:\.\d+)?)/);
-        if (gM) {
-          intent.needTool = true;
-          intent.toolName = "game";
-          intent.params.action = "guess";
-          intent.params.guess = parseFloat(gM[1]);
-          intent.plan = ["听懂同学猜的数字", "调出猜数字工具", "比较大小", "告诉同学大了/小了/猜中"];
-          return intent;
-        }
-      }
-    }
-
-    // 12) 成语接龙 → 成语接龙工具（内置成语库 + 释义）
-    if (tools.idiom && (/(成语接龙|接龙|玩成语)/.test(t) || idiomState)) {
-      if (/不玩了|结束|退出|停/.test(t) && idiomState) {
-        intent.needTool = true;
-        intent.toolName = "idiom";
-        intent.params.action = "stop";
-        intent.plan = ["听懂要结束接龙", "调出成语接龙工具", "结算", "告诉同学战果"];
-        return intent;
-      }
-      if (/(成语接龙|接龙|玩成语)/.test(t) && !idiomState) {
-        intent.needTool = true;
-        intent.toolName = "idiom";
-        intent.params.action = "start";
-        intent.plan = ["听懂要玩成语接龙", "调出成语接龙工具", "从成语库出一个成语", "开始游戏"];
-        return intent;
-      }
-      if (idiomState) {
-        if (/提示|不会|帮帮我|想不出来|给点提示/.test(t)) {
-          intent.needTool = true;
-          intent.toolName = "idiom";
-          intent.params.action = "hint";
-          intent.plan = ["同学需要提示", "调出成语接龙工具", "找一个以X开头的成语", "给提示"];
-          return intent;
-        }
-        intent.needTool = true;
-        intent.toolName = "idiom";
-        intent.params.action = "answer";
-        intent.params.word = (text || "").replace(/[，。！？,.!?、\s]/g, "").trim();
-        intent.plan = ["听懂同学接的成语", "调出成语接龙工具", "检查首字是否接得上", "宣布结果并出下一题"];
-        return intent;
-      }
-    }
-
-    // 13) 普通问题
+    // 11) 普通问题
     intent.plan = ["听懂你的问题", "回想学过的本领和知识", "组织一个清楚、简短的回答"];
     return intent;
   }
 
   /* ---------- 工具执行（执行器） ---------- */
-
-  /* 时长解析：把“25分钟”“3小时”“30秒”“半小时”等变成秒数 */
-  function parseDuration(t) {
-    if (!t) return null;
-    var m;
-    if ((m = t.match(/(\d+(?:\.\d+)?)\s*(小时|分钟|秒钟|秒)/))) {
-      var v = parseFloat(m[1]);
-      var unit = m[2];
-      var sec = unit === "小时" ? v * 3600 : unit === "分钟" ? v * 60 : v;
-      if (sec <= 0 || sec > 36000) return null;
-      return { seconds: sec, minutes: Math.round(sec / 60 * 10) / 10 };
-    }
-    if ((m = t.match(/([一二两三四五六七八九十]+)\s*(小时|分钟|秒钟|秒)/))) {
-      var cv = parseCnNum(m[1]);
-      if (cv !== null) {
-        var sec2 = m[2] === "小时" ? cv * 3600 : m[2] === "分钟" ? cv * 60 : cv;
-        if (sec2 <= 0 || sec2 > 36000) return null;
-        return { seconds: sec2, minutes: Math.round(sec2 / 60 * 10) / 10 };
-      }
-    }
-    if (/半小时/.test(t)) return { seconds: 1800, minutes: 30 };
-    return null;
-  }
 
   var CONVERT_UNITS = {
     length: { 千米: 1000, 公里: 1000, 米: 1, 分米: 0.1, 厘米: 0.01, 毫米: 0.001 },
@@ -351,341 +384,24 @@ AgentLab.Agent = (function () {
     speed: { 千米每小时: 1000 / 3600, 公里每小时: 1000 / 3600, 千米每时: 1000 / 3600, 公里每时: 1000 / 3600, "千米/小时": 1000 / 3600, "公里/小时": 1000 / 3600, "千米/时": 1000 / 3600, "公里/时": 1000 / 3600, 米每秒: 1, "米/秒": 1, 米每分钟: 1 / 60, "米/分": 1 / 60 }
   };
 
-  /* ---------- 游戏状态（猜数字 / 成语接龙，本次会话内有效） ---------- */
-  var gameState = null;   // { secret, attempts, low, high }
-  var idiomState = null;  // { lastChar, count, used }
-
-  /* ---------- 同音字组表（同音模式：谐音接龙） ---------- */
-  var HOMOPHONE_GROUPS = [
-    ["一","衣","医","依","壹","仪","宜","怡","贻","颐","遗","疑","已","以","蚁","倚","椅","义","亿","忆","艺","议","亦","异","役","抑","易","疫","益","谊","逸","意","溢","毅","翼"],
-    ["不","步","部","布","怖","簿"],
-    ["人","仁","壬","忍","刃","认","仞","任","妊","纫","韧"],
-    ["大","达","答","打","代","带","待","怠","袋","逮","戴","黛"],
-    ["小","晓","筱","孝","肖","笑","效","校","啸"],
-    ["上","尚","赏","裳"],
-    ["下","夏","吓","厦","罅"],
-    ["天","添","田","甜","填","恬","腆","舔"],
-    ["地","的","得","德","底","低","滴","笛","敌","涤","嫡","邸","抵","弟","帝","递","第","谛","缔","棣"],
-    ["山","删","衫","杉","姗","珊","扇","善","擅","膳","赡"],
-    ["水","税","睡","谁"],
-    ["火","伙","或","货","获","祸","惑","霍","豁"],
-    ["风","丰","封","疯","峰","锋","蜂","烽","逢","缝","讽","凤","奉"],
-    ["雨","与","于","予","余","鱼","愉","渔","隅","愚","榆","虞","舆","语","禹","屿","宇","羽","玉","育","郁","狱","浴","欲","域","裕","遇","御","豫","誉","寓"],
-    ["花","华","哗","骅","铧","滑","划","画","话","桦"],
-    ["月","约","曰","乐","跃","岳","钥","越","粤"],
-    ["明","名","鸣","铭","茗","溟","瞑","螟","酩","命"],
-    ["白","百","柏","摆","败","拜","稗"],
-    ["红","洪","宏","弘","鸿","虹","哄","烘","轰","泓"],
-    ["金","今","斤","津","筋","襟","禁","锦","仅","紧","谨","尽","进","近","劲","晋","浸","烬"],
-    ["石","时","十","什","实","识","史","使","始","驶","士","氏","世","市","示","式","事","侍","势","视","试","饰","室","是","适","逝","释","誓","噬"],
-    ["土","吐","兔","途","图","徒","涂","屠"],
-    ["木","目","牧","幕","慕","墓","暮","募","睦","穆"],
-    ["手","首","守","寿","受","兽","售","授","瘦","狩"],
-    ["飞","非","菲","啡","绯","扉","蜚","翡","匪","诽","悱","斐","吠","废","沸","肺","费"],
-    ["龙","隆","笼","聋","珑","咙","胧","拢","垄","楼","娄","搂","篓","漏","陋","露","路","陆","录","鹿","碌","禄","戮","辘","麓","鹭"],
-    ["虎","呼","乎","忽","惚","狐","弧","胡","壶","葫","瑚","蝴","糊","浒","唬","互","户","护","沪","怙"],
-    ["马","吗","妈","麻","蟆","摩","磨","魔","抹","末","莫","墨","默","沫","漠","寞","陌","脉","蓦"],
-    ["羊","阳","杨","扬","洋","佯","徉","烊","仰","养","氧","痒","怏","样","漾"],
-    ["心","新","欣","辛","薪","馨","鑫","芯","锌","信","衅"],
-    ["兴","星","腥","猩","惺","刑","行","形","型","邢","醒","杏","幸","性","姓"],
-    ["书","叔","殊","梳","淑","疏","蔬","舒","输","枢","姝","倏","塾","熟","薯","曙","署","蜀","黍","鼠","属","数","束","述","树","竖","恕","庶","墅","漱"],
-    ["词","辞","慈","瓷","祠","雌","糍","此","次","刺","赐","伺"],
-    ["舞","五","午","伍","武","侮","捂","牾","骛","鹜","兀","勿","务","戊","物","误","悟","晤","雾","焐"],
-    ["琴","勤","秦","禽","擒","噙","芹","沁","寝"],
-    ["棋","其","奇","歧","祈","祁","骑","齐","旗","祺","琪","琦","麒","乞","企","启","起","绮","气","弃","汽","泣","契","砌","器","憩"],
-    ["三","叁","毵","伞","散","馓"],
-    ["四","寺","似","饲","肆","嗣","俟","耜","笥","姒","驷"],
-    ["六","陆","录","鹿","碌","禄","戮","辘","麓","鹭"],
-    ["七","妻","栖","凄","戚","期","欺","漆","柒","蹊","乞","企","启","起","绮","气","弃","汽","泣","契","砌","器","憩"],
-    ["八","巴","吧","疤","捌","粑","笆","拔","跋","魃","把","靶","坝","爸","罢","霸","灞"],
-    ["九","久","酒","灸","韭","旧","臼","舅","咎","疚","柩","厩","救","就","鹫"],
-    ["千","迁","钎","牵","铅","谦","签","愆","骞","前","钱","潜","遣","浅","倩","堑","嵌","欠","歉"],
-    ["万","弯","湾","蜿","豌","丸","完","玩","顽","烷","宛","婉","惋","绾","琬","畹","腕","皖"],
-    ["云","匀","允","陨","损","运","韵","孕","蕴"],
-    ["雪","学","穴","噱","血","谑"],
-    ["冰","兵","丙","柄","炳","饼","禀","并","病","摒"],
-    ["河","何","呵","禾","和","合","盒","涸","貉","颌","阁","格","革","隔","嗝","膈","葛","蛤","赫","褐","鹤","贺","壑"],
-    ["江","将","姜","僵","疆","缰","讲","奖","桨","蒋","匠","降","酱","犟"],
-    ["海","嗨","胲","醢","亥","骇","害","氦","嗐"],
-    ["歌","哥","鸽","搁","割","革","格","阁","隔","嗝","膈","葛","蛤","赫","褐","鹤","贺","壑"],
-    ["凶","兄","胸","雄","熊"],
-    ["休","修","羞","朽","秀","袖","绣","锈","嗅"],
-    ["须","虚","需","墟","戌","徐","许","栩","畜","续","絮","蓄","叙","序","绪"],
-    ["耳","二","儿","而","尔","饵","洱","贰"],
-    ["虫","重","崇","宠","冲","忡","舂","憧","种","肿","踵","仲","众","咒","宙","昼","骤","皱","胄"],
-    ["日","入","褥","软","阮","瑞","锐","闰","润"],
-    ["光","广","逛"],
-    ["口","扣","寇","叩","筘"],
-    ["足","族","卒","祖","阻","组","诅","俎"],
-    ["牛","扭","纽","钮","忸","狃","农","浓","脓","弄"],
-    ["后","厚","候","猴","喉","瘊","糇","逅"],
-    ["中","钟","终","忠","衷","肿","种","重","众","仲","咒","宙","昼","骤","皱","胄"],
-    ["有","友","右","又","幼","幽","优","忧","悠","尤","由","邮","油","游","犹","酉","莠","诱","釉","鼬"],
-    ["用","勇","永","涌","蛹","咏","泳","庸","慵","拥","痈","雍","臃","雝","饔"],
-    ["我","卧","握","沃","龌","渥","斡","肟"],
-    ["你","拟","逆","腻","匿","溺","倪","霓","猊","鲵","伲","泥"],
-    ["他","她","它","塌","踏","塔","獭","挞","闼","遢","溻","褟"],
-    ["们","门","闷","焖","扪","钔","懑","亹"],
-    ["说","硕","税","朔","烁","铄","槊","蒴","妁","哾"],
-    ["做","作","坐","座","昨","左","佐","撮","嘬","柞","胙","阼","怍","祚","酢"],
-    ["去","趣","取","区","曲","驱","躯","岖","趋","蛆","黢","娶","龋","觑","戌","戍","瞿","衢","劬","朐","鸲","蠼"],
-    ["来","莱","睐","徕","涞","铼","赉","崃","梾","俫"],
-    ["对","队","兑","怼","憝","镦","碓","煺"],
-    ["要","药","耀","钥","谣","摇","遥","窑","瑶","尧","肴","姚","珧","徭","繇","鳐","窈","舀","疟","钥","勒"],
-    ["会","慧","汇","惠","绘","卉","讳","诲","秽","彗","晦","贿","喙","烩","荟","蕙","蟪","浍","桧","郐","狯","蒯","哙","侩","刽","脍","郐"]
-  ];
-  /* 字 → 组索引 的快速映射 */
-  var CHAR_TO_GROUP = {};
-  HOMOPHONE_GROUPS.forEach(function (group, idx) {
-    group.forEach(function (ch) { CHAR_TO_GROUP[ch] = idx; });
-  });
-  /* 判断两个字是否同音（同字当然同音；都在同音字表中且同组则同音） */
-  function isHomophone(a, b) {
-    if (a === b) return true;
-    var ga = CHAR_TO_GROUP[a];
-    var gb = CHAR_TO_GROUP[b];
-    return ga !== undefined && ga === gb;
-  }
-
-  var IDIOMS = [
-    ["一心一意", "心思专一，没有杂念"],
-    ["一马当先", "冲在最前面，带头干"],
-    ["一鸣惊人", "平时不显眼，一出手就让人吃惊"],
-    ["一帆风顺", "做事非常顺利"],
-    ["一诺千金", "答应过的事一定算数"],
-    ["一视同仁", "对所有人都一样对待"],
-    ["一箭双雕", "一个行动同时达到两个目的"],
-    ["一石二鸟", "做一件事得到两个好处"],
-    ["一尘不染", "非常干净，也指品行纯洁"],
-    ["一丝不苟", "做事认真仔细，一点不马虎"],
-    ["二话不说", "马上就办，不犹豫"],
-    ["二龙戏珠", "两条龙戏耍一颗宝珠"],
-    ["三心二意", "做事不专心，拿不定主意"],
-    ["三顾茅庐", "诚心诚意多次邀请人才"],
-    ["三生有幸", "运气非常好，非常荣幸"],
-    ["四面八方", "各个方向、各个地方"],
-    ["四通八达", "道路通畅，哪里都通"],
-    ["五光十色", "颜色鲜艳，花样繁多"],
-    ["五花八门", "花样很多，种类繁杂"],
-    ["五湖四海", "全国各地"],
-    ["六神无主", "慌乱，拿不定主意"],
-    ["七上八下", "心里忐忑不安"],
-    ["七嘴八舌", "大家抢着说话"],
-    ["八面玲珑", "处事圆滑，各方都应付得好"],
-    ["九牛一毛", "极大数量中的一点点"],
-    ["九死一生", "经历极大危险，侥幸活下来"],
-    ["十全十美", "各方面都非常完美"],
-    ["百发百中", "每次都能命中"],
-    ["百折不挠", "受挫很多次也不放弃"],
-    ["千钧一发", "极其危急的时刻"],
-    ["千变万化", "变化非常多"],
-    ["万紫千红", "形容花朵色彩繁多艳丽"],
-    ["万众一心", "大家团结一条心"],
-    ["马到成功", "一行动就获得成功"],
-    ["马不停蹄", "不停歇地赶路或做事"],
-    ["龙飞凤舞", "笔势活泼，也形容姿态优美"],
-    ["龙马精神", "精神旺盛，充满活力"],
-    ["虎头蛇尾", "开头声势大，结尾草草收场"],
-    ["虎背熊腰", "身材魁梧强壮"],
-    ["画龙点睛", "关键处加上一笔，使整体生动"],
-    ["画蛇添足", "多此一举，反而坏事"],
-    ["守株待兔", "不努力，想靠运气成功"],
-    ["亡羊补牢", "出了问题及时补救，还不算晚"],
-    ["井底之蛙", "见识短浅的人"],
-    ["掩耳盗铃", "自己骗自己"],
-    ["刻舟求剑", "死守老办法，不知变通"],
-    ["拔苗助长", "违反规律急于求成，反而坏事"],
-    ["自相矛盾", "自己的言行互相冲突"],
-    ["胸有成竹", "做事之前已有把握"],
-    ["杯弓蛇影", "疑神疑鬼，自己吓自己"],
-    ["对牛弹琴", "对不懂道理的人讲道理"],
-    ["闻鸡起舞", "有志向的人及时奋发"],
-    ["卧薪尝胆", "忍辱负重，立志报仇"],
-    ["破釜沉舟", "下定决心，不留退路"],
-    ["纸上谈兵", "光说理论，不会实干"],
-    ["望梅止渴", "用空想安慰自己"],
-    ["草木皆兵", "形容极度惊恐，疑神疑鬼"],
-    ["四面楚歌", "陷入孤立无援的境地"],
-    ["精卫填海", "意志坚定，不畏艰难"],
-    ["愚公移山", "不怕困难，坚持到底"],
-    ["天衣无缝", "事物完美无缺，没有破绽"],
-    ["水滴石穿", "坚持不懈，终能成功"],
-    ["铁杵成针", "只要有恒心，再难的事也能做成"],
-    ["点石成金", "把不好的变成好的"],
-    ["金碧辉煌", "装饰华丽，光彩夺目"],
-    ["光明磊落", "胸怀坦白，光明正大"],
-    ["落落大方", "举止自然得体"],
-    ["大公无私", "办事公正，没有私心"],
-    ["丝丝入扣", "紧密配合，环环相扣"],
-    ["扣人心弦", "形容感动人心"],
-    ["来日方长", "以后的日子还长"],
-    ["长驱直入", "军队快速前进，不可阻挡"],
-    ["入木三分", "见解或笔力深刻有力"],
-    ["分秒必争", "时间抓得很紧"],
-    ["争先恐后", "抢着往前，唯恐落后"],
-    ["后来居上", "后起的超过了先前的"],
-    ["上善若水", "最高的德行像水一样"],
-    ["水到渠成", "条件成熟，事情自然成功"],
-    ["风华正茂", "年轻有为，才华正盛"],
-    ["竹报平安", "平安家信"],
-    ["安步当车", "从容步行，代替乘车"],
-    ["车水马龙", "车马很多，热闹非凡"],
-    ["龙腾虎跃", "生龙活虎，非常活跃"],
-    ["跃跃欲试", "急切想试一试"],
-    ["势如破竹", "节节胜利，不可阻挡"],
-    ["竹篮打水", "白费力气，一场空"],
-    ["水落石出", "真相大白"],
-    ["出生入死", "冒着生命危险"],
-    ["死里逃生", "从极危险中逃脱"],
-    ["生气勃勃", "充满活力"],
-    ["勃然大怒", "突然发怒"],
-    ["怒发冲冠", "愤怒到极点"],
-    ["土崩瓦解", "彻底崩溃，不可收拾"],
-    ["助人为乐", "把帮助别人当作快乐"],
-    ["乐在其中", "在做的事情中得到乐趣"],
-    ["中庸之道", "不偏不倚的处世态度"],
-    ["道听途说", "路上听来的传闻，没有根据"],
-    ["说一不二", "说话算数，不改变"],
-    ["珠联璧合", "美好的事物凑在一起"],
-    ["合情合理", "合乎情理"],
-    ["理直气壮", "理由充分，说话有气势"],
-    ["壮志凌云", "志向远大"],
-    ["云开见日", "黑暗过去，光明到来"],
-    ["日新月异", "每天每月都有新变化"],
-    ["异想天开", "想法离奇，不切实际"],
-    ["开天辟地", "开创前所未有的事业"],
-    ["地大物博", "土地广大，物产丰富"],
-    ["博学多才", "学识广博，有多方面才能"],
-    ["才高八斗", "才华极高"],
-    ["斗志昂扬", "斗争意志高涨"],
-    ["扬眉吐气", "摆脱压抑后的畅快"],
-    ["气吞山河", "气势可以吞没山河"],
-    ["海阔天空", "大自然广阔，也形容谈话无拘无束"],
-    ["空前绝后", "以前没有，以后也不会有"],
-    ["后生可畏", "年轻人很厉害，令人敬畏"],
-    ["畏首畏尾", "胆子小，顾虑多"],
-    ["掉以轻心", "对事情采取轻率的态度"],
-    ["心花怒放", "心里高兴得像花儿盛开"],
-    ["放虎归山", "把坏人放回老巢，留下祸根"],
-    ["山清水秀", "山水风景优美"],
-    ["秀外慧中", "外表清秀，内心聪明"],
-    ["中流砥柱", "在动荡环境中起支柱作用的人"],
-    ["道貌岸然", "外表严肃正经，实际虚伪"],
-    ["然荻读书", "刻苦读书"],
-    ["书声琅琅", "读书声音响亮"],
-    ["琅琅上口", "文辞顺口，好读"],
-    ["口若悬河", "说话像河水下泻，滔滔不绝"],
-    ["晏然自若", "镇定自若"],
-    ["若无其事", "好像没有那回事一样"],
-    ["事半功倍", "费力小，收效大"],
-    ["倍道兼行", "加快速度，一天走两天的路"],
-    ["行云流水", "文章自然流畅"],
-    ["出类拔萃", "超出同类之上"],
-    ["萃萃学子", "众多学生"],
-    ["子虚乌有", "虚构的，不存在的"],
-    ["有备无患", "事先有准备，就可以避免祸患"],
-    ["患得患失", "担心得不到，得到了又担心失去"],
-    ["失而复得", "失去后又重新得到"],
-    ["得心应手", "心里怎么想，手里就能怎么做"],
-    ["手忙脚乱", "做事慌张，没有条理"],
-    ["乱七八糟", "混乱，没有条理"],
-    ["糟糠之妻", "共患难的妻子"],
-    ["妻离子散", "一家人被迫分离"],
-    ["散兵游勇", "没有组织的零散人员"],
-    ["勇往直前", "勇敢地一直向前进"],
-    ["前仆后继", "前面的倒下了，后面的紧跟上去"],
-    ["继往开来", "继承前人的事业，开辟未来的道路"],
-    ["来龙去脉", "事情的前因后果"],
-    ["脉脉含情", "用眼神表达情意"],
-    ["情同手足", "感情深厚，像兄弟一样"],
-    ["足智多谋", "智慧多，计谋多"],
-    ["谋事在人", "事情的成败在于人的努力"],
-    ["人山人海", "人群如山似海，形容人极多"],
-    ["海枯石烂", "海水干涸，石头腐烂，形容历时久远"],
-    ["烂熟于心", "对事情极其熟悉"],
-    ["心满意足", "心里非常满足"],
-    ["足不逾户", "待在家里不出门"],
-    ["户枢不蠹", "经常转动的门轴不会被虫蛀"],
-    ["蠹国害民", "危害国家和人民"],
-    ["民不聊生", "人民无法生活下去"],
-    ["生龙活虎", "活泼矫健，富有生气"],
-    ["虎视眈眈", "贪婪而凶狠地注视"],
-    ["眈眈相向", "凶狠地互相对视"],
-    ["向隅而泣", "面对墙角哭泣，形容孤独绝望"],
-    ["泣不成声", "哭得发不出声音"],
-    ["声东击西", "表面上喊打东边，实际上攻打西边"],
-    ["西风落叶", "秋天的景象，也形容事物衰落"],
-    ["叶公好龙", "表面上爱好某事物，实际上并不真爱好"],
-    ["龙马精神", "精神旺盛"],
-    ["神出鬼没", "像神鬼那样出没无常"],
-    ["没齿难忘", "一辈子也忘不了"],
-    ["忘恩负义", "忘记别人对自己的恩情，做出对不起别人的事"],
-    ["义不容辞", "道义上不允许推辞"],
-    ["辞旧迎新", "告别旧的，迎接新的"],
-    ["新陈代谢", "新的事物代替旧的事物"],
-    ["谢天谢地", "表示感激或庆幸"],
-    ["地老天荒", "经历的时间极久"],
-    ["荒无人烟", "十分荒凉，没有人家"],
-    ["烟消云散", "像烟雾和云气一样消散"],
-    ["散闷消愁", "排解烦闷和忧愁"],
-    ["愁眉苦脸", "皱着眉头，哭丧着脸"],
-    ["脸黄肌瘦", "脸色发黄，身体消瘦"],
-    ["瘦骨嶙峋", "形容人或动物消瘦露骨"],
-    ["峋嶙怪石", "奇形怪状的石头"],
-    ["石破天惊", "形容事情或文章议论新奇惊人"],
-    ["惊天动地", "形容声势浩大或事业伟大"],
-    ["地动山摇", "地震发生时大地颤动，山河摇摆"],
-    ["摇旗呐喊", "比喻替别人助长声势"],
-    ["喊冤叫屈", "为自己的冤屈呼喊"],
-    ["屈指可数", "扳着手指就可以数清楚，形容数量稀少"],
-    ["数一数二", "不算第一也算第二，形容突出"],
-    ["二心三意", "想这样又想那样，犹豫不决"],
-    ["意味深长", "意思含蓄深远，耐人寻味"],
-    ["长话短说", "把很长的话精简成简短的话"],
-    ["说三道四", "随意评论，乱加谈论"],
-    ["四面八方", "各个方向"],
-    ["方兴未艾", "事物正在发展，尚未达到止境"],
-    ["艾发衰容", "头发苍白，容颜衰老"],
-    ["容光焕发", "脸上光彩四射，身体健康"],
-    ["发号施令", "发布命令，指挥别人"],
-    ["令行禁止", "下令行动就立即行动，下令停止就立即停止"],
-    ["止戈为武", "平定暴乱，停止用兵，才是真正的武功"],
-    ["武艺高强", "武术本领高超"],
-    ["强弩之末", "强弩所发的箭，已达射程的尽头，比喻强大的力量已经衰弱"],
-    ["末路穷途", "形容到了无路可走的地步"],
-    ["途穷日暮", "无路可走，天色已晚，比喻处境十分困难"],
-    ["暮鼓晨钟", "佛教规矩，寺里晚上打鼓，早晨敲钟，比喻可以使人警觉醒悟的话"],
-    ["钟灵毓秀", "凝聚了天地间的灵气，孕育着优秀的人物"],
-    ["秀色可餐", "美丽的容貌或秀丽的景色好像可以当饭吃"],
-    ["餐风饮露", "形容旅途或野外生活的艰苦"],
-    ["露出马脚", "比喻暴露了隐蔽的事实真相"],
-    ["脚踏实地", "比喻做事踏实认真"],
-    ["地广人稀", "土地广阔，人烟稀少"],
-    ["稀世珍宝", "世间很少有的珍贵宝物"],
-    ["宝刀未老", "形容人到老年还依然威猛，不减当年"],
-    ["老当益壮", "年纪虽老而志气更旺盛，干劲更足"],
-    ["壮士断腕", "比喻做事要当机立断，不可犹豫不决"],
-    ["腕底生风", "形容写字、画画时笔势矫健奔放"],
-    ["风调雨顺", "风雨适合农时，形容年成好"],
-    ["顺理成章", "写文章或做事情顺着条理就能做好"],
-    ["章台杨柳", "比喻窈窕美丽的女子"],
-    ["柳暗花明", "垂柳浓密，鲜花夺目，形容柳树成荫，繁花似锦的春天景象"],
-    ["明察秋毫", "目光敏锐，连极小的东西都看得清清楚楚"],
-    ["毫不犹豫", "形容做事非常果断，丝毫没有迟疑"],
-    ["豫章故郡", "指江西南昌"],
-    ["郡县制度", "古代中央集权体制下的地方行政制度"],
-    ["治病救人", "比喻针对某人的缺点错误进行分析，目的是帮助他改正"],
-    ["人山人海", "人群如山似海，形容人聚集得非常多"]
-  ];
-
   async function runTool(intent) {
     var p = intent.params;
     if (intent.toolName === "weather") {
-      var w = AgentLab.weatherSim(p.city, p.dateKey);
+      // 真实天气：联网调用 Open-Meteo（免费、无需 Key），失败时如实告知，绝不编造
+      var w = await AgentLab.API.getWeather(p.city, p.dateKey);
+      if (!w || !w.ok) {
+        return {
+          name: "天气查询工具",
+          summary: "查询" + p.city + p.dateKey + "天气",
+          result: (w && w.error ? w.error : "天气服务暂时不可用") +
+            "。请如实告诉同学：这次没有查到真实天气，不要编造任何数字。",
+          payload: w || {}
+        };
+      }
       return {
         name: "天气查询工具",
-        summary: "查询" + p.city + p.dateKey + "天气",
-        result: w.text + "。" + w.suggest + "。",
+        summary: "查询" + w.city + w.date + "天气",
+        result: w.text + "。" + w.suggest + "。（数据来源：" + w.source + "）",
         payload: w
       };
     }
@@ -725,11 +441,41 @@ AgentLab.Agent = (function () {
             payload: { blocked: true }
           };
         }
+        if (res.mode === "deepseek") {
+          /* ① DeepSeek 服务端联网搜索：拿回的是“搜索后整理的资料”+ 引用来源，
+           * 不是一列网页——这一点要在结果里写清楚，方便学生对照着看。 */
+          var src = "";
+          if (res.results && res.results.length) {
+            src = "\n来源：\n" + res.results.slice(0, 5).map(function (r, i) {
+              return (i + 1) + ". " + (r.title || "") + (r.url ? "　" + r.url : "");
+            }).join("\n");
+          }
+          return {
+            name: "联网搜索工具",
+            summary: "搜索“" + p.query + "”（DeepSeek 服务端联网搜索）",
+            result: "联网搜索成功。以下是搜索后整理出的资料：\n" + res.summary + src +
+                    "\n（资料由 DeepSeek 服务端联网获取并整理）",
+            payload: { mode: "deepseek", query: p.query, summary: res.summary }
+          };
+        }
+        if (res.fallback) {
+          /* 联网没成功 → 大模型已有知识兜底。必须如实标注“不是刚查到的网页”，
+           * 让大脑在回答时也告诉同学这一点——宁可说明来源，也不能冒充搜索结果。 */
+          return {
+            name: "联网搜索工具",
+            summary: "搜索“" + p.query + "”（联网没成功 → 用大脑已有知识兜底）",
+            result: "联网搜索暂时没成功：这台设备的网络访问不到搜索引擎。\n" +
+                    "下面是大模型用自己学过的知识整理的回答——不是刚查到的网页，" +
+                    "回答时请先向同学说明这一点：\n" + res.summary +
+                    (res.trace ? "\n（诊断：" + res.trace + "）" : ""),
+            payload: { fallback: true, query: p.query, summary: res.summary }
+          };
+        }
         if (!res.results || !res.results.length) {
           return {
             name: "联网搜索工具",
             summary: "搜索“" + p.query + "”",
-            result: "没有搜到关于“" + p.query + "”的相关资料，请换个问法试试。",
+            result: res.error || ("没有搜到关于“" + p.query + "”的相关资料，请换个问法试试。"),
             payload: { results: [] }
           };
         }
@@ -752,6 +498,16 @@ AgentLab.Agent = (function () {
       }
     }
     if (intent.toolName === "translate") {
+      /* 无 Key（降级模式）时翻译必然调不动——提前如实说明，
+       * 比让它走到请求失败再看报错更清楚（课堂演示时不尴尬）。 */
+      if (!(AgentLab.API.hasApiKey && AgentLab.API.hasApiKey())) {
+        return {
+          name: "翻译工具",
+          summary: "把“" + p.text + "”翻译成" + (p.target === "zh" ? "中文" : "英文"),
+          result: "翻译工具需要大模型来干活，而当前没有配置 API Key（降级模式只演示流程）——配置 Key 之后就能真的翻译。",
+          payload: { needKey: true }
+        };
+      }
       try {
         var sys = "你是一个专业的翻译工具。把用户给的内容翻译成" + (p.target === "zh" ? "简体中文" : "英语") + "。只输出译文本身，不要任何解释、注释或前后缀。";
         var ans = await AgentLab.API.ask(sys, p.text);
@@ -921,6 +677,18 @@ AgentLab.Agent = (function () {
     }
     if (intent.toolName === "timer") {
       var secs = p.seconds;
+      /* 听出是计时请求、但同学没说计多久：工具照样调出来，由大脑去反问。
+       * 早前这里是直接返回 null，工作台显示“什么都没发生”——学生看到的
+       * 就只是小管家随口一句话，完全看不出执行器其实该上场。 */
+      if (!secs) {
+        return {
+          name: "计时器工具",
+          summary: "准备开始倒计时",
+          result: "计时器已经准备好了，但同学还没有说要计多长时间。\n" +
+            "请反问他要计多久，并顺手给两个例子，例如“计时25分钟”或“来一个25分钟的番茄钟”。",
+          payload: { needDuration: true }
+        };
+      }
       var label = p.label;
       var remindText = p.remindText || "";
       return {
@@ -928,172 +696,6 @@ AgentLab.Agent = (function () {
         summary: "开始 " + label + " 倒计时" + (p.pomodoro ? "（番茄钟）" : ""),
         result: "倒计时已开始：" + label + "。时间到我会提醒！" + (remindText ? "（提醒内容：" + remindText + "）" : "") + (p.pomodoro ? "番茄工作法：专注" + label + "，然后休息5分钟。" : ""),
         payload: { seconds: secs, minutes: p.minutes, label: label, pomodoro: p.pomodoro, remindText: remindText }
-      };
-    }
-    if (intent.toolName === "game") {
-      if (p.action === "start") {
-        gameState = { secret: Math.floor(Math.random() * 100) + 1, attempts: 0, low: 1, high: 100 };
-        return {
-          name: "猜数字游戏工具",
-          summary: "开始猜数字游戏",
-          result: "我已经想好了一个 1 到 100 之间的整数。你每猜一次，我会告诉你“大了”还是“小了”。来吧，猜猜看！",
-          payload: { action: "start", low: 1, high: 100 }
-        };
-      }
-      if (p.action === "stop") {
-        var old = gameState;
-        gameState = null;
-        return {
-          name: "猜数字游戏工具",
-          summary: "结束猜数字游戏",
-          result: old ? "游戏结束！答案是 " + old.secret + "，你一共猜了 " + old.attempts + " 次。" : "现在没有进行中的猜数字游戏。",
-          payload: { action: "stop", secret: old && old.secret, attempts: old && old.attempts }
-        };
-      }
-      if (p.action === "guess") {
-        if (!gameState) {
-          return {
-            name: "猜数字游戏工具",
-            summary: "猜数字",
-            result: "还没有开始游戏呢，说“猜数字”我们就开始。",
-            payload: { action: "none" }
-          };
-        }
-        var g = p.guess;
-        if (typeof g !== "number" || !isFinite(g) || g < 1 || g > 100 || g !== Math.floor(g)) {
-          return {
-            name: "猜数字游戏工具",
-            summary: "猜数字",
-            result: "请输入 1 到 100 之间的整数。",
-            payload: { action: "invalid" }
-          };
-        }
-        gameState.attempts++;
-        if (g === gameState.secret) {
-          var finalAttempts = gameState.attempts;
-          var s = gameState.secret;
-          gameState = null;
-          return {
-            name: "猜数字游戏工具",
-            summary: "猜中啦",
-            result: "猜中啦！答案就是 " + s + "，你用了 " + finalAttempts + " 次。" + (finalAttempts <= 7 ? "哇，不超过 7 次，你是二分法高手！" : "想一想：每次把范围砍一半（二分法），最多 7 次就能猜中 1~100 里的任何数。"),
-            payload: { action: "win", secret: s, attempts: finalAttempts }
-          };
-        }
-        if (g < gameState.secret) { gameState.low = Math.max(gameState.low, g + 1); }
-        else { gameState.high = Math.min(gameState.high, g - 1); }
-        return {
-          name: "猜数字游戏工具",
-          summary: "猜 " + g,
-          result: (g < gameState.secret ? "小了！" : "大了！") + " 范围缩小到 " + gameState.low + " ~ " + gameState.high + "。继续猜（已猜 " + gameState.attempts + " 次）。",
-          payload: { action: "again", low: gameState.low, high: gameState.high, attempts: gameState.attempts }
-        };
-      }
-      return {
-        name: "猜数字游戏工具",
-        summary: "猜数字",
-        result: "猜数字游戏：说“猜数字”开始，然后猜 1~100 里的整数。",
-        payload: {}
-      };
-    }
-    if (intent.toolName === "idiom") {
-      if (p.action === "start") {
-        var starts = {};
-        IDIOMS.forEach(function (it) { var c = it[0].charAt(0); starts[c] = (starts[c] || 0) + 1; });
-        var pool = IDIOMS.filter(function (it) { return starts[it[0].charAt(it[0].length - 1)] > 0; });
-        var pick = pool.length ? pool[Math.floor(Math.random() * pool.length)] : IDIOMS[0];
-        var w = pick[0];
-        idiomState = { lastChar: w.charAt(w.length - 1), count: 0, used: [w] };
-        return {
-          name: "成语接龙工具",
-          summary: "开始成语接龙",
-          result: "好，我先来：" + w + "（" + pick[1] + "）。请你接一个以“" + idiomState.lastChar + "”开头的成语！",
-          payload: { action: "start", word: w, lastChar: idiomState.lastChar }
-        };
-      }
-      if (p.action === "stop") {
-        var oldI = idiomState;
-        idiomState = null;
-        return {
-          name: "成语接龙工具",
-          summary: "结束成语接龙",
-          result: oldI ? "接龙结束！你一共接上了 " + oldI.count + " 个成语，真棒！" : "现在没有进行中的接龙。",
-          payload: { action: "stop", count: oldI && oldI.count }
-        };
-      }
-      if (p.action === "hint") {
-        if (!idiomState) {
-          return { name: "成语接龙工具", summary: "成语接龙", result: "还没有开始接龙呢，说“成语接龙”就开始。", payload: {} };
-        }
-        var cands = IDIOMS.filter(function (it) { return it[0].charAt(0) === idiomState.lastChar && idiomState.used.indexOf(it[0]) < 0; });
-        var hintW = cands.length ? cands[0] : null;
-        return {
-          name: "成语接龙工具",
-          summary: "提示",
-          result: hintW ? "提示：以“" + idiomState.lastChar + "”开头的成语有“" + hintW[0] + "”（" + hintW[1] + "）。你能想到别的吗？" : "接“" + idiomState.lastChar + "”的成语库暂时没有了，你可以自创一个首字为“" + idiomState.lastChar + "”的四字词！",
-          payload: { action: "hint", word: hintW && hintW[0] }
-        };
-      }
-      if (p.action === "answer") {
-        if (!idiomState) {
-          return { name: "成语接龙工具", summary: "成语接龙", result: "还没有开始接龙呢，说“成语接龙”就开始。", payload: {} };
-        }
-        var w2 = p.word || "";
-        if (w2.length < 2) {
-          return { name: "成语接龙工具", summary: "成语接龙", result: "请说出一个四字成语来接龙。", payload: {} };
-        }
-        var first = w2.charAt(0);
-        var isStrict = (first === idiomState.lastChar);
-        var isHomophoneMatch = !isStrict && isHomophone(first, idiomState.lastChar);
-        if (!isStrict && !isHomophoneMatch) {
-          return {
-            name: "成语接龙工具",
-            summary: "接“" + idiomState.lastChar + "”",
-            result: "不对哦，接龙要以上一个成语的最后一个字“" + idiomState.lastChar + "”开头（同音谐音字也可以）。你接的是“" + w2 + "”，第一个字是“" + first + "”。再试试，也可以说“提示”。",
-            payload: { action: "wrong", lastChar: idiomState.lastChar }
-          };
-        }
-        idiomState.count++;
-        idiomState.used.push(w2);
-        var def = null;
-        for (var i = 0; i < IDIOMS.length; i++) {
-          if (IDIOMS[i][0] === w2) { def = IDIOMS[i][1]; break; }
-        }
-        var last = w2.charAt(w2.length - 1);
-        var homophoneNote = isHomophoneMatch ? "（谐音接龙！“" + first + "”和“" + idiomState.lastChar + "”读音相同）" : "";
-        // 智能体接龙：从库中选一个以 last 开头、或与 last 同音的字开头、未用过的成语接上
-        var aiCands = IDIOMS.filter(function (it) {
-          var aiFirst = it[0].charAt(0);
-          return (aiFirst === last || isHomophone(aiFirst, last)) && idiomState.used.indexOf(it[0]) < 0;
-        });
-        if (aiCands.length) {
-          var aiPick = aiCands[Math.floor(Math.random() * aiCands.length)];
-          idiomState.used.push(aiPick[0]);
-          var aiLast = aiPick[0].charAt(aiPick[0].length - 1);
-          var aiHomophone = (aiPick[0].charAt(0) !== last) ? "（谐音接“" + last + "”）" : "";
-          idiomState.lastChar = aiLast;
-          return {
-            name: "成语接龙工具",
-            summary: "接上“" + w2 + "”",
-            result: "接得好！“" + w2 + "”" + homophoneNote + (def ? "：" + def + "。" : "（这个成语我没有收录，你比我厉害！）") + " 我接：“" + aiPick[0] + "”" + aiHomophone + "（" + aiPick[1] + "）。现在该你接“" + aiLast + "”开头的成语啦（同音谐音字也可以）！",
-            payload: { action: "ok", word: w2, aiWord: aiPick[0], lastChar: aiLast, count: idiomState.count, homophone: isHomophoneMatch }
-          };
-        }
-        // 智能体接不上，学生赢
-        var finalCount = idiomState.count;
-        idiomState = null;
-        return {
-          name: "成语接龙工具",
-          summary: "接龙结束",
-          result: "接得好！“" + w2 + "”" + homophoneNote + (def ? "：" + def + "。" : "") + " 这个“" + last + "”字我接不上啦，你赢了！一共接了 " + finalCount + " 个成语，厉害！",
-          payload: { action: "win", word: w2, count: finalCount }
-        };
-      }
-      return {
-        name: "成语接龙工具",
-        summary: "成语接龙",
-        result: "成语接龙：说“成语接龙”开始，然后接一个首字与上一成语末字相同的成语。",
-        payload: {}
       };
     }
     return null;
@@ -1118,27 +720,325 @@ AgentLab.Agent = (function () {
     };
   }
 
-  /* ---------- 组装发给大脑的消息 ---------- */
+  /* ---------- 组装发给大脑的消息 ----------
+   * 消息四角色（Chat 协议）：system 定规则、user 提问、assistant 回话、tool 回传数据。
+   * 记忆不是第五种角色——它存在上下文之外，被“翻出来”时才借一个角色放进上下文：
+   *   · 长期记忆档案（班级知识库、边界说明书）→ 一直随 system 一起给；
+   *   · 短期记忆（轨迹）→ 原样回放成 user / assistant 历史；
+   *   · 工具结果 → 走 tool 角色（这是执行器的产物，不算记忆）。 */
 
-  function buildMessages(intent, userText, memory, history, toolResult, toolBlocked) {
+  /* 工具名（中文意图 key）→ Function Calling 里的英文函数名 */
+  var TOOL_FN = {
+    weather: "weather_query", calc: "calculator", remind: "reminder_set",
+    search: "web_search", translate: "translate_text", convert: "unit_convert",
+    datetime: "datetime_now", shape: "shape_calc", math: "math_calc", timer: "timer_start"
+  };
+
+  /* ---------- 工具的「说明书」：交给大模型看的那一份 ----------
+   * 这一步是整个架构的关键：把工具的 schema 连同消息一起发给模型，
+   * **规划就不再是程序替模型做的决定，而是模型自己读说明后做的决定**。
+   * 以前是本地正则先判好工具、再把结果伪造进消息——模型其实没有参与决策。
+   * description 写得越具体，模型选工具和填参数就越准，所以这里逐条写清
+   * “什么时候该用它”“参数怎么算”。 */
+  var TOOL_SCHEMAS = [
+    {
+      key: "calc", fn: "calculator",
+      desc: "精确计算一个算式。只要需要算数就必须用它，不要自己心算。",
+      props: { expr: { type: "string", desc: "算式，用 + - * / 表示，例如 25*4+10、100/4" } },
+      req: ["expr"]
+    },
+    {
+      key: "weather", fn: "weather_query",
+      desc: "查询某个城市某天的真实天气。同学问天气、下不下雨、气温多少度、要不要带伞、穿什么、适不适合运动时用它。",
+      props: {
+        city: { type: "string", desc: "城市名，例如 北京、上海。同学没提就用 北京" },
+        dateKey: { type: "string", desc: "今天 / 明天 / 明早 / 明晚 / 后天 / 周末 / 下周" }
+      }, req: ["city"]
+    },
+    {
+      key: "timer", fn: "timer_start",
+      desc: "启动一个真实倒计时（计时器 / 番茄钟 / 闹钟）。同学说“计时X分钟”“X分钟后提醒我”“来个番茄钟”“定个闹钟”时用它。" +
+        "注意 seconds 必须是<b>换算成秒的整数</b>：25分钟=1500，10分钟=600，5分钟=300，半小时=1800，1.5小时=5400。",
+      props: {
+        seconds: { type: "number", desc: "倒计时秒数。25分钟填1500；10分钟填600；半小时填1800" },
+        label: { type: "string", desc: "简短标签，例如 25分钟·写作业。同学没说要做什么就只写时长" },
+        remindText: { type: "string", desc: "时间到了要提醒他做什么；同学没说就留空字符串" },
+        pomodoro: { type: "boolean", desc: "同学说的是番茄钟或“专注”就填 true，否则 false" }
+      }, req: ["seconds"]
+    },
+    {
+      key: "remind", fn: "reminder_set",
+      desc: "记下一条提醒事项（只记录，不启动倒计时）。同学说“提醒我明天带美术工具”“别忘了交作业”时用它。",
+      props: { text: { type: "string", desc: "要提醒的内容原文" } }, req: ["text"]
+    },
+    {
+      key: "datetime", fn: "datetime_now",
+      desc: "读取真实的系统时间/日期，或推算某天是星期几。今天几号、星期几、几天后是星期几、现在几点时用它。",
+      props: { text: { type: "string", desc: "同学的原话（用来判断要推算哪一天）" } }, req: []
+    },
+    {
+      key: "convert", fn: "unit_convert",
+      desc: "做单位换算（长度、重量、面积、体积、速度、摄氏度↔华氏度）。同学问“X等于多少Y”时用它。",
+      props: {
+        value: { type: "number", desc: "要换算的数值" },
+        from: { type: "string", desc: "原单位，如 米、千米、千克、摄氏度" },
+        to: { type: "string", desc: "目标单位，如 厘米、公斤、华氏度" }
+      }, req: ["value", "from", "to"]
+    },
+    {
+      key: "math", fn: "math_calc",
+      desc: "算平均数、求百分之几、算打折后的价钱。用它算，别自己算。",
+      props: {
+        kind: { type: "string", desc: "average（平均数）/ percent（百分之几）/ discount（打折）" },
+        nums: { type: "array", items: { type: "number" }, desc: "average 用：参与平均的所有数" },
+        base: { type: "number", desc: "percent / discount 用：总数或原价" },
+        rate: { type: "number", desc: "percent 用百分数（如 20 表示 20%）；discount 用折数（如 8 表示八折）" }
+      }, req: ["kind"]
+    },
+    {
+      key: "shape", fn: "shape_calc",
+      desc: "计算图形的面积/周长/体积/表面积（正方形、长方形、三角形、圆、长方体、正方体等）。",
+      props: {
+        shape: { type: "string", desc: "square / rect / triangle / circle / cube / cuboid / parallelogram / trapezoid" },
+        nums: { type: "array", items: { type: "number" }, desc: "边长、长宽高、底和高等，按形状顺序填" },
+        diameter: { type: "boolean", desc: "同学给的是直径而不是半径时填 true" }
+      }, req: ["shape", "nums"]
+    },
+    {
+      key: "translate", fn: "translate_text",
+      desc: "翻译成中文或英文。",
+      props: {
+        text: { type: "string", desc: "要翻译的原文" },
+        target: { type: "string", desc: "zh 表示译成中文，en 表示译成英文" }
+      }, req: ["text"]
+    },
+    {
+      key: "search", fn: "web_search",
+      desc: "联网搜索资料。同学问课外知识、查百科、问「是什么/为什么」时用它。班级和课表类问题不要用。",
+      props: { query: { type: "string", desc: "搜索关键词，不要包含“帮我搜索一下”这类客套话" } }, req: ["query"]
+    }
+  ];
+
+  /* 英文函数名 → 中文意图 key（模型返回的是英文名，要映回本地实现） */
+  var FN_TO_KEY = (function () {
+    var m = {};
+    Object.keys(TOOL_FN).forEach(function (k) { m[TOOL_FN[k]] = k; });
+    return m;
+  })();
+
+  function schemasFor(tools) {
+    return TOOL_SCHEMAS.filter(function (s) { return tools[s.key] !== false; })
+      .map(function (s) {
+        var properties = {}, required = [];
+        for (var p in s.props) {
+          properties[p] = { type: s.props[p].type, description: s.props[p].desc };
+          if (s.props[p].items) properties[p].items = s.props[p].items;
+        }
+        s.req.forEach(function (r) { required.push(r); });
+        return {
+          type: "function",
+          function: {
+            name: s.fn,
+            description: s.desc.replace(/<\/?b>/g, ""),
+            parameters: { type: "object", properties: properties, required: required }
+          }
+        };
+      });
+  }
+
+  /* ---------- 参数校验与兜底（Harness 该干的活） ----------
+   * 模型偶尔会漏填参数或换单位。这里做三件事：补默认、把单位名对齐本地口径、
+   * 以及实在补不上时从原句里再解析一次。补不上就把 needDuration 之类标记带下去，
+   * 让工具返回“请你补充”——而不是默默算出一个错的数。 */
+  function normalizeParams(key, raw, userText) {
+    var p = {};
+    if (raw && typeof raw === "object") for (var k in raw) p[k] = raw[k];
+    var ut = userText || "";
+
+    if (key === "calc") {
+      if (!p.expr) p.expr = ut;
+    } else if (key === "weather") {
+      if (!p.city || typeof p.city !== "string") p.city = AgentLab.CONFIG.defaultCity;
+      if (!p.dateKey) p.dateKey = /明天|明早/.test(ut) ? "明天" : /后天/.test(ut) ? "后天" : /明晚/.test(ut) ? "明晚" : /周末/.test(ut) ? "周末" : /下周/.test(ut) ? "下周" : "今天";
+    } else if (key === "timer") {
+      /* 时长以“同学的原话”为准，不以模型填的数为准。
+       * 模型经常把“25分钟”原样填进 seconds（=25，实际只有 25 秒），
+       * 而“同学说要计多久”才是真实需求，所以这里优先解析原句。 */
+      var s = p.seconds;
+      if (typeof s === "string") {
+        var sd = parseDuration(s);
+        s = sd ? sd.seconds : parseFloat(s);
+      }
+      var d = parseDuration(ut) || (typeof p.seconds === "string" ? parseDuration(p.seconds) : null) ||
+        parseDuration(String(p.label || "")) || parseDuration(String(p.remindText || ""));
+      if (d) s = d.seconds;
+      if (!s || isNaN(s) || s <= 0) s = 0;
+      p.seconds = s;
+      if (!p.label) {
+        var lb = p.seconds ? fmtDuration(p.seconds) : "";
+        p.label = (p.remindText ? (lb + "·" + p.remindText) : lb);
+      }
+      if (!p.remindText) p.remindText = parseRemindText(ut);
+      if (p.pomodoro === undefined) p.pomodoro = /番茄|专注/.test(ut);
+    } else if (key === "datetime") {
+      p.text = ut;
+    } else if (key === "remind" || key === "search" || key === "translate") {
+      var field = key === "remind" ? "text" : "query";
+      if (!p[field]) p[field] = ut;
+      if (!p.text && key === "translate") p.text = ut;
+      if (!p.target) p.target = /中文|汉语/.test(ut) ? "zh" : "en";
+    } else if (key === "convert") {
+      if (typeof p.value === "string") p.value = parseFloat(p.value);
+      if (isNaN(p.value) || p.value === null) p.value = parseCnNum(String(p.value || ""));
+    } else if (key === "shape") {
+      if (!Array.isArray(p.nums)) {
+        var ns = (ut.match(/\d+(?:\.\d+)?/g) || []).map(parseFloat);
+        p.nums = ns;
+      }
+      if (p.diameter === undefined) p.diameter = /直径/.test(ut);
+    } else if (key === "math") {
+      if (!Array.isArray(p.nums)) p.nums = (ut.match(/\d+(?:\.\d+)?/g) || []).map(parseFloat);
+      if (typeof p.rate === "string") p.rate = parseFloat(p.rate);
+      if (typeof p.base === "string") p.base = parseFloat(p.base);
+    }
+    return p;
+  }
+
+  /* 执行模型点名要用的那个工具 */
+  function execFn(fnName, rawArgs, userText) {
+    var key = FN_TO_KEY[fnName];
+    if (!key) {
+      return {
+        name: "未知工具",
+        summary: "尝试调用 " + fnName,
+        result: "这个工具不存在，请只用我给你的工具清单里的工具。",
+        payload: { unknown: fnName }
+      };
+    }
+    var args = rawArgs;
+    if (typeof args === "string") { try { args = JSON.parse(args || "{}"); } catch (e) { args = {}; } }
+    var r = runTool({ toolName: key, params: normalizeParams(key, args, userText) });
+    return r || { name: "工具", summary: "执行 " + key, result: "这个工具没有返回结果。", payload: {} };
+  }
+
+  function toolLabelOf(key) {
+    return { weather: "天气查询", calc: "计算器", remind: "提醒", search: "联网搜索", translate: "翻译", convert: "单位换算", datetime: "时间日期", shape: "图形计算", math: "数学计算", timer: "计时器" }[key] || key;
+  }
+
+  /* 工具说明书原文：规划器"选工具"的第二步要拿它当证据给学生看 */
+  function toolDescOf(fn) {
+    for (var i = 0; i < TOOL_SCHEMAS.length; i++) if (TOOL_SCHEMAS[i].fn === fn) return TOOL_SCHEMAS[i].desc;
+    return "";
+  }
+
+  /**
+   * 规划器"选工具"的三步（口径与规划器实验室「工具选择决策」卡完全一致）：
+   *   ① 理解意图  ② 匹配能力  ③ 构造参数
+   * 每一步都用这一次的真实数据填，让学生看到规划不是"猜"，是有依据的匹配。
+   */
+  function pickSteps(call, userText, toolTotal) {
+    var fn = (call && call.function && call.function.name) || "";
+    var args = (call && call.function && call.function.arguments) || "";
+    var desc = toolDescOf(fn);
+    return [
+      ["① 理解意图", "同学要的是：" + userText],
+      ["② 匹配能力", "从 " + toolTotal + " 份工具说明书里挑中 " + fn +
+        (desc ? "（说明书原文：" + desc + "）" : "")],
+      ["③ 构造参数", args]
+    ];
+  }
+
+  /* ---------- 工具结果的“写法兼容层” ----------
+   * 标准写法（mode = ""）：assistant(tool_calls) + tool 两条消息，和真实 API 一致。
+   * 但个别模型有额外要求，按下面的顺序自动降级；用哪种写法会记在浏览器里，
+   * 同一个模型下次直接用能用的写法，不再多花一次请求：
+   *   ""          → 标准写法；
+   *   "reasoning" → 标准写法 + 给 assistant 补一个空 reasoning_content
+   *                 （DeepSeek V4 等思考模式：带 tool_calls 的 assistant 消息必须回传该字段，
+   *                  否则接口报 400 “reasoning_content … must be passed back”）；
+   *   "legacy"    → 把工具结果拼进 user 消息（最兼容，牺牲一点“真实形态”）。 */
+  var COMPAT_KEY = "agentlab_tool_compat_v1";
+
+  function getCompat(model) {
+    var all = AgentLab.Store.get(COMPAT_KEY, {}) || {};
+    return all[model] || "";
+  }
+
+  function setCompat(model, mode) {
+    var all = AgentLab.Store.get(COMPAT_KEY, {}) || {};
+    if (all[model] === mode) return;
+    all[model] = mode;
+    AgentLab.Store.set(COMPAT_KEY, all);
+  }
+
+  /* 这次失败能不能靠“换一种写法”解决？返回下一种写法，或 null（换写法也没用） */
+  function nextCompatMode(mode, err) {
+    var msg = ((err && err.message) || "") + "";
+    // 模型名不对、密钥不对、网络不通……换写法都没用，直接把错误抛出去
+    if (/模型名|not\s+exist|unknown\s+model|API\s*密钥|网络连接失败|请求超时|余额/i.test(msg)) return null;
+
+    // 思考模式要求回传 reasoning_content：先补字段，再不行才退到最兼容写法
+    if (/reasoning_content|thinking\s*mode|思考模式/i.test(msg)) {
+      if (mode === "") return "reasoning";
+      if (mode === "reasoning") return "legacy";
+      return null;
+    }
+    // 其他“消息格式被拒”的情况：直接退到最兼容的写法
+    if (mode !== "legacy" && (/tool_calls|tool_call_id|角色|格式|invalid|message/i.test(msg) || (err && err.status) === 400)) {
+      return "legacy";
+    }
+    return null;
+  }
+
+  /**
+   * @param {Object} [opts] { mode: "" | "reasoning" | "legacy" } —— 工具结果的写法（见上方说明）
+   */
+  function buildMessages(intent, userText, memory, history, toolResult, toolBlocked, opts) {
+    var mode = (opts && opts.mode) || "";
+    var legacyToolResult = mode === "legacy";
     var sys = AgentLab.buildSystemPrompt(memory.classInfo, memory.manual);
-    var messages = [{ role: "system", content: sys }];
+    var messages = [
+      { role: "system", content: sys },
+    ];
 
-    // 短期记忆：最近几轮对话原样保留
-    (history || []).forEach(function (m) {
-      messages.push({ role: m.role, content: m.content });
-    });
+    // 短期记忆：最近几轮对话原样保留（它们本来就带着 user / assistant 的角色）。
+    // 注意要剔掉“和本次提问重复的那条”，否则会出现两条一模一样的 user 消息。
+    (function () {
+      var past = flags.memory ? stripCurrentUser(history, userText) : [];
+      past.forEach(function (m) { messages.push({ role: m.role, content: m.content }); });
+    })();
 
-    // 把工具结果“喂”给大脑（教学口径：执行器查到的东西，大脑要拿来用）
+    // 这一轮的 user 消息：班级档案已经随 system 一起给了，不再重复塞一遍
     var userPayload = userText;
-    if (toolResult) {
-      userPayload = userText + "\n\n【执行器工具结果】你刚刚通过" + toolResult.name + toolResult.summary + "，查到的结果是：\n" + toolResult.result + "\n请用同学听得懂的话，基于这个真实结果回答。";
-    } else if (toolBlocked) {
+    if (toolBlocked) {
       userPayload = userText + "\n\n【执行器被关闭】你没有成功调用任何工具，查不到真实数据。请如实告诉同学：这个工具没有打开/执行器被关掉了，我查不到，所以不能告诉你答案。绝对不要编造数字或结果。";
-    } else if (intent.toolName === "classInfo") {
-      userPayload = userText + "\n\n【记忆器提示】你的班级知识库里存着：\n" + AgentLab.formatClassInfo(memory.classInfo) + "\n请从中找出答案回答。";
+    } else if (toolResult && legacyToolResult) {
+      userPayload = userText + "\n\n【执行器工具结果】你刚刚通过" + toolResult.name + toolResult.summary + "，查到的结果是：\n" + toolResult.result + "\n请用同学听得懂的话，基于这个真实结果回答。";
     }
     messages.push({ role: "user", content: userPayload });
+
+    // 工具结果：标准写法是 assistant 请求调用（tool_calls）+ tool 回传数据 两条消息。
+    // 教学说明：本项目由规划器在本地判定调用哪个工具（省一次往返），
+    //          但发给模型时仍写成标准的 tool_calls，和真实 Function Calling 的样子一致。
+    if (toolResult && !legacyToolResult) {
+      var callId = "call_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      var callMsg = {
+        role: "assistant",
+        content: "",
+        tool_calls: [{
+          id: callId,
+          type: "function",
+          function: {
+            name: TOOL_FN[intent.toolName] || "tool_call",
+            arguments: JSON.stringify(intent.params || {})
+          }
+        }]
+      };
+      // 思考模式（DeepSeek V4 等）要求带 tool_calls 的 assistant 消息回传 reasoning_content 字段
+      if (mode === "reasoning") callMsg.reasoning_content = "";
+      messages.push(callMsg);
+      messages.push({ role: "tool", tool_call_id: callId, content: toolResult.result });
+    }
     return messages;
   }
 
@@ -1148,95 +1048,409 @@ AgentLab.Agent = (function () {
     return new Promise(function (res) { setTimeout(res, ms); });
   }
 
+  var MAX_ROUNDS = 4;   // ReAct 循环上限：模型可能连续调多个工具，但不能无限转
+
+  function modelName() {
+    return (AgentLab.API.getSettings && AgentLab.API.getSettings().model) || AgentLab.CONFIG.model || "";
+  }
+
+  /* system 消息 = 规则 + 长期记忆档案 + 执行器状态。
+   * 注意：长期记忆是<b>借 system 角色</b>进上下文的，它没有自己的角色——
+   * 这是“记忆片段要给一个角色”最典型的例子。 */
+  function buildSys(memory, executorOn) {
+    var sys = AgentLab.buildSystemPrompt(memory.classInfo, memory.manual);
+    sys += executorOn
+      ? "\n\n【执行器】你有一批工具可以用。凡是需要外部信息（天气、时间、搜索）或精确计算（算数、换算、图形、计时）的地方，" +
+        "请先调用工具拿到真实结果，再根据工具返回的内容回答；不要凭空编造数字。工具结果回来后你还要再看一遍，才能给出最终答案。"
+      : "\n\n【执行器已关闭】这一轮你没有可用工具。凡是需要查真实数据的问题（天气、现在几点、换算结果等），" +
+        "请直接告诉同学“我现在没有工具，查不到真实数据”，绝对不要编造。";
+    return sys;
+  }
+
+  /* 从响应里取出 assistant 消息（兼容网关把 choices 挪位置的情况） */
+  function pickMessage(data) {
+    var ch = data && (data.choices || data.output);
+    if (Array.isArray(ch) && ch.length) return ch[0].message || ch[0] || {};
+    if (data && data.message) return data.message;
+    return {};
+  }
+
+  function callBrain(messages, tools, plannerOn) {
+    var body = { model: modelName(), messages: messages, temperature: 0.3, stream: false };
+    if (tools && tools.length) {
+      body.tools = tools;
+      body.tool_choice = "auto";          // auto：模型有权判断“要不要调”
+    }
+    /* 规划器开关 → 真实对应“要不要让模型先推理再答”（DeepSeek 的 thinking）。
+     * 开：先推理再规划；关：直接答，最快。两种都是真实机制，不是演出来的。
+     * plannerOn === null：平台不支持 thinking 字段（上次被 400 拒绝过），干脆不发。 */
+    if (plannerOn !== null) {
+      body.thinking = { type: plannerOn ? "enabled" : "disabled" };
+    }
+    return AgentLab.API.callRaw({
+      method: "POST",
+      url: AgentLab.API.DEEPSEEK_URL || "https://api.deepseek.com/chat/completions",
+      headers: [{ k: "Content-Type", v: "application/json" }],
+      body: body
+    });
+  }
+
+  function ctxDesc(messages) {
+    var roles = messages.map(function (m) {
+      if (m.role === "system") return "system(规则+长期记忆)";
+      if (m.role === "tool") return "tool(工具结果)";
+      if (m.role === "assistant" && m.tool_calls) return "assistant(要调工具)";
+      return m.role;
+    });
+    return messages.length + " 条：" + roles.join(" → ");
+  }
+
+  /* 这一次的提问，调用方通常已经先压进 history 了（界面上要先把气泡显示出来）。
+   * 如果这里再原样 push 一次，上下文里就会出现两条一模一样的 user 消息——
+   * 模型会当成学生连着问了两遍，既浪费 token，也容易答偏。
+   * 所以先把“和本次提问重复的那条”从历史尾部剔掉。 */
+  function stripCurrentUser(history, userText) {
+    var h = (history || []).slice();
+    while (h.length && h[h.length - 1].role === "user" && h[h.length - 1].content === userText) h.pop();
+    return h;
+  }
+
+  /* ================= 引擎一：真·LLM 驱动多轮 ReAct =================
+   * 流程（和大模型反复交互，直到它不再要工具为止）：
+   *   感知 → 组装上下文(含长期记忆) → 大脑规划 → tool_calls → 执行器
+   *        → 结果作为 tool 角色拼回 → 大脑再看一遍（第 2 轮）→ …→ 最终答案
+   * 每一次调用大脑，上下文都要重新拼一次，所以记忆是“每轮都在”，不是查一次就完。 */
+  async function runLLM(userText, history, memory, hooks, t0) {
+    var tools = memory.tools;
+    var executorOn = !!flags.executor;
+    var wireTools = executorOn ? schemasFor(tools) : [];   // 执行器关闭 → 请求里根本不带 tools
+    var thinkingStripped = false;   // thinking 参数被平台拒绝过一次后，本轮不再发它
+
+    var messages = [{ role: "system", content: buildSys(memory, executorOn) }];
+    var past = flags.memory ? stripCurrentUser(history, userText) : [];
+    past.forEach(function (m) { messages.push({ role: m.role, content: m.content }); });
+    messages.push({ role: "user", content: userText });
+
+    hooks.onPayload && hooks.onPayload(messages, { engine: "llm", round: 0, memory: memory });
+    hooks.onContext && hooks.onContext(messages, "start");
+
+    var round = 0, toolCount = 0;
+    while (round < MAX_ROUNDS) {
+      round++;
+      var isLastRound = (round === MAX_ROUNDS);
+
+      /* —— 记忆器：每一轮都要重新拼上下文 —— */
+      if (flags.memory) {
+        hooks.onStage && hooks.onStage("memory", "第" + round + "轮拼上下文：" + ctxDesc(messages), null, round);
+      } else {
+        hooks.onStage && hooks.onStage("memory", "记忆器被关闭：这一轮既没有长期记忆，也没有之前的对话", "skip", round);
+      }
+
+      /* —— 规划器：真实模式下它就是"大脑自己决定要不要调工具" ——
+       * 必须点亮：否则学生"真实跑一遍"会看到规划器显示"本轮未参与"，
+       * 与实验①的答案（每轮都参与）直接矛盾。
+       * 规划器开关在这里的真实含义 = thinking 模式开/关（见 callBrain）。 */
+      hooks.onStage && hooks.onStage("planner",
+        "第" + round + "轮：读工具说明书，判断要不要调工具（tool_choice=auto" +
+        (flags.planner ? "，思考模式已开" : "，思考模式已关") + "）", null, round);
+
+      /* —— 大脑（它自己决定要不要调工具）—— */
+      hooks.onStage && hooks.onStage("brain",
+        "第" + round + "轮：把 " + messages.length + " 条消息发给大脑，等它规划…" +
+        (isLastRound ? "（已到循环上限，这一轮必须给出答案）" : ""), null, round);
+
+      var data;
+      try {
+        data = await callBrain(messages, wireTools, flags.planner);
+      } catch (err) {
+        /* thinking 参数不被当前模型/平台支持时（400），剥掉它再试一次。
+         * 否则"关掉规划器"这个课堂动作本身会让整轮失败，实验就做不成了。 */
+        var em = String((err && err.message) || "");
+        if (!thinkingStripped && (err && err.status) === 400 && /thinking/i.test(em)) {
+          thinkingStripped = true;
+          data = await callBrain(messages, wireTools, null);
+        } else {
+          throw err;
+        }
+      }
+      var msg = pickMessage(data);
+      var calls = msg.tool_calls;
+      var finish = (data.choices && data.choices[0] && data.choices[0].finish_reason) || "";
+
+      hooks.onPayload && hooks.onPayload(messages, { engine: "llm", round: round, memory: memory });
+
+      /* —— ReAct 第①步「思考」：把这一轮真实想的东西摊开给学生看 ——
+       * 思考模式开着就有 reasoning_content 可看；关着就明说"没有推理过程"，
+       * 这正好演示"规划器开关 = 看不看得见思考"，比一句通用说明有用得多。 */
+      hooks.onThink && hooks.onThink({
+        round: round,
+        text: (msg.reasoning_content || "").trim(),
+        thinkingOn: !!flags.planner
+      });
+
+      if (!calls || !calls.length) {
+        /* 没有 tool_calls = 大脑认为可以收尾了 → 这就是 ReAct 循环的终止条件 */
+        var a0 = { role: "assistant", content: msg.content || "" };
+        messages.push(a0);
+        hooks.onContext && hooks.onContext(messages, "final");
+        hooks.onStage && hooks.onStage("brain",
+          "第" + round + "轮：大脑没有再要工具，给出最终答案", null, round);
+        hooks.onStop && hooks.onStop({
+          reason: finish === "stop"
+            ? "finish_reason=stop —— 模型自己认为任务完成了"
+            : "模型没有返回 tool_calls，直接收尾",
+          rounds: round, tools: toolCount
+        });
+        return { answer: msg.content || "", rounds: round, tools: toolCount };
+      }
+
+      /* 模型原样回传（reasoning_content 若有就一起带回去，兼容思考模式接口） */
+      var aMsg = { role: "assistant", content: msg.content || "", tool_calls: calls };
+      if (msg.reasoning_content != null) aMsg.reasoning_content = msg.reasoning_content;
+      messages.push(aMsg);
+
+      var names = calls.map(function (c) {
+        return toolLabelOf(FN_TO_KEY[c.function && c.function.name] || "?") + "工具";
+      }).join("、");
+
+      /* —— ReAct 第②步「行动」：规划器的产出就是这个"计划" ——
+       * 同时把"怎么选到这个工具"的三步依据一起交出去，对应规划器实验室那张卡。 */
+      hooks.onPlan && hooks.onPlan({
+        round: round,
+        names: names,
+        picks: calls.map(function (c) {
+          return {
+            fn: (c.function && c.function.name) || "",
+            args: (c.function && c.function.arguments) || "",
+            steps: pickSteps(c, userText, wireTools.length)
+          };
+        })
+      });
+      hooks.onStage && hooks.onStage("planner",
+        "第" + round + "轮计划：调 " + names, null, round);
+
+      /* —— 执行器 —— */
+      if (!executorOn) {
+        hooks.onStage && hooks.onStage("executor", "执行器被关闭，工具结果拿不回来", "skip", round);
+        messages.push({ role: "user", content: "【系统提示】执行器已关闭，你刚才要的这些工具拿不到结果。请如实告诉同学你查不到，不要编造。" });
+        continue;
+      }
+      hooks.onStage && hooks.onStage("executor", "大脑点名要调：" + names + "（第" + round + "轮）", null, round);
+
+      for (var i = 0; i < calls.length; i++) {
+        var fn = (calls[i].function || {});
+        var r = await execFn(fn.name, fn.arguments, userText);
+        toolCount++;
+        hooks.onTool && r && hooks.onTool(r);
+        messages.push({
+          role: "tool",
+          tool_call_id: calls[i].id,
+          name: fn.name,
+          content: (r && r.result) || "这个工具没有返回结果。"
+        });
+      }
+      hooks.onContext && hooks.onContext(messages, "tool");
+
+      /* —— ReAct 第③步「观察」：工具回来的东西 —— */
+      hooks.onObserve && hooks.onObserve({
+        round: round,
+        results: calls.map(function (c, i) {
+          var m = messages[messages.length - calls.length + i];
+          return {
+            fn: (c.function && c.function.name) || "",
+            text: (m && m.content) || ""
+          };
+        })
+      });
+
+      if (isLastRound) {
+        messages.push({ role: "user", content: "【系统提示】你已经用完了工具调用次数，请基于目前拿到的信息直接给出最终答案。" });
+        hooks.onStop && hooks.onStop({
+          reason: "到达循环上限 " + MAX_ROUNDS + " 轮 —— 强制收尾，把已经拿到的信息交给模型作答",
+          rounds: round, tools: toolCount
+        });
+      } else {
+        await delay(180);
+      }
+    }
+
+    /* 理论上走不到这里，但留一个兜底免得整轮白跑 */
+    var last = await callBrain(messages, wireTools, flags.planner);
+    return { answer: pickMessage(last).content || "", rounds: round, tools: toolCount };
+  }
+
+  /* 降级引擎的兜底回答：没配 Key 时大模型这一步由本地规则代劳。
+   * 关键是要"如实"——明说这是降级演示，并把工具真实跑完的结果摆出来，
+   * 让无 Key 的学生也能看完"工具真的被调用"的完整管线，而不是看到一句"出错了"。 */
+  function rulesFallbackAnswer(toolResult, userText) {
+    var head = "（降级演示：未配置 API Key，这一句由本地规则代劳——配好 Key 后再问一遍，就能看到大模型基于工具结果组织的真实回答）";
+    if (toolResult) {
+      return head + "\n\n工具这边是真的跑完了：\n【" + toolResult.name + "】" + toolResult.summary + "\n→ " + toolResult.result;
+    }
+    return head + "\n\n这一轮没有调用工具。你可以拿同一句话对比两种模式：降级模式（现在）与真实模式（配好 Key 后）——工作台的点亮方式一样，但“谁做的决定”不一样。";
+  }
+
+  /* ================= 引擎二：无 Key 时的规则降级 =================
+   * 没有 API Key 就调不动大模型，此时退回本地正则判定。
+   * 关键是要<b>如实告诉学生这是降级路径</b>——规划不是模型做的，是规则做的。
+   * 仍然按"两轮"演出来，让回路结构在离线时也看得见。 */
+  async function runRules(userText, history, memory, hooks, t0) {
+    var intent = detectIntent(userText);
+
+    hooks.onStage && hooks.onStage("planner", "【降级】规划由本地规则代劳（没配 Key，大模型没参与）：" + intent.plan.join(" → "), null, 1);
+
+    var toolResult = null, toolBlocked = null;
+    var TOOL_LABELS = {
+      weather: "天气查询工具", calc: "计算器工具", remind: "提醒工具",
+      search: "联网搜索工具", translate: "翻译工具", convert: "单位换算工具",
+      datetime: "时间日期工具", shape: "图形计算工具", math: "数学计算工具",
+      timer: "计时器工具"
+    };
+    if (intent.needTool) {
+      if (flags.executor && memory.tools[intent.toolName] !== false) {
+        var toolLabel = TOOL_LABELS[intent.toolName] || "工具";
+        hooks.onStage && hooks.onStage("executor", "第1轮：调用" + toolLabel, null, 1);
+        toolResult = await runTool(intent);
+        hooks.onTool && toolResult && hooks.onTool(toolResult);
+      } else if (!flags.executor) {
+        toolBlocked = "executorOff";
+        hooks.onStage && hooks.onStage("executor", "执行器被关闭了，没法调用工具", "skip", 1);
+      } else {
+        toolBlocked = "toolOff";
+        hooks.onStage && hooks.onStage("executor", "这个工具被关掉了，没法调用", "skip", 1);
+      }
+      await delay(200);
+    } else if (intent.toolName === "classInfo") {
+      hooks.onStage && hooks.onStage("executor", "不用外部工具：用记忆器里的班级知识就能回答", "skip", 1);
+    } else {
+      hooks.onStage && hooks.onStage("executor", "不需要调用工具：直接交给大脑回答", "skip", 1);
+    }
+
+    /* 降级模式也要按 ReAct 三步走，口径和真实模式一致：
+     * 思考（规则怎么判的）→ 行动（调哪个工具、什么参数）→ 观察（工具回了什么）。
+     * 差别只在"思考"是正则写死的，不是模型自己想的一一这一点必须如实标注。 */
+    hooks.onThink && hooks.onThink({
+      round: 1,
+      text: "【降级】由本地正则规则判定：" + intent.plan.join(" → "),
+      thinkingOn: false,
+      isRules: true
+    });
+    if (intent.needTool && toolResult) {
+      hooks.onPlan && hooks.onPlan({
+        round: 1,
+        names: toolResult.name,
+        picks: [{
+          fn: TOOL_FN[intent.toolName] || "",
+          args: JSON.stringify(intent.params || {}),
+          steps: [
+            ["① 理解意图", "同学要的是：" + userText],
+            ["② 匹配能力", "【降级】由本地正则匹配关键词选中，不是模型读说明书选的"],
+            ["③ 构造参数", JSON.stringify(intent.params || {})]
+          ]
+        }]
+      });
+      hooks.onObserve && hooks.onObserve({
+        round: 1,
+        results: [{ fn: TOOL_FN[intent.toolName] || "", text: toolResult.result || "" }]
+      });
+    } else if (intent.needTool) {
+      hooks.onPlan && hooks.onPlan({
+        round: 1, names: "（工具未执行）",
+        picks: [{
+          fn: TOOL_FN[intent.toolName] || "", args: "",
+          steps: [["① 理解意图", "同学要的是：" + userText],
+            ["② 匹配能力", "规则判出要调 " + (toolLabelOf(intent.toolName)) + "，但执行器被关掉了，没执行"],
+            ["③ 构造参数", "（未执行，无参数）"]]
+        }]
+      });
+    }
+    if (toolResult) {
+      hooks.onStage && hooks.onStage("memory", "把工具结果作为 tool 角色拼回上下文，进入第2轮", null, 2);
+      hooks.onStage && hooks.onStage("brain", "第2轮：大脑带着工具结果重新组织回答…", null, 2);
+      hooks.onStop && hooks.onStop({ reason: "降级演示：规则只判一次，不进入真正的多轮循环", rounds: 2, tools: 1 });
+    } else {
+      hooks.onStage && hooks.onStage("brain", "第1轮：大脑直接组织回答…", null, 1);
+      hooks.onStop && hooks.onStop({ reason: "降级演示：这一轮不需要工具，直接作答", rounds: 1, tools: 0 });
+    }
+
+    var mode = toolResult ? getCompat(modelName()) : "";
+    var answer = null;
+    /* 没配 Key：根本不发请求，直接用兜底回答（见 rulesFallbackAnswer）。
+     * 有 Key 但调用失败：仍然抛错——那种情况必须让用户看到真实错误，
+     * 不能用兜底冒充成功。 */
+    if (!(AgentLab.API.hasApiKey && AgentLab.API.hasApiKey())) {
+      answer = rulesFallbackAnswer(toolResult, userText);
+    }
+    for (var attempt = 0; attempt < 3 && answer === null; attempt++) {
+      var messages = buildMessages(intent, userText, memory, flags.memory ? history : [], toolResult, toolBlocked, { mode: mode });
+      hooks.onPayload && hooks.onPayload(messages, { engine: "rules", round: toolResult ? 2 : 1, toolResult: toolResult, memory: memory, mode: mode });
+      try {
+        answer = await AgentLab.API.chat(messages);
+        break;
+      } catch (err) {
+        var next = toolResult ? nextCompatMode(mode, err) : null;
+        if (!next) throw err;
+        mode = next;
+      }
+    }
+    return { answer: answer || "（大脑没有说出话来，请再问我一次吧）", rounds: toolResult ? 2 : 1, tools: toolResult ? 1 : 0 };
+  }
+
   /**
-   * 运行一轮完整的“感知→规划→记忆→执行→大脑”流程
+   * 运行一轮完整流程
    * @param {string} userText 学生说的话
    * @param {Array} history   此前的对话（短期记忆）
-   * @param {Object} hooks    { onStage(stageId, text), onTool(toolInfo), onDone(answer), onError(err) }
+   * @param {Object} hooks    { onEngine(mode, info), onStage(id, text, flag, round),
+   *                            onThink({round,text,thinkingOn,isRules}),      ← ReAct①思考
+   *                            onPlan({round,names,picks}),                   ← ReAct②行动（规划器的产出）
+   *                            onObserve({round,results}),                    ← ReAct③观察
+   *                            onStop({reason,rounds,tools}),                 ← 为什么停了
+   *                            onContext(messages, kind), onTool(toolInfo), onPayload(msgs, info),
+   *                            onDone(answer), onError(err) }
    */
   async function run(userText, history, hooks) {
     hooks = hooks || {};
     var t0 = Date.now();
     try {
-      // ① 感知器
+      /* ① 感知器：把学生的原话接进来 */
       if (!flags.perception) {
-        hooks.onStage && hooks.onStage("perception", "感知器被关闭了，听不到任何声音");
+        hooks.onStage && hooks.onStage("perception", "感知器被关闭了，听不到任何声音", "skip", 0);
         await delay(500);
         hooks.onStage && hooks.onStage("brain", "大脑没事做");
         hooks.onDone && hooks.onDone("我什么也听不到……（感知器被关掉了，请你先把它打开！）");
         return "我什么也听不到……（感知器被关掉了，请你先把它打开！）";
       }
-      hooks.onStage && hooks.onStage("perception", "收到你的问题：" + userText);
+      hooks.onStage && hooks.onStage("perception", "听到：" + userText);
       await delay(STAGE_DELAY);
 
-      // ② 规划器
-      var intent = detectIntent(userText);
-      if (flags.planner) {
-        hooks.onStage && hooks.onStage("planner", "制定计划：" + intent.plan.join(" → "));
-        await delay(STAGE_DELAY + 300);
-      } else {
-        hooks.onStage && hooks.onStage("planner", "规划器被关闭，想到哪说到哪");
-        await delay(300);
-      }
-
-      // ③ 记忆器
+      /* ② 记忆器：把长期记忆和短期轨迹备好，后面每一轮都要带上 */
       var memory = collectMemory(flags.memory ? history : []);
       if (!flags.memory) {
-        // 记忆器被关闭：连班级知识库也一起“忘掉”，教学演示才真实
-        memory.classInfo = {};
-        memory.manual = "";
-        memory.kbItems = 0;
+        memory.classInfo = {}; memory.manual = ""; memory.kbItems = 0;
       }
       if (flags.memory) {
         var memText = "翻开长期记忆小本子：找到班级知识 " + memory.kbItems + " 条";
         if (memory.historyCount > 0) memText += "，本次对话 " + memory.historyCount + " 轮";
-        hooks.onStage && hooks.onStage("memory", memText);
+        hooks.onStage && hooks.onStage("memory", memText, null, 0);
       } else {
-        hooks.onStage && hooks.onStage("memory", "记忆器被关闭，翻不了小本子，也不记得刚才说过的话");
+        hooks.onStage && hooks.onStage("memory", "记忆器被关闭，翻不了小本子，也不记得刚才说过的话", "skip", 0);
       }
-      await delay(STAGE_DELAY);
+      await delay(200);
 
-      // ④ 执行器
-      var toolResult = null;
-      var toolBlocked = null;
-      var TOOL_LABELS = {
-        weather: "天气查询工具", calc: "计算器工具", remind: "提醒工具",
-        search: "联网搜索工具", translate: "翻译工具", convert: "单位换算工具",
-        datetime: "时间日期工具", shape: "图形计算工具", math: "数学计算工具",
-        timer: "计时器工具", game: "猜数字游戏工具", idiom: "成语接龙工具"
-      };
-      if (intent.needTool) {
-        if (flags.executor && memory.tools[intent.toolName] !== false) {
-          var toolLabel = TOOL_LABELS[intent.toolName] || "工具";
-          hooks.onStage && hooks.onStage("executor", "调用工具：" + toolLabel);
-          toolResult = await runTool(intent);
-          hooks.onTool && toolResult && hooks.onTool(toolResult);
-        } else if (!flags.executor) {
-          toolBlocked = "executorOff";
-          hooks.onStage && hooks.onStage("executor", "执行器被关闭了，没法调用工具");
-        } else {
-          toolBlocked = "toolOff";
-          hooks.onStage && hooks.onStage("executor", "这个工具被关掉了，没法调用");
-        }
-        await delay(STAGE_DELAY);
-      } else if (intent.toolName === "classInfo") {
-        hooks.onStage && hooks.onStage("executor", "这个问题不用外部工具，用记忆器里的班级知识就能回答");
-        await delay(STAGE_DELAY - 200);
-      } else {
-        hooks.onStage && hooks.onStage("executor", "这个问题不需要调用工具，直接回答");
-        await delay(STAGE_DELAY - 200);
-      }
+      /* ③ 引擎分流：有 Key 走真·LLM 多轮；没 Key 走规则降级 */
+      var useLLM = !!(AgentLab.API.hasApiKey && AgentLab.API.hasApiKey());
+      hooks.onEngine && hooks.onEngine(useLLM ? "llm" : "rules", {
+        tools: memory.tools, executor: flags.executor, planner: flags.planner, memory: flags.memory
+      });
 
-      // ⑤ 大语言模型大脑
-      hooks.onStage && hooks.onStage("brain", "大语言模型正在组织回答…");
-      var messages = buildMessages(intent, userText, memory, flags.memory ? history : [], toolResult, toolBlocked);
-      // 把真实发给大脑的载荷暴露给页面（教学：让学生看到“上下文”长什么样）
-      hooks.onPayload && hooks.onPayload(messages, { toolResult: toolResult, toolBlocked: toolBlocked, intent: intent, memory: memory });
-      var answer = await AgentLab.API.chat(messages);
-      if (!answer || !answer.trim()) answer = "（大脑没有说出话来，请再问我一次吧）";
-      hooks.onStage && hooks.onStage("brain", "回答完成，用时 " + Math.round((Date.now() - t0) / 100) / 10 + " 秒");
-      hooks.onDone && hooks.onDone(answer);
-      return answer;
+      var out = useLLM
+        ? await runLLM(userText, history, memory, hooks, t0)
+        : await runRules(userText, history, memory, hooks, t0);
+
+      if (!out.answer || !out.answer.trim()) out.answer = "（大脑没有说出话来，请再问我一次吧）";
+      hooks.onStage && hooks.onStage("brain", "回答完成，共 " + out.rounds + " 轮 / " + out.tools + " 次工具调用，用时 " + Math.round((Date.now() - t0) / 100) / 10 + " 秒", null, out.rounds);
+      hooks.onDone && hooks.onDone(out.answer);
+      return out.answer;
     } catch (e) {
       hooks.onError && hooks.onError(e);
       throw e;
@@ -1247,7 +1461,10 @@ AgentLab.Agent = (function () {
     run: run,
     detectIntent: detectIntent,
     runTool: runTool,
+    schemasFor: schemasFor,
+    TOOL_SCHEMAS: TOOL_SCHEMAS,
     flags: flags,
-    MAX_HISTORY: MAX_HISTORY
+    MAX_HISTORY: MAX_HISTORY,
+    MAX_ROUNDS: MAX_ROUNDS
   };
 })();

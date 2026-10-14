@@ -13,20 +13,23 @@
         U.showSection(b.getAttribute("data-sec"));
       });
     });
-    document.querySelectorAll("[data-back='home']").forEach(function (b) {
-      b.addEventListener("click", function () { U.showSection("home"); });
+    // 点击顶栏品牌（图标 + 标题）返回首页
+    var brand = $("brand-home");
+    if (brand) brand.addEventListener("click", function () {
+      U.showSection("cover");
     });
   }
 
   function initSettings() {
     var mask = $("settings-mask");
     var key = $("set-key");
-    var model = $("set-model");
+    var asrKey = $("set-asr-key");
 
     function open() {
       var api = AgentLab.Store.getApi();
+      var cloud = AgentLab.Store.getCloud();
       key.value = api.key || "";
-      model.value = api.model || AgentLab.CONFIG.model;
+      if (asrKey) asrKey.value = (cloud && cloud.key) || "";
       mask.classList.add("show");
       setTimeout(function () { key.focus(); }, 50);
     }
@@ -41,9 +44,25 @@
         U.toast("API Key 格式不正确，请检查（应以 sk- 开头）", "error");
         return;
       }
-      AgentLab.Store.saveApi({ key: k, model: model.value });
+      /* 模型固定用系统默认的 deepseek-v4-flash：设置里只让老师填 Key，不再选模型 */
+      AgentLab.Store.saveApi({ key: k, model: AgentLab.CONFIG.model });
+
+      var ck = asrKey ? asrKey.value.trim() : "";
+      if (ck && ck.length < 10) {
+        U.toast("云端能力密钥格式不正确，请检查（应以 sk- 开头）", "error");
+        return;
+      }
+      AgentLab.Store.saveCloud({ key: ck });
+
       U.toast("设置已保存！" + (k ? "可以开始使用 AI 对话了" : "（未设置 Key，知识讲解和游戏仍可使用）"), "success");
       close();
+      // 密钥变化后刷新各实验室的状态提示（感知器的云端能力 / 思维链实验当前用的模型）
+      if (AgentLab.LabPerception && AgentLab.LabPerception.refreshStatus) {
+        AgentLab.LabPerception.refreshStatus();
+      }
+      if (AgentLab.LabPlanner && AgentLab.LabPlanner.refreshModelBar) {
+        AgentLab.LabPlanner.refreshModelBar();
+      }
     });
   }
 
@@ -98,6 +117,7 @@
   }
 
   function init() {
+    AgentLab.LabCover.render();
     AgentLab.LabOrigin.render();
     AgentLab.LabHome.init();
     AgentLab.LabPerception.render();
@@ -105,12 +125,16 @@
     AgentLab.LabMemory.render();
     AgentLab.LabExecutor.render();
     AgentLab.LabPlayground.render();
+
+    // 全部栏目渲染完成后，统一卡片编号（7 个栏目口径一致）
+    AgentLab.LabPerception.numberCards();
+
     initNav();
     initSettings();
     initApiKeyGuide();
 
-    // 默认显示起源实验室
-    U.showSection("origin");
+    // 默认显示封面页
+    U.showSection("cover");
   }
 
   if (document.readyState === "loading") {

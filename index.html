@@ -11,12 +11,13 @@
 <!-- ================= 顶部导航 ================= -->
 <header class="topbar">
   <div class="topbar-inner">
-    <div class="brand">
+    <div class="brand" id="brand-home" title="返回首页">
       <span class="logo" id="brand-logo"><svg class="icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="7" width="14" height="11" rx="3"/><circle cx="9.5" cy="12.5" r="1.4"/><circle cx="14.5" cy="12.5" r="1.4"/><path d="M12 7V4.5M12 4.5h-2.2M9.8 18v1.8a1 1 0 0 0 1 1h2.4a1 1 0 0 0 1-1V18" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg></span>
-      <span>AI智能体互动学习实验室<small>五年级 · AI智能体科普实践课配套系统</small></span>
+      <span>AI智能体互动学习实验室</span>
     </div>
     <nav class="nav" id="main-nav">
-      <button class="nav-tab active" data-sec="origin">起源</button>
+      <button class="nav-tab active" data-sec="cover">首页</button>
+      <button class="nav-tab" data-sec="origin">起源</button>
       <button class="nav-tab" data-sec="home">总装图</button>
       <button class="nav-tab" data-sec="perception">感知器</button>
       <button class="nav-tab" data-sec="planner">规划器</button>
@@ -30,8 +31,11 @@
 
 <main>
 
+  <!-- ================= 封面页：课程与系统总览 ================= -->
+  <section class="section active" id="sec-cover"></section>
+
   <!-- ================= 起源实验室（L01 起源 + L02 身边的智能体） ================= -->
-  <section class="section active" id="sec-origin"></section>
+  <section class="section" id="sec-origin"></section>
 
   <!-- ================= 首页：架构实验室（总装图 L03 + 案例拆解 L04） ================= -->
   <section class="section" id="sec-home"></section>
@@ -54,8 +58,8 @@
 </main>
 
 <footer>
-  <div><b>AI智能体互动学习实验室</b> · 配套《AI智能体科普实践课》课程大纲与教案（L01–L02 起源篇 / L03–L04 架构篇 / L05–L12 组件篇 / L13–L16 实战展示篇）</div>
-  <div style="margin-top:4px">外接 DeepSeek 大模型 · 现代智能体公式 Agent = LLM + 上下文 + 工具</div>
+  <div><b>AI智能体互动学习实验室</b> · 《AI智能体科普实践课》配套互动教学系统</div>
+  <div class="footer-sub">制作人：刘远贺 · 联系邮箱：759528706@qq.com</div>
 </footer>
 
 <!-- ================= 提示与弹窗 ================= -->
@@ -64,23 +68,25 @@
 <!-- 首次使用 API Key 引导弹窗 -->
 <div class="modal-mask" id="apikey-mask" style="display:none">
   <div class="modal" style="max-width:520px">
-    <h3 style="color:#8a5cf6">👋 欢迎使用 AI智能体互动学习实验室</h3>
+    <h3>👋 欢迎使用 AI智能体互动学习实验室</h3>
     <div style="margin:16px 0;line-height:1.8;color:#555;font-size:14px">
       <p>欢迎来到 <b>AI智能体互动学习实验室</b>！在这里，你可以通过玩游戏、做实验、和真正的 AI 对话，直观理解智能体的四大组件：<b>感知器、规划器、记忆器、执行器</b>，以及大语言模型"大脑"如何把它们协作起来。</p>
       <p style="margin-top:10px">要使用 AI 对话功能，需要你自己的 <b>DeepSeek API Key</b>：</p>
       <ol style="margin:8px 0 8px 20px;padding:0">
-        <li>打开 <a href="https://platform.deepseek.com/" target="_blank" style="color:#8a5cf6">DeepSeek 开放平台</a>，注册/登录</li>
+        <li>打开 <a href="https://platform.deepseek.com/" target="_blank" class="modal-link">DeepSeek 开放平台</a>，注册/登录</li>
         <li>在「API Keys」页面创建一个新的 Key（sk- 开头）</li>
         <li>复制 Key，粘贴到下面的输入框</li>
       </ol>
-      <p style="margin-top:10px;background:#f5f3ff;padding:10px 14px;border-radius:8px;font-size:13px">
+      <p class="modal-welcome-tip">
         🔒 <b>安全提示</b>：你的 API Key 只保存在<b>本机浏览器</b>（localStorage），不会上传到任何服务器。知识讲解、游戏、小测验等功能<b>不需要 API Key</b> 也能使用。
       </p>
     </div>
+    <form onsubmit="return false">
     <label class="field">
       DeepSeek API Key
-      <input type="password" id="apikey-input" placeholder="sk-xxxxxxxxxxxxxxxx" style="font-family:monospace">
+      <input type="password" id="apikey-input" placeholder="sk-xxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" class="modal-key-input">
     </label>
+    </form>
     <div class="m-actions">
       <button class="btn btn-ghost" id="apikey-skip">稍后再说（先逛实验室）</button>
       <button class="btn btn-brain" id="apikey-save">保存并开始使用</button>
@@ -91,16 +97,24 @@
 <div class="modal-mask" id="settings-mask">
   <div class="modal">
     <h3>⚙ 系统设置</h3>
+    <form onsubmit="return false">
     <label class="field">DeepSeek API 密钥
-      <input type="password" id="set-key" placeholder="sk-...">
+      <input type="password" id="set-key" placeholder="sk-..." autocomplete="off" spellcheck="false">
       <small>密钥保存在本机浏览器（localStorage），浏览器直连 DeepSeek 官方 API，不经过任何中间服务器。</small>
     </label>
-    <label class="field">大模型
-      <select id="set-model">
-        <option value="deepseek-v4-flash">deepseek-v4-flash（快，推荐课堂用）</option>
-        <option value="deepseek-v4-pro">deepseek-v4-pro（更强，稍慢）</option>
-      </select>
+    </form>
+    <form onsubmit="return false">
+    <label class="field">云端能力密钥 · 硅基流动 SiliconFlow（语音 / 图片识别 + 思维链实验，可选）
+      <input type="password" id="set-asr-key" placeholder="sk-..." autocomplete="off" spellcheck="false">
+      <small>
+        <b>一个 Key 同时覆盖三件事</b>：语音识别、图片识别，以及「思维链（CoT）」实验用的小模型（不需要再额外配置）。申请步骤：<br>
+        ① 打开 <a href="https://cloud.siliconflow.cn/" target="_blank" class="modal-link">硅基流动开放平台</a>，注册并登录（新用户有免费额度）<br>
+        ② 左侧进入「API 密钥」→ 新建密钥，复制 <code>sk-</code> 开头的那串字符<br>
+        ③ 粘贴到上面的输入框，点「保存」<br>
+        <span style="color:#999">留空也可以上课：语音会改用浏览器内置识别（Edge 可用），图片识别改用本地引擎或示例演示，思维链实验会自动改用 DeepSeek 大模型（对比效果会弱一些）。密钥只保存在本机浏览器，不会上传。</span>
+      </small>
     </label>
+    </form>
     <div class="m-actions">
       <button class="btn btn-ghost" id="set-cancel">取消</button>
       <button class="btn btn-brain" id="set-save">保存</button>
@@ -108,12 +122,19 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<!-- 本地 OCR 引擎（Tesseract.js）改为“按需加载”，见 js/lab-perception.js。
+     不再在页面加载时静态引入 CDN：那样一旦 CDN 不可达，控制台会报资源加载错误，
+     且无法自动恢复。现在只在真正用到本地识别时才加载，并有多 CDN 兜底。 -->
 <script src="js/config.js"></script>
 <script src="js/store.js"></script>
 <script src="js/api.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/agent.js"></script>
+<!-- 进阶原理互动课堂共享引擎：必须早于所有 lab-*.js -->
+<script src="js/adv-classroom.js"></script>
+<!-- 通用「单题闯关」答题引擎：也必须早于所有 lab-*.js -->
+<script src="js/quiz-flow.js"></script>
+<script src="js/lab-cover.js"></script>
 <script src="js/lab-origin.js"></script>
 <script src="js/lab-home.js"></script>
 <script src="js/lab-perception.js"></script>
@@ -121,6 +142,7 @@
 <script src="js/lab-memory.js"></script>
 <script src="js/lab-executor.js"></script>
 <script src="js/lab-playground.js"></script>
+<script src="js/reveal.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

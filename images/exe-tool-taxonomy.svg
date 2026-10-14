@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 500" width="460" height="500" font-family="'Microsoft YaHei','PingFang SC','Noto Sans SC',sans-serif">
+  <rect x="0" y="0" width="460" height="500" rx="14" fill="#FFFFFF" stroke="#B9D9FF" stroke-width="1.4"/>
+
+  <!-- ============ 1 感知类（蓝） ============ -->
+  <rect x="18" y="18" width="200" height="140" rx="12" fill="#EDF5FF" stroke="#B9D9FF" stroke-width="1.2"/>
+  <rect x="27" y="34" width="5" height="108" rx="2.5" fill="#1F7AE0" opacity="0.85"/>
+  <text x="42" y="58" font-size="15" font-weight="700" fill="#14629E">感知类</text>
+  <text x="42" y="82" font-size="11.5" fill="#5D6B7C">去外面“看”一眼，</text>
+  <text x="42" y="98" font-size="11.5" fill="#5D6B7C">把信息拿回来</text>
+  <rect x="42" y="108" width="160" height="24" rx="12" fill="#FFECEC" stroke="#FFBFC2" stroke-width="1"/>
+  <text x="122" y="124" font-size="12" fill="#A32026" text-anchor="middle">联网搜索 · 天气查询</text>
+
+  <!-- ============ 2 执行类（绿） ============ -->
+  <rect x="242" y="18" width="200" height="140" rx="12" fill="#E8F5EC" stroke="#B8E0C6" stroke-width="1.2"/>
+  <rect x="251" y="34" width="5" height="108" rx="2.5" fill="#1F7A45" opacity="0.85"/>
+  <text x="266" y="58" font-size="15" font-weight="700" fill="#1F7A45">执行类</text>
+  <text x="266" y="82" font-size="11.5" fill="#5D6B7C">真的动手改世界</text>
+  <rect x="266" y="108" width="168" height="24" rx="12" fill="#FFECEC" stroke="#FFBFC2" stroke-width="1"/>
+  <text x="350" y="124" font-size="12" fill="#A32026" text-anchor="middle">计算器、单位换算、计时器</text>
+
+  <!-- ============ 3 协作类（橙） ============ -->
+  <rect x="18" y="180" width="200" height="140" rx="12" fill="#FFF4E5" stroke="#FFDCA8" stroke-width="1.2"/>
+  <rect x="27" y="196" width="5" height="108" rx="2.5" fill="#FF9F2E" opacity="0.9"/>
+  <text x="42" y="220" font-size="15" font-weight="700" fill="#98550A">协作类</text>
+  <text x="42" y="244" font-size="11.5" fill="#5D6B7C">找别人一起干</text>
+  <rect x="42" y="270" width="164" height="24" rx="12" fill="#FFECEC" stroke="#FFBFC2" stroke-width="1"/>
+  <text x="124" y="286" font-size="12" fill="#A32026" text-anchor="middle">提醒工具（到点通知人）</text>
+
+  <!-- ============ 4 事件触发类（紫） ============ -->
+  <rect x="242" y="180" width="200" height="140" rx="12" fill="#F4EAFB" stroke="#DCC0F0" stroke-width="1.2"/>
+  <rect x="251" y="196" width="5" height="108" rx="2.5" fill="#8A5CF6" opacity="0.85"/>
+  <text x="266" y="220" font-size="15" font-weight="700" fill="#5B2C7A">事件触发类</text>
+  <text x="266" y="244" font-size="11.5" fill="#5D6B7C">等到某个时刻 / 条件</text>
+  <text x="266" y="260" font-size="11.5" fill="#5D6B7C">自己启动</text>
+  <rect x="266" y="270" width="148" height="24" rx="12" fill="#FFECEC" stroke="#FFBFC2" stroke-width="1"/>
+  <text x="340" y="286" font-size="12" fill="#A32026" text-anchor="middle">定时提醒（到点触发）</text>
+
+  <!-- ============ 5 用户沟通类（红） ============ -->
+  <rect x="18" y="342" width="200" height="140" rx="12" fill="#FFECEC" stroke="#FFBFC2" stroke-width="1.2"/>
+  <rect x="27" y="358" width="5" height="108" rx="2.5" fill="#E23C41" opacity="0.85"/>
+  <text x="42" y="382" font-size="15" font-weight="700" fill="#A32026">用户沟通类</text>
+  <text x="42" y="406" font-size="11.5" fill="#5D6B7C">把话说给人听</text>
+  <rect x="42" y="432" width="160" height="24" rx="12" fill="#FFFFFF" stroke="#FFBFC2" stroke-width="1"/>
+  <text x="122" y="448" font-size="12" fill="#A32026" text-anchor="middle">翻译 · 把结果讲给学生</text>
+
+  <!-- ============ 6 提示格 ============ -->
+  <rect x="242" y="342" width="200" height="140" rx="12" fill="#F7FAFF" stroke="#B9D9FF" stroke-width="1.2" stroke-dasharray="6 4"/>
+  <text x="266" y="382" font-size="13.5" font-weight="700" fill="#14629E">小提醒</text>
+  <text x="266" y="410" font-size="12.5" fill="#5D6B7C">工具不是越多越好——</text>
+  <text x="266" y="430" font-size="12.5" fill="#5D6B7C">超过 100 个，连强模型</text>
+  <text x="266" y="450" font-size="12.5" fill="#5D6B7C">也会挑错</text>
+</svg>

@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 500" width="460" height="500" font-family="'Microsoft YaHei','PingFang SC','Noto Sans SC',sans-serif">
+  <rect x="0" y="0" width="460" height="500" rx="14" fill="#FFFFFF" stroke="#B9D9FF" stroke-width="1.4"/>
+
+  <!-- ============ 上：Plan-and-Execute ============ -->
+  <rect x="18" y="16" width="424" height="238" rx="14" fill="#FFF4E5" stroke="#FFDCA8" stroke-width="1.4"/>
+  <text x="36" y="46" font-size="15.5" font-weight="700" fill="#98550A">先规划后执行</text>
+  <text x="36" y="64" font-size="11" fill="#E07E0A">Plan-and-Execute</text>
+  <rect x="300" y="30" width="130" height="26" rx="13" fill="#FF9F2E"/>
+  <text x="365" y="47" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">先想全，再动手</text>
+
+  <text x="36" y="88" font-size="11.5" fill="#E07E0A">① 先写出一整条计划</text>
+  <rect x="36" y="92" width="90" height="40" rx="9" fill="#FFFFFF" stroke="#FF9F2E" stroke-width="1.4"/>
+  <text x="81" y="117" font-size="12" font-weight="700" fill="#98550A" text-anchor="middle">1 查天气</text>
+  <rect x="136" y="92" width="90" height="40" rx="9" fill="#FFFFFF" stroke="#FF9F2E" stroke-width="1.4"/>
+  <text x="181" y="117" font-size="12" font-weight="700" fill="#98550A" text-anchor="middle">2 备雨具</text>
+  <rect x="236" y="92" width="90" height="40" rx="9" fill="#FFFFFF" stroke="#FF9F2E" stroke-width="1.4"/>
+  <text x="281" y="117" font-size="12" font-weight="700" fill="#98550A" text-anchor="middle">3 备水壶</text>
+  <rect x="336" y="92" width="90" height="40" rx="9" fill="#FFFFFF" stroke="#FF9F2E" stroke-width="1.4"/>
+  <text x="381" y="117" font-size="12" font-weight="700" fill="#98550A" text-anchor="middle">4 定闹钟</text>
+
+  <path d="M231,138 L231,154 M223,146 L231,154.5 L239,146" fill="none" stroke="#FF9F2E" stroke-width="2.2" stroke-linecap="round"/>
+  <text x="247" y="152" font-size="11" fill="#E07E0A">照计划一步步做</text>
+
+  <text x="36" y="170" font-size="11.5" fill="#E07E0A">② 再一步步执行</text>
+  <rect x="36" y="176" width="90" height="34" rx="9" fill="#FDFEFF" stroke="#FFDCA8" stroke-width="1.2"/>
+  <text x="81" y="198" font-size="12" font-weight="700" fill="#E07E0A" text-anchor="middle">✓ 查天气</text>
+  <rect x="136" y="176" width="90" height="34" rx="9" fill="#FDFEFF" stroke="#FFDCA8" stroke-width="1.2"/>
+  <text x="181" y="198" font-size="12" font-weight="700" fill="#E07E0A" text-anchor="middle">✓ 备雨具</text>
+  <rect x="236" y="176" width="90" height="34" rx="9" fill="#FDFEFF" stroke="#FFDCA8" stroke-width="1.2"/>
+  <text x="281" y="198" font-size="12" font-weight="700" fill="#E07E0A" text-anchor="middle">✓ 备水壶</text>
+  <rect x="336" y="176" width="90" height="34" rx="9" fill="#FDFEFF" stroke="#FFDCA8" stroke-width="1.2"/>
+  <text x="381" y="198" font-size="12" font-weight="700" fill="#E07E0A" text-anchor="middle">✓ 定闹钟</text>
+
+  <text x="36" y="228" font-size="12.5" fill="#5D6B7C">什么时候用：步骤基本固定、不容易中途变化</text>
+  <text x="36" y="246" font-size="12.5" fill="#5D6B7C">（如“按流程办一件事”）</text>
+
+  <!-- ============ 下：ReAct ============ -->
+  <rect x="18" y="266" width="424" height="188" rx="14" fill="#EDF5FF" stroke="#B9D9FF" stroke-width="1.4"/>
+  <text x="36" y="296" font-size="15.5" font-weight="700" fill="#14629E">边想边做</text>
+  <text x="36" y="314" font-size="11" fill="#1F7AE0">ReAct</text>
+  <rect x="300" y="280" width="130" height="26" rx="13" fill="#1F7AE0"/>
+  <text x="365" y="297" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">走一步看一步</text>
+
+  <rect x="36" y="328" width="110" height="34" rx="9" fill="#FFFFFF" stroke="#1F7AE0" stroke-width="1.4"/>
+  <text x="91" y="349" font-size="12.5" font-weight="700" fill="#14629E" text-anchor="middle">思考</text>
+  <rect x="175" y="328" width="110" height="34" rx="9" fill="#FFFFFF" stroke="#1F7AE0" stroke-width="1.4"/>
+  <text x="230" y="349" font-size="12.5" font-weight="700" fill="#14629E" text-anchor="middle">行动</text>
+  <rect x="314" y="328" width="110" height="34" rx="9" fill="#FFFFFF" stroke="#1F7AE0" stroke-width="1.4"/>
+  <text x="369" y="349" font-size="12.5" font-weight="700" fill="#14629E" text-anchor="middle">观察</text>
+
+  <path d="M150,345 L169,345 M161,337.5 L169.5,345 L161,352.5" fill="none" stroke="#1F7AE0" stroke-width="2" stroke-linecap="round"/>
+  <path d="M289,345 L308,345 M300,337.5 L308.5,345 L300,352.5" fill="none" stroke="#1F7AE0" stroke-width="2" stroke-linecap="round"/>
+  <path d="M400,366 L400,392 L60,392 L60,368" fill="none" stroke="#1F7AE0" stroke-width="1.8" stroke-dasharray="6 4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M52,374 L60,365.5 L68,374" fill="none" stroke="#1F7AE0" stroke-width="1.8" stroke-linecap="round"/>
+
+  <text x="91" y="380" font-size="11" fill="#9AA7B8" text-anchor="middle">想下一步做什么</text>
+  <text x="230" y="380" font-size="11" fill="#9AA7B8" text-anchor="middle">挑一个工具</text>
+  <text x="369" y="380" font-size="11" fill="#9AA7B8" text-anchor="middle">看返回了什么</text>
+  <text x="230" y="408" font-size="11.5" fill="#9AA7B8" text-anchor="middle">每轮看完结果，再决定下一步</text>
+
+  <text x="36" y="428" font-size="12.5" fill="#5D6B7C">什么时候用：不知道下一步会遇到什么、要看结果再决定</text>
+  <text x="36" y="446" font-size="12.5" fill="#5D6B7C">（如“帮我查一个问题”）</text>
+
+  <!-- 底部：混着用 -->
+  <text x="230" y="480" font-size="12.5" fill="#5D6B7C" text-anchor="middle">真实系统常常<tspan font-weight="700" fill="#98550A">混着用</tspan>：大方向先规划，具体每一步边走边看</text>
+</svg>

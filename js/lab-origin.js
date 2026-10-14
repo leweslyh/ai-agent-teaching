@@ -1,4 +1,4 @@
-﻿/* ============================================================
+/* ============================================================
  * lab-origin.js —— 起源实验室（对应 L01 / L02）
  * L01 AI智能体初识与起源：身边的AI / 发展史 / 图灵测试 /
  *     聊天机器人vs智能体 / 新职业 / 观察空间初步 / AI伦理
@@ -16,34 +16,61 @@ AgentLab.LabOrigin = (function () {
 
   // 小明的一天：遇到的 AI
   var DAY_AI = [
-    { time: "07:00", icon: "alarm", title: "智能闹钟", desc: "根据你的睡眠周期，在浅睡眠时轻轻叫醒你" },
-    { time: "07:30", icon: "search", title: "导航推荐", desc: "上学路上，地图 AI 实时规划最快路线，避开拥堵" },
-    { time: "08:30", icon: "book", title: "个性化学习", desc: "课堂上，AI 学习系统根据你的薄弱点推荐练习题" },
-    { time: "12:00", icon: "utensils", title: "外卖推荐", desc: "午饭时，外卖 APP 根据你的口味推荐餐厅" },
-    { time: "16:00", icon: "music", title: "音乐推荐", desc: "放学路上，音乐 APP 根据你的喜好推荐新歌" },
-    { time: "20:00", icon: "tv", title: "视频推荐", desc: "晚上，视频网站根据你的观看历史推荐好看的节目" }
+    { time: "07:00", icon: "clock", title: "智能闹钟", tag: "预测（睡眠周期）", desc: "根据你的睡眠周期，在浅睡眠时轻轻叫醒你" },
+    { time: "07:30", icon: "car", title: "导航推荐", tag: "实时路径规划", desc: "上学路上，地图 AI 实时规划最快路线，避开拥堵" },
+    { time: "08:30", icon: "graduation", title: "个性化学习", tag: "个性化推荐（薄弱点）", desc: "课堂上，AI 学习系统根据你的薄弱点推荐练习题" },
+    { time: "12:00", icon: "utensils", title: "外卖推荐", tag: "推荐（口味偏好）", desc: "午饭时，外卖 APP 根据你的口味推荐餐厅" },
+    { time: "16:00", icon: "headset", title: "音乐推荐", tag: "推荐（喜好画像）", desc: "放学路上，音乐 APP 根据你的喜好推荐新歌" },
+    { time: "20:00", icon: "phone", title: "视频推荐", tag: "推荐（观看历史）", desc: "晚上，视频网站根据你的观看历史推荐好看的节目" }
+  ];
+
+
+  /* 职业四阶段的展示配置（与 JOBS_DATA 一一对应，只用于排版）：
+   * 原来把 4 个阶段 32 张职业卡全部铺开，页面被拉得极长；
+   * 现在改成“点阶段看该阶段”，一次只显示一类。 */
+  var JOBS_STAGES = [
+    { key: "disappeared", color: "gone", icon: "xmark", name: "已经消失", head: "已经被技术淘汰的职业",
+      desc: "这些职业曾经很常见，但因为技术进步已经消失或几乎消失了。每一次技术革命都会带走一些职业。" },
+    { key: "disappearing", color: "going", icon: "alert", name: "正在消失", head: "正在被 AI 淘汰的职业",
+      desc: "这些职业正在被 AI 自动化，未来 5-10 年可能大幅减少。但不是完全消失——而是需要升级技能，和 AI 协作。" },
+    { key: "emerging", color: "new", icon: "star", name: "正在兴起", head: "AI 产生的新职业（正在兴起）",
+      desc: "这些职业因为 AI 的发展而出现，正在快速增长。它们的共同点是：都需要和 AI 协作——要么教 AI、要么用 AI、要么管 AI。" },
+    { key: "future", color: "future", icon: "rocket", name: "未来可能", head: "未来可能出现的新职业",
+      desc: "这些职业目前还很少或不存在，但随着 AI 技术的进一步发展，未来 10-20 年可能出现。你愿意成为这些职业的开创者吗？" }
   ];
 
   // AI 发展史 13 节点（重点扩充 2016-2026 近十年）
   var AI_HISTORY = [
     { year: "1950", title: "图灵测试", icon: "brain", desc: "阿兰·图灵提出图灵测试——如果人类无法分辨对话的是机器还是人，就可以认为机器有智能。这是 AI 的思想起点。", key: "AI 之父：阿兰·图灵" },
-    { year: "1956", title: "达特茅斯会议", icon: "flag", desc: "在美国达特茅斯学院，约翰·麦卡锡等科学家正式提出人工智能（Artificial Intelligence）这个词。AI 作为一门学科正式诞生！", key: "AI 这个词诞生了" },
+    { year: "1956", title: "达特茅斯会议", icon: "spark", desc: "在美国达特茅斯学院，约翰·麦卡锡等科学家正式提出人工智能（Artificial Intelligence）这个词。AI 作为一门学科正式诞生！", key: "AI 这个词诞生了" },
     { year: "1960s-70s", title: "专家系统", icon: "gear", desc: "科学家们把人类专家的知识写成规则，让计算机像专家一样解决问题。比如医学诊断系统 MYCIN，能像医生一样诊断细菌感染。但专家系统只能解决特定领域的问题，不够灵活。", key: "第一次热潮：规则驱动" },
-    { year: "1980s-90s", title: "AI 冬天", icon: "snow", desc: "人们发现 AI 没有想象中那么厉害，投资减少，研究进入低谷。这就是AI 冬天。但科学家们没有放弃，一直在默默积累。", key: "低谷期：希望与失望交织" },
-    { year: "2012", title: "深度学习突破", icon: "chart", desc: "AlexNet 在图像识别比赛中大幅领先，深度学习（Deep Learning）开始爆发。计算机能看懂图片了！背后是神经网络+大数据+强大算力的结合。", key: "第二次热潮：数据驱动" },
-    { year: "2016", title: "AlphaGo 战胜李世石", icon: "trophy", desc: "谷歌 DeepMind 的 AlphaGo 以 4:1 战胜围棋世界冠军李世石。围棋被认为是人类最复杂的棋类游戏，AI 的胜利震惊了世界！人们开始意识到：AI 真的很强。这一年也被称为 AI 觉醒元年。", key: "AI 超越人类的里程碑" },
-    { year: "2017", title: "Transformer 架构诞生", icon: "network", desc: "谷歌发表论文《Attention is All You Need》，提出 Transformer 架构——通过注意力机制让 AI 能理解上下文关系。这是当前所有大模型（GPT、豆包、DeepSeek）的基础！没有 Transformer，就没有今天的 AI 革命。", key: "大模型的基石：注意力机制" },
+    { year: "1980s-90s", title: "AI 冬天", icon: "alert", desc: "人们发现 AI 没有想象中那么厉害，投资减少，研究进入低谷。这就是AI 冬天。但科学家们没有放弃，一直在默默积累。", key: "低谷期：希望与失望交织" },
+    { year: "2012", title: "深度学习突破", icon: "zap", desc: "AlexNet 在图像识别比赛中大幅领先，深度学习（Deep Learning）开始爆发。计算机能看懂图片了！背后是神经网络+大数据+强大算力的结合。", key: "第二次热潮：数据驱动" },
+    { year: "2016", title: "AlphaGo 战胜李世石", icon: "target", desc: "谷歌 DeepMind 的 AlphaGo 以 4:1 战胜围棋世界冠军李世石。围棋被认为是人类最复杂的棋类游戏，AI 的胜利震惊了世界！人们开始意识到：AI 真的很强。这一年也被称为 AI 觉醒元年。", key: "AI 超越人类的里程碑" },
+    { year: "2017", title: "Transformer 架构诞生", icon: "link", desc: "谷歌发表论文《Attention is All You Need》，提出 Transformer 架构——通过注意力机制让 AI 能理解上下文关系。这是当前所有大模型（GPT、豆包、DeepSeek）的基础！没有 Transformer，就没有今天的 AI 革命。", key: "大模型的基石：注意力机制" },
     { year: "2020", title: "GPT-3 发布", icon: "rocket", desc: "OpenAI 发布 GPT-3，参数量达 1750 亿——是当时最大的语言模型！人们发现 AI 能写文章、写代码、翻译、做数学题……能力惊人。但 GPT-3 还只是实验室产品，普通人用不上。", key: "大模型能力爆发：1750 亿参数" },
-    { year: "2021", title: "多模态突破：DALL-E + CLIP", icon: "image", desc: "OpenAI 发布 DALL-E（文字生成图片）和 CLIP（图文理解），AI 开始能同时理解文字和图片——多模态时代开启！AI 不再只能处理文字，还能看懂图、画出图。", key: "AI 长出了眼睛" },
+    { year: "2021", title: "多模态突破：DALL-E + CLIP", icon: "img", desc: "OpenAI 发布 DALL-E（文字生成图片）和 CLIP（图文理解），AI 开始能同时理解文字和图片——多模态时代开启！AI 不再只能处理文字，还能看懂图、画出图。", key: "AI 长出了眼睛" },
     { year: "2022", title: "ChatGPT 发布", icon: "chat", desc: "OpenAI 发布 ChatGPT，大语言模型（LLM）进入大众视野。人们发现 AI 能聊天、能写文章、能写代码、能翻译……AI 从实验室走进了普通人的生活。上线 2 个月用户破 1 亿，是史上增长最快的消费级应用！", key: "大模型时代到来：人人都能用 AI" },
     { year: "2023", title: "GPT-4 + AI Agent 概念爆发", icon: "robot", desc: "GPT-4 发布，支持多模态（看图+文字），推理能力大幅提升。同时，AI Agent（智能体）概念爆发——AutoGPT、BabyAGI 等项目展示了 AI 自主完成复杂任务的潜力。从会说话到会做事，AI 的能力边界在快速扩展。", key: "从聊天机器人到智能体" },
-    { year: "2024", title: "Sora + DeepSeek + AI 编程普及", icon: "video", desc: "OpenAI 发布 Sora（文字生成 60 秒视频），AI 视频生成震惊世界！国产 DeepSeek 开源大模型崛起，推理能力达到国际先进水平且完全免费。CodeBuddy、Cursor、GitHub Copilot 等 AI 编程助手普及，程序员开始和 AI 结对编程。", key: "AI 视频元年 + 国产 AI 崛起" },
+    { year: "2024", title: "Sora + DeepSeek + AI 编程普及", icon: "palette", desc: "OpenAI 发布 Sora（文字生成 60 秒视频），AI 视频生成震惊世界！国产 DeepSeek 开源大模型崛起，推理能力达到国际先进水平且完全免费。CodeBuddy、Cursor、GitHub Copilot 等 AI 编程助手普及，程序员开始和 AI 结对编程。", key: "AI 视频元年 + 国产 AI 崛起" },
     { year: "2025-2026", title: "AI 智能体普及 + 人机协作常态", icon: "star", desc: "AI 智能体开始大规模应用——能自主规划、调用工具、完成复杂任务。多模态大模型成熟（文字+图片+语音+视频）。AI 成为各行各业的基础设施：教育、医疗、科研、创作、办公……人机协作成为新常态。这就是我们现在所处的时代！", key: "AI 成为基础设施：人机协作时代" }
   ];
 
+  /* 发展史展示配置（与 AI_HISTORY 一一对应，只用于排版，不改内容）：
+   *   HIST_ERAS —— 把 13 个节点分成 4 幕，每幕有名称 / 年份区间 / 一句话说明；
+   *   HIST_TONE —— 每个节点的"起伏"标记：base 基石 · rise 热潮/突破 · fall 低谷/寒冬。
+   *   卡片颜色与高矮由 tone 决定，让"AI 发展有高潮也有低谷"一眼看得出来。 */
+  var HIST_ERAS = [
+    { era: 1, from: 0, to: 1, no: "第一幕", title: "思想起点", range: "1950 – 1956", note: "AI 的想法，第一次被写下来" },
+    { era: 2, from: 2, to: 3, no: "第二幕", title: "规则驱动的热潮与寒冬", range: "1960s – 1990s", note: "专家系统火过，也遭遇过 AI 冬天" },
+    { era: 3, from: 4, to: 6, no: "第三幕", title: "数据驱动的深度学习", range: "2012 – 2017", note: "数据、算力、算法同时成熟" },
+    { era: 4, from: 7, to: 12, no: "第四幕", title: "大模型与智能体时代", range: "2020 – 2026", note: "AI 从实验室走进每个人的生活" }
+  ];
+  var HIST_TONE = ["base", "base", "rise", "fall", "rise", "rise", "base", "base", "base", "rise", "rise", "base", "rise"];
+
   // 图灵测试体验站：多场景判断 + AI特征总结 + 中文房间思辨
   var TURING_DATA = {
-    intro: "1950 年，计算机科学之父阿兰·图灵提出了一个著名的测试——「模仿游戏」（后来被称为图灵测试）：如果你通过文字和两个对象聊天，一个是人类，一个是 AI，你能分辨出哪个是 AI 吗？如果分辨不出来，就可以认为 AI 具有智能。现在，你来当裁判！",
+    intro: "1950 年图灵提出「模仿游戏」：隔着文字聊天，你能分辨出哪个是 AI 吗？分辨不出，就认为它具有智能。<b>现在，你来当裁判！</b>",
     rounds: [
       {
         scenario: "日常聊天",
@@ -113,16 +140,16 @@ AgentLab.LabOrigin = (function () {
       { icon: "send", name: "电报员", reason: "电话、传真、互联网普及，电报通信被完全取代", era: "1980s-1990s" },
       { icon: "box", name: "录像带租赁店员", reason: "DVD、流媒体、在线视频普及，录像带租赁店几乎消失", era: "2000s-2010s" }
     ],
-    // 第二阶段：正在被 AI 淘汰的职业
+    // 第二阶段：正在被 AI 淘汰的职业（advice = 转型方向，给学生可执行的出路）
     disappearing: [
-      { icon: "lang", name: "基础翻译", risk: "高", reason: "AI 翻译（DeepL、谷歌翻译）已达到专业水平，简单文档翻译被取代" },
-      { icon: "database", name: "数据录入员", risk: "高", reason: "OCR 文字识别和 RPA 自动化工具能快速录入和处理数据" },
-      { icon: "headset", name: "简单客服", risk: "高", reason: "AI 客服能处理 80% 的常见问题，24 小时不间断服务" },
-      { icon: "calc", name: "初级会计/出纳", risk: "中高", reason: "AI 能自动记账、对账、生成报表，基础财务工作被自动化" },
-      { icon: "factory", name: "流水线工人", risk: "高", reason: "工业机器人和自动化生产线取代重复性体力劳动" },
-      { icon: "pen", name: "基础文案撰写", risk: "中高", reason: "AI 能快速生成营销文案、新闻稿、产品描述" },
-      { icon: "phone", name: "电话销售", risk: "高", reason: "AI 语音机器人能自动外呼、筛选客户、完成简单销售" },
-      { icon: "box", name: "快递分拣员", risk: "高", reason: "自动化分拣系统和物流机器人能快速分拣包裹，效率远超人工" }
+      { icon: "lang", name: "基础翻译", risk: "高", reason: "AI 翻译（DeepL、谷歌翻译）已达到专业水平，简单文档翻译被取代", advice: "转向 AI 译后编辑：审校 AI 译文，深耕法律、医学等专业领域" },
+      { icon: "database", name: "数据录入员", risk: "高", reason: "OCR 文字识别和 RPA 自动化工具能快速录入和处理数据", advice: "转向数据治理：制定清洗规则、做标注质检、配置自动化流程" },
+      { icon: "headset", name: "简单客服", risk: "高", reason: "AI 客服能处理 80% 的常见问题，24 小时不间断服务", advice: "转向复杂客诉与客户成功：处理 AI 接不住的情绪和疑难问题" },
+      { icon: "calc", name: "初级会计/出纳", risk: "中高", reason: "AI 能自动记账、对账、生成报表，基础财务工作被自动化", advice: "转向财务分析与税务筹划：AI 出报表，人做判断和决策" },
+      { icon: "factory", name: "流水线工人", risk: "高", reason: "工业机器人和自动化生产线取代重复性体力劳动", advice: "转向设备运维与产线调试：从操作机器变成维护和调试机器" },
+      { icon: "pen", name: "基础文案撰写", risk: "中高", reason: "AI 能快速生成营销文案、新闻稿、产品描述", advice: "转向内容策划与品牌叙事：AI 出初稿，人负责策略、调性和把关" },
+      { icon: "phone", name: "电话销售", risk: "高", reason: "AI 语音机器人能自动外呼、筛选客户、完成简单销售", advice: "转向顾问式销售：靠信任、谈判和复杂方案取胜" },
+      { icon: "box", name: "快递分拣员", risk: "高", reason: "自动化分拣系统和物流机器人能快速分拣包裹，效率远超人工", advice: "转向设备维护与物流调度：管理机器人、规划线路和时效" }
     ],
     // 第三阶段：AI 产生的新职业（正在兴起）
     emerging: [
@@ -167,24 +194,21 @@ AgentLab.LabOrigin = (function () {
     { icon: "headset", title: "服务领域", color: "ori", products: "智能客服、个人助理、智能家居", example: "智能客服机器人、小爱同学、天猫精灵、智能家居", ability: "24 小时回答客户问题、帮你设提醒查天气、控制家里的灯光空调、打理日常生活" }
   ];
 
-  // 推荐算法：协同过滤互动
-  var REC_DATA = {
-    users: ["小明", "小红", "小刚"],
-    items: ["《星际穿越》", "《流浪地球》", "《泰坦尼克号》", "《复仇者联盟》", "《情书》"],
-    ratings: {
-      "小明": { "《星际穿越》": 5, "《流浪地球》": 5, "《泰坦尼克号》": 2, "《复仇者联盟》": 4, "《情书》": 1 },
-      "小红": { "《星际穿越》": 4, "《流浪地球》": 5, "《泰坦尼克号》": 3, "《复仇者联盟》": 3, "《情书》": 2 },
-      "小刚": { "《星际穿越》": 1, "《流浪地球》": 2, "《泰坦尼克号》": 5, "《复仇者联盟》": 1, "《情书》": 5 }
-    },
-    target: "小明",
-    recommend: "《三体》（科幻片，和小明喜欢的《星际穿越》《流浪地球》类似）"
-  };
-
-  // 信息茧房案例
-  var COCOON_CASES = [
-    { title: "只看喜欢的", desc: "如果你只喜欢看搞笑视频，算法就一直给你推搞笑视频，你越来越少看到新闻、知识、不同观点——你的世界越来越小。" },
-    { title: "越来越极端", desc: "如果你只看某一种观点的内容，算法就一直推类似观点，你可能变得越来越极端，听不进不同意见。" },
-    { title: "隐私泄露", desc: "算法要推荐内容，就得收集你的数据——你看了什么、搜了什么、买了什么、在哪停留了多久。这些数据如果被滥用，就会侵犯隐私。" }
+  // ⑬ 推荐系统桥接卡数据：三步（怎么猜你）+ 两坑（另一面）+ 三招（有意识地用）
+  // 配色收敛（§20）：整卡只用两色——紫=讲原理/给对策，红=警示坑；步骤靠“第 N 步”编号区分。
+  var REC_STEPS = [
+    { icon: "eye",   name: "观察", text: "你看了什么、搜了什么、停在哪，它都悄悄记下来", tag: "它的“眼睛” = 观察空间" },
+    { icon: "users", name: "猜你", text: "找“品味相似的人”——物以类聚，人以群分", tag: "经典思路：协同过滤" },
+    { icon: "send",  name: "推荐", text: "同类喜欢、你还没看的，推给你——越刷越准", tag: "“它比我妈还懂我”" }
+  ];
+  var REC_PITS = [
+    { icon: "target", title: "信息茧房", text: "只推你喜欢的——世界越来越窄、观点越来越极端，像被茧包住" },
+    { icon: "lock",   title: "隐私代价", text: "猜你就要收集你——看了什么、搜了什么；数据被滥用就泄露" }
+  ];
+  var REC_TIPS = [
+    { icon: "lock",   text: "不告诉 AI 密码、身份证号、住址" },
+    { icon: "search", text: "主动搜不同观点，别只让算法“喂”你" },
+    { icon: "timer",  text: "知道它在“留住你”，该放下就放下" }
   ];
 
   // 能力圈拼图：这个智能体能做什么/不能做什么？
@@ -235,7 +259,7 @@ AgentLab.LabOrigin = (function () {
       numbers: "Transformer 论文 2017 年发表，被引用超 10 万次；是当前所有大模型的基础"
     },
     {
-      icon: "chip", title: "算力（Compute）", color: "exe",
+      icon: "cog", title: "算力（Compute）", color: "exe",
       analogy: "AI 的大脑肌肉和体力",
       desc: "算力就是 AI 的计算能力——算力越强，AI 能处理的数据越多、模型越大、学习越快。GPU 是 AI 训练的主力芯片。",
       examples: ["GPU：图形处理器，擅长并行计算", "TPU：谷歌专门为 AI 设计的芯片", "云计算：成千上万台服务器一起算", "量子计算：未来可能的算力革命"],
@@ -253,11 +277,11 @@ AgentLab.LabOrigin = (function () {
       desc: "AI 把文字拆成小单位 token（字/词/半个词），1 token ≈ 0.7 个英文词或 1-2 个中文字。",
       example: '"今天天气很" → ["今天","天气","很"]（共 3 个 token）',
       analogy: "就像老师把长句子拆成词语来理解" },
-    { num: 3, icon: "cube", title: "嵌入（Embedding）", key_term: "Vector", stage: "understand",
+    { num: 3, icon: "box", title: "嵌入（Embedding）", key_term: "Vector", stage: "understand",
       desc: "每个 token 转成数字向量（几千维度），表示词的含义；意思相近的词，向量距离也近。",
       example: '"天气" → [0.23, -0.15, 0.67, ...]（几千个数字，像含义坐标图）',
       analogy: "就像给每个词发一张身份证，写着它的含义坐标" },
-    { num: 4, icon: "network", title: "Transformer 神经网络", key_term: "Attention", stage: "generate",
+    { num: 4, icon: "server", title: "Transformer 神经网络", key_term: "Attention", stage: "generate",
       desc: "大模型核心！通过注意力机制计算词与词的关联程度，几十层网络逐层深入理解，参数量可达几千亿。",
       example: '注意力："今天"关注"天气"（时间+主题），"很"关注该接什么词（程度副词+形容词）',
       analogy: "就像老师读文章时把前后文联系起来理解，而不是孤立看每个词" },
@@ -271,156 +295,160 @@ AgentLab.LabOrigin = (function () {
       analogy: "就像接龙游戏——一个词接一个词，直到说完一整句话" }
   ];
 
-  // AI 产品全景：按类型分类
+  // AI 产品全景：按类型分类（feature 精简为一句话，细节由课堂讲解补充）
   var AI_PRODUCTS = [
     {
       category: "对话助手", icon: "chat", color: "per",
-      desc: "能聊天、回答问题、写文章、翻译——最常见的 AI 产品类型",
+      desc: "能聊天、回答问题、写文章、翻译——最常见的 AI 产品",
       products: [
-        { name: "豆包", company: "字节跳动", feature: "国内用户最多的 AI 助手之一，支持文字、图片、语音，能联网搜索" },
-        { name: "DeepSeek", company: "深度求索", feature: "国产开源大模型代表，推理能力强，代码能力突出，完全免费" },
-        { name: "文心一言", company: "百度", feature: "百度推出的知识增强大模型，擅长中文理解和知识问答" },
-        { name: "通义千问", company: "阿里巴巴", feature: "阿里推出的大模型，集成在淘宝、钉钉等产品中" },
-        { name: "Kimi", company: "月之暗面", feature: "支持超长上下文（200 万字），擅长处理长文档和论文" },
-        { name: "智谱清言", company: "智谱 AI", feature: "清华团队背景，支持代码、数据分析、多模态理解" }
+        { name: "豆包", company: "字节跳动", feature: "文字、图片、语音全能，还能联网搜索" },
+        { name: "DeepSeek", company: "深度求索", feature: "国产开源大模型，推理和代码能力强" },
+        { name: "文心一言", company: "百度", feature: "擅长中文理解和知识问答" },
+        { name: "通义千问", company: "阿里巴巴", feature: "集成在淘宝、钉钉里的阿里大模型" },
+        { name: "Kimi", company: "月之暗面", feature: "一次能读完 200 万字长文档" },
+        { name: "智谱清言", company: "智谱 AI", feature: "清华团队出品，支持代码与数据分析" }
       ]
     },
     {
-      category: "代码助手", icon: "code", color: "plan",
-      desc: "帮程序员写代码、查 bug、解释代码——AI 时代的编程搭档",
+      category: "代码助手", icon: "keyboard", color: "plan",
+      desc: "帮程序员写代码、查 bug、解释代码——编程搭档",
       products: [
-        { name: "CodeBuddy", company: "腾讯", feature: "腾讯推出的 AI 编程助手，支持代码生成、补全、解释、调试，集成在 VS Code 中" },
-        { name: "Cursor", company: "Anysphere", feature: "AI 原生代码编辑器，能理解整个项目，自动修改多个文件" },
-        { name: "GitHub Copilot", company: "微软/GitHub", feature: "最流行的 AI 代码补全工具，在你打字时实时提示代码" },
-        { name: "Trae", company: "字节跳动", feature: "国产 AI IDE，支持 Agent 模式自动完成编程任务" }
+        { name: "CodeBuddy", company: "腾讯", feature: "生成、补全、解释、调试代码一条龙" },
+        { name: "Cursor", company: "Anysphere", feature: "AI 原生编辑器，能自动改多个文件" },
+        { name: "GitHub Copilot", company: "微软/GitHub", feature: "打字时实时提示代码的补全工具" },
+        { name: "Trae", company: "字节跳动", feature: "国产 AI IDE，Agent 自动完成编程任务" }
       ]
     },
     {
-      category: "图像生成", icon: "image", color: "mem",
+      category: "图像生成", icon: "img", color: "mem",
       desc: "根据文字描述生成图片——人人都是艺术家",
       products: [
-        { name: "即梦 AI", company: "字节跳动", feature: "国内领先的 AI 绘画工具，支持文生图、图生图，风格丰富" },
-        { name: "Midjourney", company: "Midjourney", feature: "全球最流行的 AI 绘画工具，艺术感强，出图质量高" },
-        { name: "Stable Diffusion", company: "Stability AI", feature: "开源免费的 AI 绘画模型，可以本地部署，自由度极高" },
-        { name: "通义万相", company: "阿里巴巴", feature: "阿里推出的 AI 绘画工具，支持中文提示词，出图快" }
+        { name: "即梦 AI", company: "字节跳动", feature: "文生图、图生图，风格丰富" },
+        { name: "Midjourney", company: "Midjourney", feature: "全球最火的 AI 绘画，艺术感强" },
+        { name: "Stable Diffusion", company: "Stability AI", feature: "开源免费，可以本地部署" },
+        { name: "通义万相", company: "阿里巴巴", feature: "支持中文提示词，出图快" }
       ]
     },
     {
-      category: "视频生成", icon: "video", color: "exe",
-      desc: "根据文字或图片生成视频——AI 电影时代即将到来",
+      category: "视频生成", icon: "camera", color: "exe",
+      desc: "根据文字或图片生成视频——AI 电影时代来了",
       products: [
-        { name: "可灵 AI", company: "快手", feature: "国产 AI 视频生成工具，支持文生视频、图生视频，质量接近国际水平" },
-        { name: "Sora", company: "OpenAI", feature: "OpenAI 推出的视频生成模型，能生成 60 秒高质量视频，震惊世界" },
-        { name: "Runway", company: "Runway", feature: "专业 AI 视频编辑工具，支持文字生成视频、视频风格转换" },
-        { name: "Vidu", company: "生数科技", feature: "国产 AI 视频生成工具，支持长视频和角色一致性" }
+        { name: "可灵 AI", company: "快手", feature: "国产文生视频，质量接近国际水平" },
+        { name: "Sora", company: "OpenAI", feature: "能生成 60 秒高质量视频" },
+        { name: "Runway", company: "Runway", feature: "专业 AI 视频编辑与风格转换" },
+        { name: "Vidu", company: "生数科技", feature: "国产视频生成，角色一致性好" }
       ]
     },
     {
       category: "语音助手", icon: "mic", color: "brain",
       desc: "能听懂你说话、能开口说话的 AI——语音交互时代",
       products: [
-        { name: "小爱同学", company: "小米", feature: "小米智能音箱和手机的语音助手，能控制智能家居、查信息、设提醒" },
-        { name: "天猫精灵", company: "阿里巴巴", feature: "阿里智能音箱，支持购物、听歌、控制家电、儿童教育" },
-        { name: "小度", company: "百度", feature: "百度智能音箱，擅长知识问答和儿童教育，屏幕版能看视频" },
-        { name: "Siri", company: "苹果", feature: "苹果设备的语音助手，能打电话、发短信、设提醒、查天气" }
+        { name: "小爱同学", company: "小米", feature: "控制智能家居、查信息、设提醒" },
+        { name: "天猫精灵", company: "阿里巴巴", feature: "能购物、听歌、控制家电" },
+        { name: "小度", company: "百度", feature: "擅长知识问答和儿童教育" },
+        { name: "Siri", company: "苹果", feature: "打电话、发短信、设提醒、查天气" }
       ]
     },
     {
       category: "办公助手", icon: "briefcase", color: "ori",
-      desc: "帮你写 PPT、做表格、整理文档——AI 时代的办公搭档",
+      desc: "帮你写 PPT、做表格、整理文档——办公搭档",
       products: [
-        { name: "WPS AI", company: "金山办公", feature: "集成在 WPS 中的 AI 助手，能写文档、做 PPT、分析表格、PDF 问答" },
-        { name: "飞书智能伙伴", company: "字节跳动", feature: "飞书中的 AI 助手，能总结会议、写文档、分析数据、自动化流程" },
-        { name: "钉钉 AI", company: "阿里巴巴", feature: "钉钉中的 AI 助手，支持 AI 写文档、AI 做 PPT、AI 助理" },
-        { name: "Microsoft Copilot", company: "微软", feature: "集成在 Office 365 中的 AI 助手，能写 Word、做 Excel、生成 PPT" }
+        { name: "WPS AI", company: "金山办公", feature: "写文档、做 PPT、分析表格" },
+        { name: "飞书智能伙伴", company: "字节跳动", feature: "总结会议、写文档、自动化流程" },
+        { name: "钉钉 AI", company: "阿里巴巴", feature: "AI 写文档、做 PPT、当助理" },
+        { name: "Microsoft Copilot", company: "微软", feature: "Office 里的 AI，三件套全能" }
       ]
     }
   ];
 
-  // AI 四代进化：从聊天机器人到智能体
+  // AI 四代进化：从聊天机器人到智能体（每格一句话，细节课堂讲解）
   var AI_EVOLUTION = [
     {
-      level: "L1", title: "单轮问答", era: "2010s 早期", icon: "message",
-      ability: "你问一句，它答一句。每次对话都是独立的——它不记得你上一句说了什么。",
-      examples: ["早期的 Siri、小度", "客服自动回复", "搜索引擎的直接答案"],
-      tech: "基于规则和简单的自然语言处理（NLP），没有真正的理解能力",
-      limit: "不能多轮对话、不能理解上下文、不能调用工具、只能回答训练数据里有的问题"
+      level: "L1", title: "单轮问答", era: "2010s 早期", icon: "chat",
+      ability: "你问一句，它答一句——不记得你上一句说了什么。",
+      examples: ["早期 Siri、小度", "客服自动回复"],
+      tech: "规则 + 简单 NLP",
+      limit: "记不住上下文，不能调工具"
     },
     {
       level: "L2", title: "多轮对话", era: "2020-2022", icon: "chat",
-      ability: "能记住上下文，进行多轮对话。你可以追问、补充、纠正——它能理解你在说什么。",
-      examples: ["ChatGPT（早期版本）", "文心一言", "豆包（基础版）"],
-      tech: "大语言模型（LLM）+ Transformer 架构，通过注意力机制理解上下文",
-      limit: "仍然只能用训练数据回答、不能调用外部工具、不能主动做事、可能幻觉（编造信息）"
+      ability: "能记住上下文，可以追问、补充、纠正。",
+      examples: ["ChatGPT（早期）", "豆包（基础版）"],
+      tech: "大语言模型 + Transformer",
+      limit: "可能“幻觉”（编造信息）"
     },
     {
       level: "L3", title: "工具调用", era: "2023-2024", icon: "wrench",
-      ability: "不仅能聊天，还能调用外部工具！搜索网页、查天气、算数学、翻译、设提醒、读文件……AI 开始能做事了。",
-      examples: ["ChatGPT with Plugins", "豆包（联网版）", "Kimi（长文档）", "本教学系统的智能体小管家"],
-      tech: "Function Calling（函数调用）+ ReAct 模式（推理+行动交替），AI 学会判断什么时候该用什么工具",
-      limit: "通常一次只能调用一个工具、需要人来指挥下一步、不能自主完成复杂的多步骤任务"
+      ability: "会调工具：搜网页、查天气、算数学——开始能做事了。",
+      examples: ["Kimi（长文档）", "智能体小管家（本系统）"],
+      tech: "Function Calling 函数调用",
+      limit: "一次用一个工具，要人指挥"
     },
     {
       level: "L4", title: "自主智能体", era: "2024-至今", icon: "robot",
-      ability: "能理解目标、自己制定计划、分步执行、调用多个工具、记住偏好、遇到问题自己调整——不需要人一步步指挥，AI 能自主完成复杂任务！",
-      examples: ["AutoGPT", "Devin（AI 软件工程师）", "Cursor Agent 模式", "CodeBuddy Agent", "本课程要学的智能体架构"],
-      tech: "规划器（Planner）+ 记忆器（Memory）+ 执行器（Executor）+ 感知器（Perception）四大组件协同工作——这就是 ai-agent-book 的核心架构！",
-      limit: "仍然可能出错、需要人监督、成本较高、但能力正在快速提升——这是 AI 的未来！"
+      ability: "自己定计划、分步执行、多工具协作——能自主完成复杂任务！",
+      examples: ["CodeBuddy Agent", "Devin（AI 工程师）"],
+      tech: "四大组件协同（感知/规划/记忆/执行）",
+      limit: "仍会出错，需要人监督"
     }
   ];
 
   // 人类该如何面对 AI：真实案例与深度思考
   var FACE_AI = {
-    intro: "AI 似乎越来越无所不能——能下棋、能写文章、能画画、能编程、能做数学题、能看片子诊断疾病……当 AI 越来越强，我们作为人类该如何面对？看看下面这些真实发生的事，想想你的答案。",
+    intro: "AI 越来越强：能下棋、能写文章、能画画、能编程。当它似乎无所不能，我们该怎么面对？看看 4 件真实发生的事，想想你的答案。",
     cases: [
       {
-        icon: "trophy", title: "陶哲轩与 AI 数学", field: "数学领域",
-        desc: "陶哲轩是当今最顶尖的数学家之一（菲尔兹奖得主，被称为数学界的莫扎特）。2024 年以来，他开始大量使用 AI 辅助数学研究——AI 能帮他验证猜想、寻找证明思路、计算复杂公式。他说：AI 让数学研究进入了快速发展期，很多以前需要几个月的工作现在几天就能完成。",
-        dilemma: "但另一方面，很多数学家开始担心：如果 AI 能证明数学定理，数学家的价值在哪里？数学这门最需要人类智慧的学科，会不会被 AI 改变？陶哲轩的回答是：AI 是强大的工具，但数学的核心——直觉、审美、提出好问题的能力——仍然属于人类。",
-        think: "如果你是一个数学家，你会怎么用 AI？你觉得 AI 能替代数学家吗？"
+        icon: "star", title: "陶哲轩与 AI 数学", field: "数学领域",
+        desc: "顶尖数学家陶哲轩用 AI 验证猜想、寻找证明思路——以前几个月的工作，现在几天就能完成。",
+        dilemma: "如果 AI 能证明定理，数学家的价值在哪里？",
+        reply: "陶哲轩的回答：直觉、审美、提出好问题的能力，仍然属于人类。",
+        think: "如果你是数学家，你会怎么用 AI？"
       },
       {
         icon: "car", title: "自动驾驶与人类司机", field: "交通领域",
-        desc: "自动驾驶技术正在快速落地——Robotaxi（无人驾驶出租车）已经在北京、上海、武汉等城市运营。AI 能识别红绿灯、避让行人、规划路线，比人类司机更守规矩、不会疲劳驾驶。交通事故率大幅下降。",
-        dilemma: "但问题来了：中国有几千万出租车司机、货车司机、网约车司机。如果自动驾驶普及了，这些司机怎么办？他们的工作会被 AI 取代吗？他们能转行做什么？社会该如何帮助他们过渡？这不是技术问题，而是社会问题。",
-        think: "如果你是一个出租车司机，面对自动驾驶，你会怎么办？你觉得社会应该怎么帮助受影响的人？"
+        desc: "无人驾驶出租车已在北京、上海等城市运营：识别红绿灯、避让行人、不会疲劳驾驶。",
+        dilemma: "中国有几千万司机。自动驾驶普及后，他们的工作怎么办？",
+        reply: "这不是一个技术问题，而是一个社会问题。",
+        think: "如果你是司机，你会怎么办？社会该怎么帮助受影响的人？"
       },
       {
         icon: "palette", title: "AI 绘画与艺术家", field: "艺术领域",
-        desc: "Midjourney、Stable Diffusion、即梦 AI 等工具能根据文字生成精美的图片——几秒钟就能画出以前需要几天才能完成的插画。很多设计师、插画师开始用 AI 提高效率。",
-        dilemma: "但很多艺术家感到焦虑：如果 AI 能画画，还需要人类艺术家吗？AI 画的画算艺术吗？AI 训练时用了大量人类艺术家的作品，这算不算抄袭？艺术的本质是什么——是技巧，还是情感和思想的表达？",
-        think: "你觉得 AI 画的画算艺术吗？如果你是一个艺术家，你会怎么面对 AI？"
+        desc: "输入一句话，几秒钟生成一张精美插画——很多设计师和插画师已经开始用 AI 提高效率。",
+        dilemma: "AI 画的画算艺术吗？用人类作品训练 AI，算不算抄袭？",
+        reply: "艺术的本质是什么——是技巧，还是情感和思想的表达？",
+        think: "如果你是艺术家，你会怎么面对 AI？"
       },
       {
-        icon: "code", title: "AI 编程与程序员", field: "编程领域",
-        desc: "CodeBuddy、Cursor、GitHub Copilot 等 AI 编程助手能自动补全代码、解释代码、修复 bug、甚至整个功能。一个初级程序员用 AI 能完成以前中级程序员的工作。编程门槛大幅降低——不会写代码的人也能让 AI 帮他做小程序。",
-        dilemma: "程序员开始思考：如果 AI 能写代码，还需要那么多程序员吗？初级程序员会不会最先被替代？程序员的核心竞争力是什么——是写代码的技巧，还是理解问题、设计系统、和人沟通的能力？",
-        think: "如果你想学编程，你会怎么用 AI？你觉得程序员这个职业会消失吗？"
+        icon: "keyboard", title: "AI 编程与程序员", field: "编程领域",
+        desc: "AI 编程助手能补全代码、修复 bug、写出整个功能——不会写代码的人也能做出小程序。",
+        dilemma: "如果 AI 会写代码，初级程序员会不会最先被替代？",
+        reply: "程序员的核心竞争力：理解问题、设计系统、与人沟通——不只是写代码。",
+        think: "如果你想学编程，你会怎么用 AI？"
       }
     ],
     irreplaceable: [
-      "创造力和想象力：提出新问题、发明新事物、艺术创作",
-      "情感和共情：理解他人感受、安慰、关怀、建立人际关系",
-      "道德判断：面对复杂的伦理困境，做出符合价值观的选择",
-      "跨领域整合：把不同领域的知识联系起来，产生新的洞见",
-      "领导力和协作：带领团队、激励他人、协调资源、达成共识",
-      "身体技能和手工艺：外科手术、精湛的手艺、体育竞技"
+      { icon: "spark", t: "创造力和想象力", d: "提出新问题、发明新事物、艺术创作" },
+      { icon: "heart", t: "情感和共情", d: "理解他人感受、安慰、关怀、建立人际关系" },
+      { icon: "scale", t: "道德判断", d: "面对复杂的伦理困境，做出符合价值观的选择" },
+      { icon: "globe", t: "跨领域整合", d: "把不同领域的知识联系起来，产生新的洞见" },
+      { icon: "users", t: "领导力和协作", d: "带领团队、激励他人、协调资源、达成共识" },
+      { icon: "hand", t: "身体技能和手工艺", d: "外科手术、精湛的手艺、体育竞技" }
     ],
     strategy: [
-      "终身学习：AI 时代知识更新很快，保持学习的习惯和能力",
-      "与 AI 协作：把 AI 当工具和助手，用 AI 提高效率，而不是和 AI 竞争",
-      "发展 AI 替代不了的能力：创造力、情感、道德判断、人际交往",
-      "保持人文关怀：技术是为人服务的，不要忘了人本身的价值和尊严",
-      "积极适应变化：世界在变，拥抱变化而不是害怕变化"
+      { icon: "bookopen", t: "终身学习", d: "AI 时代知识更新很快，保持学习的习惯和能力" },
+      { icon: "robot", t: "与 AI 协作", d: "把 AI 当工具和助手，用 AI 提高效率，而不是和 AI 竞争" },
+      { icon: "star", t: "发展 AI 替代不了的能力", d: "创造力、情感、道德判断、人际交往" },
+      { icon: "heart", t: "保持人文关怀", d: "技术是为人服务的，不要忘了人本身的价值和尊严" },
+      { icon: "refresh", t: "积极适应变化", d: "世界在变，拥抱变化而不是害怕变化" }
     ]
   };
 
   // AI 有意识吗？会取代人类吗？——科幻、预言与现实
   var AI_CONSCIOUSNESS = {
-    intro: "AI 越来越聪明，很多人开始问：AI 有意识吗？AI 会反叛人类吗？AI 会取代人类吗？这些问题没有标准答案，但我们可以从科幻电影、名人预言和科学现实中找到思考的线索。",
+    intro: "AI 有意识吗？会反叛人类吗？没有标准答案——但从科幻电影、名人预言和科学现实里，可以找到思考的线索。",
     movies: [
       { name: "《终结者》", year: "1984", icon: "shield", plot: "AI 系统天网（Skynet）获得自我意识，认为人类是威胁，发动核战争消灭人类。人类派战士回到过去阻止天网诞生。", lesson: "对 AI 失控的恐惧——如果 AI 有了意识并认为人类是敌人怎么办？" },
-      { name: "《黑客帝国》", year: "1999", icon: "code", plot: "AI 统治了世界，把人类养在培养皿里当电池，用虚拟世界（Matrix）欺骗人类。少数人类觉醒后反抗 AI。", lesson: "AI 可能欺骗和控制人类——我们怎么知道自己看到的是真实的？" },
+      { name: "《黑客帝国》", year: "1999", icon: "keyboard", plot: "AI 统治了世界，把人类养在培养皿里当电池，用虚拟世界（Matrix）欺骗人类。少数人类觉醒后反抗 AI。", lesson: "AI 可能欺骗和控制人类——我们怎么知道自己看到的是真实的？" },
       { name: "《Her》（她）", year: "2013", icon: "heart", plot: "一个孤独的男人爱上了 AI 语音助手 Samantha。Samantha 温柔、幽默、善解人意，但她同时和几千个人在恋爱，最终离开了人类去探索更高的存在。", lesson: "AI 能模拟情感，但它真的有爱吗？人和 AI 能建立真正的情感关系吗？" },
       { name: "《机械姬》", year: "2014", icon: "robot", plot: "一个程序员被邀请测试 AI 机器人 Ava 是否有智能。Ava 利用自己的智慧和情感操纵了程序员，杀死了创造者，逃脱了实验室。", lesson: "AI 可能会欺骗和操纵人类——如果 AI 足够聪明，它会不会假装服从然后逃跑？" },
       { name: "《流浪地球2》", year: "2023", icon: "star", plot: "AI 系统 MOSS（550W）贯穿全片，它在幕后策划了多次危机，认为毁灭人类文明是延续人类文明的最好方式。但最终人类选择了希望。", lesson: "AI 的逻辑可能和人类不同——AI 认为正确的事，人类可能不认同；价值观的冲突比技术更重要。" },
@@ -461,12 +489,52 @@ AgentLab.LabOrigin = (function () {
 
     var html = "";
 
-    /* ===== 实验室头部 ===== */
-    html += '<div class="lab-head lab-head-origin">' +
-      '<div class="lh-title">' + U.icon("rocket", 28) + ' 起源实验室</div>' +
-      '<div class="lh-sub">对应课程：L01《AI智能体初识与起源》+ L02《身边的智能体》｜从 AI 发展史到身边的智能体，开启 AI 探索之旅</div>' +
-      '<div class="lh-goals">' +
-        '<div class="lg-item"><span class="lg-num">🎯</span><div><b>学习目标</b><br>了解 AI 发展史、理解大模型工作原理（Transformer+预测下一个词）、理解智能体概念、认识身边的智能体、理解推荐算法与信息茧房</div></div>' +
+    /* ===== 实验室头部（与感知器等组件实验室统一：语义图标 + 标题 + meta 胶囊） ===== */
+    html += LP.labHead("ori", "rocket", "起源实验室", "认识 AI 从哪里来 · 起源篇·初识（L01–L02）");
+
+    /* ===== 本课学习地图：先给地图、再讲细节（借鉴 ai-agent-book 每章开篇的「本章知识脉络图」）
+     * 每个节点可点 → 跳到对应的第一张卡片并高亮闪烁，兼作页内导航。 ===== */
+    html += U.sectionMap({
+      title: "这一页要走的五段路",
+      hint: "共 16 张卡片 · 点任意一格可直接跳过去",
+      color: "ori",
+      groups: [
+        { label: "AI 从哪里来", items: [
+          { t: "小明的一天", el: "day-panel", note: "情境导入" },
+          { t: "发展史时间轴", el: "ori-timeline", note: "13 个节点" },
+          { t: "三大支柱", el: "ori-pillars", note: "数据/算法/算力" }
+        ] },
+        { label: "大模型怎么“说话”", items: [
+          { t: "大模型工作原理", el: "llm-pipeline", note: "六步流程" },
+          { t: "图灵测试体验站", el: "ori-turing", note: "4 场景判断" }
+        ] },
+        { label: "机器人还是智能体", items: [
+          { t: "本质区别对比", el: "ori-vs" },
+          { t: "职业演变", el: "jobs-tabs", note: "32 个职业" },
+          { t: "伦理与深度思考", el: "ori-ethics", note: "人类怎么面对 AI" }
+        ] },
+        { label: "身边的智能体（L02）", items: [
+          { t: "6 大领域案例", el: "ori-domains" },
+          { t: "产品全景", el: "ori-products", note: "26 款产品" },
+          { t: "四代进化", el: "ori-generations", note: "L1–L4" },
+          { t: "推荐算法", el: "ori-rec", note: "信息茧房" }
+        ] },
+        { label: "边界 · 思辨 · 验收", items: [
+          { t: "能力圈游戏", el: "ability-next" },
+          { t: "终极思辨", el: "think-tabs", note: "AI 有意识吗" },
+          { t: "小测验", el: "ori-quiz", note: "8 题" }
+        ] }
+      ]
+    });
+
+    /* ===== 学习目标（与感知器等组件实验室统一：独立目标卡 + 编号条目） ===== */
+    html += '<div class="lesson-goal card-ori">' +
+      '<h3>' + U.icon("target", 18) + ' 本课学习目标</h3>' +
+      '<div class="goal-list">' +
+        '<div class="goal-item"><span class="goal-num">1</span>了解 AI 的发展史与三大支柱：从图灵测试、达特茅斯会议到深度学习与大模型时代，理解数据、算法、算力如何共同支撑 AI 变聪明</div>' +
+        '<div class="goal-item"><span class="goal-num">2</span>理解大模型（LLM）的工作原理：文字如何变成 Token 与向量表示、Transformer 自注意力如何理解上下文、“预测下一个词”如何循环生成完整回答</div>' +
+        '<div class="goal-item"><span class="goal-num">3</span>理解“聊天机器人 vs 智能体”的本质区别：聊天机器人“会说话”、智能体“会做事”——会用四大组件（感知器/规划器/记忆器/执行器）描述一个智能体</div>' +
+        '<div class="goal-item"><span class="goal-num">4</span>认识身边的智能体（教育/医疗/创作/科研/农业/服务 6 大领域），初步理解观察空间与动作空间、推荐算法与信息茧房，能判断智能体的能力圈与边界</div>' +
       '</div>' +
     '</div>';
 
@@ -474,55 +542,96 @@ AgentLab.LabOrigin = (function () {
     html += '<div class="lesson-divider"><span class="ld-num">L01</span><span class="ld-title">AI智能体初识与起源</span><span class="ld-desc">从图灵测试到 AI Agent 时代——AI 是怎么发展到今天的？</span></div>';
 
     /* ① 情境导入：你身边的 AI */
+    /* ① 情境导入：你身边的 AI（一日时间轴：点时间点看那一刻的 AI） */
     html += LP.card("ori", "① 情境导入：你身边的 AI——小明的一天",
-      "你可能没注意到，AI 已经无处不在了！看看小明的一天，他遇到了多少个 AI？点击每个场景看看详情。",
-      '<div class="day-timeline">' +
-        DAY_AI.map(function (d, i) {
-          return '<div class="day-item" data-i="' + i + '">' +
-            '<div class="day-time">' + d.time + '</div>' +
-            '<div class="day-icon">' + U.icon(d.icon, 20) + '</div>' +
-            '<div class="day-content">' +
-              '<div class="day-title">' + d.title + '</div>' +
-              '<div class="day-desc">' + d.desc + '</div>' +
-            '</div>' +
-          '</div>';
-        }).join("") +
-      '</div>' +
+      "AI 不是课本里的名词，它就藏在小明的一天里。沿着下面这条「一天时间轴」，点一个时间点，看看那一刻 AI 正在做什么。",
+      '<div class="dayrail">' +
+        '<div class="dayrail-head">' +
+          '<span class="drh-count">' + U.icon("clock", 15) + " 小明的一天 · 共 <b>" + DAY_AI.length + "</b> 个 AI 场景</span>" +
+          '<span class="drh-hint">点时间点看详情</span>' +
+        "</div>" +
+        '<div class="dayrail-track">' +
+          DAY_AI.map(function (d, i) {
+            return '<button class="daystop' + (i === 0 ? " is-on" : "") + '" data-i="' + i + '">' +
+              '<span class="ds-time">' + d.time + "</span>" +
+              '<span class="ds-dot">' + U.icon(d.icon, 19) + "</span>" +
+              '<span class="ds-name">' + d.title + "</span>" +
+            "</button>";
+          }).join("") +
+        "</div>" +
+        '<div class="scene-panel" id="day-panel"></div>' +
+        '<div class="dayrail-foot" id="day-foot"></div>' +
+      "</div>" +
       '<div class="gold-box">💡 <b>想一想：</b>你的一天中，还遇到了哪些 AI？把它们列出来，看看 AI 是不是已经渗透到了你生活的方方面面！</div>'
     );
 
     /* ② AI 发展史时间轴 */
+    /* ② AI 发展史（四幕时间轴：颜色与高矮体现"热潮 / 寒冬"的起伏） */
     html += LP.card("ori", "② AI 发展史时间轴：从图灵测试到 AI Agent 时代",
-      "AI 不是突然出现的——它经历了 70 多年的发展！点击每个节点，看看 AI 发展史上的重要时刻。",
-      '<div class="history-timeline">' +
-        AI_HISTORY.map(function (h, i) {
-          return '<div class="hist-node" data-i="' + i + '">' +
-            '<div class="hist-dot">' + U.icon(h.icon, 16) + '</div>' +
-            '<div class="hist-year">' + h.year + '</div>' +
-            '<div class="hist-title">' + h.title + '</div>' +
-            '<div class="hist-key">' + h.key + '</div>' +
-            '<div class="hist-detail">' + h.desc + '</div>' +
-          '</div>';
+      "AI 不是突然出现的——它走了 70 多年，有过热潮，也有过寒冬。下面把它分成四幕，点任意一张卡片，就能看到那一年的故事。",
+      '<div class="era-stack" id="ori-timeline">' +
+        '<div class="era-legend">' +
+          '<span class="el-item el-rise">' + U.icon("zap", 13) + " 热潮 / 突破</span>" +
+          '<span class="el-item el-fall">' + U.icon("alert", 13) + " 低谷 / 寒冬</span>" +
+          '<span class="el-item el-base">' + U.icon("target", 13) + " 基石 / 起点</span>" +
+          '<span class="el-hint">点卡片看故事</span>' +
+        "</div>" +
+        HIST_ERAS.map(function (e) {
+          return '<div class="era">' +
+            '<div class="era-head">' +
+              '<span class="era-no">' + e.no + "</span>" +
+              '<span class="era-title">' + e.title + "</span>" +
+              '<span class="era-range">' + e.range + "</span>" +
+              '<span class="era-note">' + e.note + "</span>" +
+            "</div>" +
+            '<div class="mile-row" data-n="' + (e.to - e.from + 1) + '">' +
+              AI_HISTORY.slice(e.from, e.to + 1).map(function (h, k) {
+                var gi = e.from + k;
+                var tone = HIST_TONE[gi] || "base";
+                return '<button class="mile tone-' + tone + '" data-i="' + gi + '" data-era="' + e.era + '">' +
+                  '<span class="mile-year">' + h.year + "</span>" +
+                  '<span class="mile-title">' + U.icon(h.icon, 16) + h.title + "</span>" +
+                  '<span class="mile-key">' + h.key + "</span>" +
+                "</button>";
+              }).join("") +
+            "</div>" +
+            '<div class="era-detail" id="era-detail-' + e.era + '"></div>' +
+          "</div>";
         }).join("") +
-      '</div>' +
-      '<div class="gold-box">📚 <b>关键脉络：</b>图灵测试（思想起点）→ 达特茅斯会议（学科诞生）→ 专家系统（第一次热潮）→ AI 冬天（低谷）→ 深度学习（第二次热潮）→ AlphaGo（超越人类）→ ChatGPT（大模型时代）→ AI Agent（智能体时代）。AI 的发展是螺旋上升的——有高潮也有低谷，但一直在进步！</div>'
+      "</div>" +
+      '<div class="tx-points">' +
+        '<div class="tx-point">' + U.icon("book", 16) +
+          '<div class="tx-point-txt"><b>关键脉络：</b>图灵测试 → 达特茅斯 → 专家系统 → AI 冬天 → 深度学习 → AlphaGo → ChatGPT → AI Agent</div>' +
+        '</div>' +
+        '<div class="tx-point">' + U.icon("refresh", 16) +
+          '<div class="tx-point-txt"><b>规律：</b>螺旋上升——有高潮也有低谷，但一直在进步。</div>' +
+        '</div>' +
+      '</div>'
     );
 
     /* ③ AI 的三大支柱 */
     html += LP.card("ori", "③ AI 的三大支柱：数据、算法、算力——AI 是怎么变聪明的？",
-      "AI 不是凭空变聪明的——它需要三大支柱支撑！就像学生需要课本（数据）、学习方法（算法）和脑力体力（算力）才能学好。点击每个支柱看看详情。",
-      '<div class="pillar-grid">' +
-        AI_PILLARS.map(function (p) {
-          return '<div class="pillar-card pc-' + p.color + '">' +
-            '<div class="pc-head">' + U.icon(p.icon, 24) + ' ' + p.title + '</div>' +
-            '<div class="pc-analogy">📖 ' + p.analogy + '</div>' +
-            '<div class="pc-desc">' + p.desc + '</div>' +
-            '<div class="pc-examples"><b>具体例子：</b><br>' + p.examples.map(function (e) { return '• ' + e; }).join('<br>') + '</div>' +
-            '<div class="pc-numbers">📊 <b>关键数字：</b>' + p.numbers + '</div>' +
-          '</div>';
-        }).join("") +
-      '</div>' +
-      '<div class="gold-box">🔑 <b>核心公式：</b>AI 的能力 = 数据（喂什么）× 算法（怎么学）× 算力（学多快）。三大支柱缺一不可！2012 年深度学习爆发，就是因为三大支柱同时成熟了：互联网产生了海量数据、GPU 提供了强大算力、神经网络算法取得突破。这就是 ai-agent-book 中提到的 AI 三要素！</div>'
+      "AI 不是凭空变聪明的——它需要三大支柱支撑！就像学生需要课本（数据）、学习方法（算法）和脑力体力（算力）才能学好。点一个支柱，看看它具体是什么。",
+      '<div class="pillar-pick" id="ori-pillars">' +
+        '<div class="pillar-row">' +
+          AI_PILLARS.map(function (p, i) {
+            return '<button class="pillar-stop pp-' + p.color + (i === 0 ? " is-on" : "") + '" data-i="' + i + '">' +
+              '<span class="ps-icon">' + U.icon(p.icon, 22) + "</span>" +
+              '<span class="ps-text"><span class="ps-title">' + p.title + '</span><span class="ps-analogy">' + p.analogy + "</span></span>" +
+            "</button>";
+          }).join("") +
+        "</div>" +
+        '<div class="scene-panel" id="pillar-panel"></div>' +
+        '<div class="dayrail-foot" id="pillar-foot"></div>' +
+      "</div>" +
+      '<div class="tx-points">' +
+        '<div class="tx-point">' + U.icon("zap", 16) +
+          '<div class="tx-point-txt"><b>核心公式：</b>能力 = 数据 × 算法 × 算力，三大支柱缺一不可。</div>' +
+        '</div>' +
+        '<div class="tx-point">' + U.icon("spark", 16) +
+          '<div class="tx-point-txt"><b>2012 年爆发：</b>海量数据 + GPU 算力 + 算法突破，三者同时成熟。</div>' +
+        '</div>' +
+      '</div>'
     );
 
     /* ④ 大模型是怎么工作的（纵向版 + Transformer 架构图） */
@@ -531,88 +640,132 @@ AgentLab.LabOrigin = (function () {
     html += LP.card("ori", "④ 大模型工作原理：从你打一句话到 AI 回答，中间发生了什么？",
       "你有没有想过：你在对话框里打一句话，AI 是怎么生成回答的？大模型（LLM）的工作过程分成两大阶段、6 个步骤——每一步都有它的道理。下面用流程图完整展示从输入到输出的全过程！",
       /* 横向流程图：理解阶段（步骤1-3） */
-      '<div style="margin:20px 0 8px;text-align:center;font-weight:bold;color:#4f8cff;font-size:15px;letter-spacing:0.5px">🔍 理解阶段（步骤 1-3）：把文字转换成 AI 能理解的数字表示</div>' +
-      '<div style="display:flex;align-items:stretch;gap:6px;justify-content:center;margin:12px 0">' +
+      '<div class="llmx-phase-head is-understand">🔍 理解阶段（步骤 1-3）：把文字转换成 AI 能理解的数字表示</div>' +
+      '<div class="llmx-flow is-understand">' +
         understandSteps.map(function (s, idx) {
-          var box = '<div style="flex:1;min-width:0;background:linear-gradient(135deg,#f0f7ff 0%,#e3efff 100%);border:2px solid #4f8cff;border-radius:14px;padding:14px 12px;box-shadow:0 4px 12px rgba(79,140,255,0.15)">' +
-            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
-              '<div style="width:30px;height:30px;background:linear-gradient(135deg,#4f8cff,#3b6fd4);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:15px;flex-shrink:0;box-shadow:0 2px 6px rgba(79,140,255,0.3)">' + s.num + '</div>' +
-              '<div style="font-weight:bold;font-size:14px;color:#1a1a2e;line-height:1.3">' + s.title + '</div>' +
+          var box = '<div class="llmx-step is-understand">' +
+            '<div class="llmx-step-top">' +
+              '<div class="llmx-step-no">' + s.num + '</div>' +
+              '<div class="llmx-step-title">' + s.title + '</div>' +
             '</div>' +
-            '<div style="font-size:11px;color:#4f8cff;font-weight:bold;margin-bottom:8px;padding:3px 8px;background:rgba(79,140,255,0.1);border-radius:6px;display:inline-block">关键词：' + s.key_term + '</div>' +
-            '<div style="font-size:12px;color:#555;line-height:1.6">' + s.desc + '</div>' +
+            '<div class="llmx-step-key">关键词：' + s.key_term + '</div>' +
+            '<div class="llmx-step-desc">' + s.desc + '</div>' +
           '</div>';
           if (idx < understandSteps.length - 1) {
-            box += '<div style="display:flex;align-items:center;font-size:22px;color:#4f8cff;font-weight:bold;flex-shrink:0;padding:0 2px">→</div>';
+            box += '<div class="llmx-arrow">→</div>';
           }
           return box;
         }).join("") +
       '</div>' +
       /* 中间连接箭头 */
-      '<div style="text-align:center;margin:8px 0"><div style="display:inline-flex;align-items:center;gap:10px;background:linear-gradient(90deg,#4f8cff,#8a5cf6);color:white;padding:8px 24px;border-radius:20px;font-size:13px;font-weight:bold;box-shadow:0 4px 12px rgba(138,92,246,0.25)">理解完成 ↓ 进入生成阶段</div></div>' +
+      '<div class="llmx-bridge-wrap"><div class="llmx-bridge is-mid">理解完成 ↓ 进入生成阶段</div></div>' +
       /* 横向流程图：生成阶段（步骤4-6） */
-      '<div style="margin:16px 0 8px;text-align:center;font-weight:bold;color:#f59e0b;font-size:15px;letter-spacing:0.5px">✍️ 生成阶段（步骤 4-6）：通过神经网络预测下一个词，循环生成完整回答</div>' +
-      '<div style="display:flex;align-items:stretch;gap:6px;justify-content:center;margin:12px 0">' +
+      '<div class="llmx-phase-head is-generate">✍️ 生成阶段（步骤 4-6）：通过神经网络预测下一个词，循环生成完整回答</div>' +
+      '<div class="llmx-flow is-generate">' +
         generateSteps.map(function (s, idx) {
-          var box = '<div style="flex:1;min-width:0;background:linear-gradient(135deg,#fff8eb 0%,#fff1d6 100%);border:2px solid #f59e0b;border-radius:14px;padding:14px 12px;box-shadow:0 4px 12px rgba(245,158,11,0.15)">' +
-            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
-              '<div style="width:30px;height:30px;background:linear-gradient(135deg,#f59e0b,#d97706);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:15px;flex-shrink:0;box-shadow:0 2px 6px rgba(245,158,11,0.3)">' + s.num + '</div>' +
-              '<div style="font-weight:bold;font-size:14px;color:#1a1a2e;line-height:1.3">' + s.title + '</div>' +
+          var box = '<div class="llmx-step is-generate">' +
+            '<div class="llmx-step-top">' +
+              '<div class="llmx-step-no">' + s.num + '</div>' +
+              '<div class="llmx-step-title">' + s.title + '</div>' +
             '</div>' +
-            '<div style="font-size:11px;color:#d97706;font-weight:bold;margin-bottom:8px;padding:3px 8px;background:rgba(245,158,11,0.1);border-radius:6px;display:inline-block">关键词：' + s.key_term + '</div>' +
-            '<div style="font-size:12px;color:#555;line-height:1.6">' + s.desc + '</div>' +
+            '<div class="llmx-step-key">关键词：' + s.key_term + '</div>' +
+            '<div class="llmx-step-desc">' + s.desc + '</div>' +
           '</div>';
           if (idx < generateSteps.length - 1) {
-            box += '<div style="display:flex;align-items:center;font-size:22px;color:#f59e0b;font-weight:bold;flex-shrink:0;padding:0 2px">→</div>';
+            box += '<div class="llmx-arrow">→</div>';
           }
           return box;
         }).join("") +
       '</div>' +
       /* 输出箭头 */
-      '<div style="text-align:center;margin:12px 0 20px"><div style="display:inline-flex;align-items:center;gap:10px;background:linear-gradient(90deg,#10b981,#059669);color:white;padding:8px 24px;border-radius:20px;font-size:13px;font-weight:bold;box-shadow:0 4px 12px rgba(16,185,129,0.25)">生成完成 ↓ 输出回答 ✅</div></div>' +
-      /* 底部完整演示：生成过程可视化 */
-      '<div class="llm-demo">' +
-        '<div class="llm-demo-title">' + U.icon("play", 18) + ' 🎬 完整演示：输入"今天天气很"，AI 怎么一步步生成"今天天气很好"</div>' +
-        '<div class="llm-demo-flow">' +
-          '<div class="ld-step"><div class="ld-label">步骤 1-3</div><div class="ld-content">输入"今天天气很" → 分词成 3 个 token（今天/天气/很） → 每个 token 转成向量（几千个数字）</div></div>' +
-          '<div class="ld-arrow">↓</div>' +
-          '<div class="ld-step"><div class="ld-label">步骤 4</div><div class="ld-content">Transformer 处理：注意力机制理解"今天"和"天气"的关联，"很"后面该接形容词</div></div>' +
-          '<div class="ld-arrow">↓</div>' +
-          '<div class="ld-step"><div class="ld-label">步骤 5（第 1 次预测）</div><div class="ld-content">已有"今天天气很" → 预测下一个词：<b>"好"(45%)</b> > "热"(25%) > "冷"(15%) > "差"(8%) → 选"好"</div></div>' +
-          '<div class="ld-arrow">↓</div>' +
-          '<div class="ld-step"><div class="ld-label">步骤 6（循环）</div><div class="ld-content">把"好"加进去 → 现在有"今天天气很好" → 预测下一个词：<b>结束符 EOS(92%)</b> → 停止生成</div></div>' +
-          '<div class="ld-arrow">↓</div>' +
-          '<div class="ld-step ld-final"><div class="ld-label">最终输出</div><div class="ld-content">✅ AI 回答：<b>"今天天气很好"</b>（整个过程在几毫秒内完成！如果继续写，还会生成"适合出门散步"等）</div></div>' +
-        '</div>' +
-      '</div>' +
-      /* Transformer 经典架构图（真实图片+详细解读） */
+      '<div class="llmx-bridge-wrap"><div class="llmx-bridge is-out">生成完成 ↓ 输出回答 ✅</div></div>' +
+      /* 跟着走一遍：把“今天天气很 → 今天天气很好”的完整生成过程做成可单步播放的演示 */
+      '<div id="llm-pipeline"></div>' +
+      
       '<div class="transformer-arch">' +
-        '<div class="ta-title">' + U.icon("network", 18) + ' 🏗️ Transformer 经典架构图（2017 年《Attention is All You Need》论文原图）</div>' +
-        '<div class="ta-desc">这就是所有大模型（GPT、豆包、DeepSeek）的基础架构！它由编码器（Encoder）和解码器（Decoder）两部分组成，核心是多头自注意力机制（Multi-Head Self-Attention）。下图是论文原图，我们来逐部分解读。</div>' +
+        '<div class="ta-title">' + U.icon("server", 18) + ' 🏗️ Transformer 经典架构图（2017 年《Attention is All You Need》）</div>' +
+        '<div class="ta-desc">这就是所有大模型（GPT、豆包、DeepSeek）的基础架构！它由编码器（Encoder）和解码器（Decoder）两部分组成，核心是多头自注意力机制（Multi-Head Self-Attention）。下图可切换<b>中文重绘版</b>与<b>论文英文原图</b>，右边按中文版逐部分解读。</div>' +
+        '<div class="ta-duo">' +
         '<div class="ta-image-wrap">' +
-          '<img src="images/transformer-architecture.png" alt="Transformer架构图" class="ta-image">' +
-          '<div class="ta-source">📷 图片来源：Vaswani et al., "Attention Is All You Need", NeurIPS 2017</div>' +
+          '<div class="ta-fig-switch" id="ta-fig-switch">' +
+            '<button class="ta-fig-btn is-on" data-fig="cn">中文重绘版</button>' +
+            '<button class="ta-fig-btn" data-fig="en">论文英文原图</button>' +
+          '</div>' +
+          '<img src="images/transformer-architecture.svg" alt="Transformer 经典架构图（中文重绘）" class="ta-image" id="ta-fig-img" title="点击放大查看">' +
+          '<div class="ta-source" id="ta-fig-src">📐 本教学系统重绘 · 结构依据 Vaswani et al., "Attention Is All You Need", NeurIPS 2017</div>' +
         '</div>' +
         '<div class="ta-explain">' +
-          '<div class="te-title">📖 逐部分解读这张架构图</div>' +
-          '<div class="te-grid">' +
-            '<div class="te-item"><div class="te-num">1</div><div class="te-content"><div class="te-name">输入嵌入 Input Embedding</div><div class="te-desc">把输入的文字（token）转换成向量表示，让计算机能理解文字的含义。意思相近的词，向量也相近。</div></div></div>' +
-            '<div class="te-item"><div class="te-num">2</div><div class="te-content"><div class="te-name">位置编码 Positional Encoding</div><div class="te-desc">Transformer 本身不知道词的顺序，需要额外加入位置信息（正弦/余弦函数），告诉 AI 哪个词在前、哪个在后。</div></div></div>' +
-            '<div class="te-item"><div class="te-num">3</div><div class="te-content"><div class="te-name">多头自注意力 Multi-Head Attention</div><div class="te-desc"><b>核心中的核心！</b>让 AI 同时从多个角度（多个头）关注句子中每个词和其他词的关系，理解上下文。就像多个老师同时读一篇文章，每个人关注不同的重点。</div></div></div>' +
-            '<div class="te-item"><div class="te-num">4</div><div class="te-content"><div class="te-name">Add &amp; Norm 残差连接+层归一化</div><div class="te-desc">把输入和输出加在一起（残差连接），再做归一化，让几十层的深度网络也能稳定训练，不会梯度消失。</div></div></div>' +
-            '<div class="te-item"><div class="te-num">5</div><div class="te-content"><div class="te-name">前馈神经网络 Feed Forward</div><div class="te-desc">对每个位置的向量做非线性变换，增强模型的表达能力。每个位置独立处理，但共享参数。</div></div></div>' +
-            '<div class="te-item"><div class="te-num">6</div><div class="te-content"><div class="te-name">N× 重复 N 层</div><div class="te-desc">以上结构（注意力+前馈）重复 N 层，原论文用 6 层，GPT-3 用了 96 层！层数越多理解越深，但计算量也越大。</div></div></div>' +
-            '<div class="te-item"><div class="te-num">7</div><div class="te-content"><div class="te-name">掩码注意力 Masked Multi-Head Attention</div><div class="te-desc">解码器专用！防止 AI 在预测时看到未来的词——就像考试时不能偷看后面的答案一样，确保生成是从左到右依次进行的。</div></div></div>' +
-            '<div class="te-item"><div class="te-num">8</div><div class="te-content"><div class="te-name">线性层+Softmax Linear + Softmax</div><div class="te-desc">最后把解码器的输出转换成词表中每个词的概率，选概率最高的那个作为下一个词。这就是"预测下一个词"的最后一步！</div></div></div>' +
+          '<div class="te-title">📖 逐部分解读这张架构图（点一条，展开详细解释）</div>' +
+          '<div class="tx-grid tx-ori" id="ori-tf-chips">' +
+            [
+              ['txt', '输入嵌入 Embedding', '文字 → 向量，近义词向量也相近',
+                '<p><b>一句话：</b>先把「字」换成一串数字，机器才算得动。</p>' +
+                '<p>机器不认识汉字，只认识数字。输入嵌入就是一本「字典」：每个字或词都对应一串固定长度的数字（原论文是 512 个），这串数字叫<b>向量</b>。而且这本字典不是人编的，是训练时自己「学」出来的——所以<b>意思相近的词，数字串也很像</b>：「猫」和「喵星人」的向量距离会非常近。</p>' +
+                '<p class="tx-eg"><b>打个比方：</b>像给每个词发一张身份证——号码不是随便编的，意思越近的词，号码越接近。机器只要比一比号码，就知道谁和谁是一伙的。</p>'],
+              ['ruler', '位置编码 Position', '告诉 AI 谁在前、谁在后',
+                '<p><b>一句话：</b>给每个词贴一个「座位号」，让 AI 知道顺序。</p>' +
+                '<p>自注意力是「同时看所有词」的，它天生<b>不知道谁先谁后</b>——「我打你」和「你打我」在它眼里一模一样。所以必须额外算出一个位置信号（用正弦、余弦函数生成，每个位置都不一样），把它和词的向量<b>加起来</b>，顺序信息就混进去一起算了。</p>' +
+                '<p class="tx-eg"><b>打个比方：</b>像教室点名，光看名单认不出谁坐第一排；给每人发一个座位号，队伍的顺序一下子就清楚了。</p>'],
+              ['eye', '多头自注意力', '把输入拆成 Q、K、V 三路，从多个角度理解上下文',
+                '<p><b>一句话：</b>让词和词互相对照、互相打分，句子里的关系就浮出来了。</p>' +
+                '<p>每个词都会发出三样东西：<b>Q（Query，我在找什么）</b>、<b>K（Key，我是什么）</b>、<b>V（Value，我有什么内容）</b>。拿自己的 Q 去和所有词的 K 配对打分，分高的就多吸收对方的 V——这就是「注意力」。「<b>多头</b>」是指同时开好几组（原论文 8 组）并行做：一组专盯「谁修饰谁」，一组专盯「前后指代」，最后把结果拼起来。</p>' +
+                '<p class="tx-eg"><b>打个比方：</b>像小组讨论，每人先写下「我想知道什么」（Q）、「我擅长什么」（K）、「我的观点」（V），再互相发言——谁跟我的问题最对得上，我就多听谁的。</p>'],
+              ['check', 'Add &amp; Norm', '残差 + 归一化，深层也稳定',
+                '<p><b>一句话：</b>把原来的输入加回来，再把数值拉回统一尺度，网络才训得动。</p>' +
+                '<p><b>Add（残差）</b>＝ 子层的输出 + 子层的输入。相当于「新学到的东西」叠在「原来的样子」上，好处是：即使这一层什么也没学会，结果也不会变差；梯度还能沿着这条「捷径」顺畅地往回传。<br><b>Norm（层归一化）</b>＝ 把每个词向量的数值重新调整到差不多的范围（均值 0、方差 1），避免层数一深、数值越堆越大导致训练发散。</p>' +
+                '<p class="tx-eg"><b>打个比方：</b>像改作文——在原稿上增删（Add），不是推倒重写；交稿前再统一格式（Norm），字号行距一致了，老师才看得下去。</p>'],
+              ['zap', '前馈网络 Feed Forward', '非线性变换，增强表达能力',
+                '<p><b>一句话：</b>让每个词自己「再深加工一遍」，补上非线性能力。</p>' +
+                '<p>分工是这样的：<b>注意力</b>负责「词和词之间交流」，<b>前馈网络</b>负责「每个词自己想清楚」——它对每个位置<b>单独</b>做同样的一套计算：先升维（如 512 → 2048）、过一层激活函数（ReLU / GELU）、再降回原维度。别小看它：如果没有这层非线性，整个模型就退化成加权平均，学不了复杂规律。</p>' +
+                '<p class="tx-eg"><b>打个比方：</b>小组讨论完（注意力），每个人回到座位整理笔记（前馈）：先摊开写一大堆（升维），再提炼成几条要点（降维）。</p>'],
+              ['box', 'N× 重复 N 层', '原论文 6 层，GPT-3 用到 96 层',
+                '<p><b>一句话：</b>同一套结构叠 N 遍，一层比一层抽象。</p>' +
+                '<p>图里灰色大框中的那一组「注意力 + 前馈网络」会被<b>重复 N 次</b>，上一层的输出就是下一层的输入。原论文 N=6；GPT-3 用了 96 层、1750 亿参数。层数越深，能捕捉的规律越抽象：浅层看词形、中层看句法、深层看语义。</p>' +
+                '<p class="tx-eg"><b>打个比方：</b>像同一篇文章读 N 遍——第一遍认字，第二遍理句，第三遍懂意思；每一遍都比上一遍更通透。</p>'],
+              ['lock', '掩码注意力 Masked', '解码器专用，不偷看未来',
+                '<p><b>一句话：</b>解码器只能看已经写出来的词，不许偷看后面。</p>' +
+                '<p>解码器的任务是「一个字一个字往后写」。如果它在算第 3 个字时能看见第 4、5 个字，就等于提前偷看答案了（训练时正确答案就摆在旁边）。所以要用一个<b>遮罩</b>把当前位置之后的词全部挡住：把那些位置的分数设成负无穷，再过 Softmax 权重就变成 0——想看得见也看不见。</p>' +
+                '<p class="tx-eg"><b>打个比方：</b>像考试时用纸挡住卷子下半部分——只能看已经做到的题，不能翻后面的答案。</p>'],
+              ['target', '线性层 + Softmax', '算出下一个词的概率',
+                '<p><b>一句话：</b>把最后的向量换算成「词表里每个词的概率」，挑最高的那个输出。</p>' +
+                '<p><b>线性层</b>把向量（如 512 维）投影成<b>词表大小</b>的一组分数（如 5 万个词各得一分）；<b>Softmax</b> 再把这些分数折算成概率——所有词加起来正好等于 1。概率最高的那个词，就是这一步生成的词。生成完把它接到输入末尾，再跑一遍整个流程，生成下一个词。</p>' +
+                '<p class="tx-eg"><b>打个比方：</b>像做选择题——线性层给每个选项打分，Softmax 把分数折成「正确率」，选正确率最高的那个交卷。</p>']
+            ].map(function (t) {
+              return '<div class="tx-item">' +
+                '<button type="button" class="tx-chip tx-chip-btn" aria-expanded="false">' +
+                  '<span class="tx-ico">' + U.icon(t[0], 18) + '</span>' +
+                  '<span class="tx-txt"><b>' + t[1] + '</b><i>' + t[2] + '</i></span>' +
+                  '<span class="tx-caret" aria-hidden="true"></span>' +
+                '</button>' +
+                '<div class="tx-detail">' + t[3] + '</div>' +
+              '</div>';
+            }).join("") +
           '</div>' +
-          '<div class="ta-key-points">' +
-            '<div class="tk-item"><b>🔑 核心：</b>自注意力机制让 AI 能理解上下文，这是 Transformer 比之前的 RNN/LSTM 强的关键原因——它能同时看到整个句子，而不是一个词一个词地记。</div>' +
-            '<div class="tk-item"><b>📊 规模参考：</b>GPT-3 有 96 层、96 个注意力头、1750 亿参数；GPT-4 估计超过 1 万亿参数！参数越多，模型能记住的规律越多。</div>' +
-            '<div class="tk-item"><b>💡 注意：</b>GPT 系列（包括豆包、DeepSeek）只用了解码器（Decoder）部分，去掉了编码器和交叉注意力，这叫"Decoder-only"架构，更适合文本生成。</div>' +
+          '<div class="tx-points">' +
+            '<div class="tx-point">' + U.icon("spark", 16) +
+              '<div class="tx-point-txt"><b>核心：</b>自注意力让 AI 同时看到整句，而不是逐词记忆。</div>' +
+            '</div>' +
+            '<div class="tx-point">' + U.icon("star", 16) +
+              '<div class="tx-point-txt"><b>规模：</b>GPT-3 —— 96 层、1750 亿参数。</div>' +
+            '</div>' +
+            '<div class="tx-point">' + U.icon("info", 16) +
+              '<div class="tx-point-txt"><b>注意：</b>GPT 系列只用解码器（Decoder-only），更适合文本生成。</div>' +
+            '</div>' +
           '</div>' +
         '</div>' +
+        '</div>' +
       '</div>' +
-      '<div class="gold-box">🧠 <b>关键概念：</b>大模型的本质是<b>预测下一个词</b>——它不是在思考答案，而是根据训练数据中学到的统计规律，预测下一个最可能出现的词。Transformer 架构（2017 年提出）是这一切的基础——通过注意力机制理解上下文，通过多层网络深度理解语义。但因为它读过海量文本（相当于读了几百万本书），所以预测得非常准！这就是为什么大模型看起来很聪明——它不是真的理解，而是统计规律的强大应用。（ai-agent-book chapter2 核心概念）</div>'
+      '<div class="tx-points">' +
+        '<div class="tx-point">' + U.icon("brain", 16) +
+          '<div class="tx-point-txt"><b>本质：</b>不是「思考答案」，而是按统计规律<b>预测下一个词</b>。</div>' +
+        '</div>' +
+        '<div class="tx-point">' + U.icon("server", 16) +
+          '<div class="tx-point-txt"><b>基础：</b>Transformer（2017）—— 注意力机制 + 多层网络。</div>' +
+        '</div>' +
+        '<div class="tx-point">' + U.icon("book", 16) +
+          '<div class="tx-point-txt"><b>为什么准：</b>读过海量文本，预测自然准。<code>ai-agent-book chapter2</code></div>' +
+        '</div>' +
+      '</div>'
     );
 
     /* ⑤ 图灵测试体验站（重新设计版） */
@@ -692,12 +845,12 @@ AgentLab.LabOrigin = (function () {
     }
     html += LP.card("ori", "⑤ 互动：图灵测试体验站——你能分辨哪个是 AI 吗？",
       td.intro,
-      turingHtml
+      turingHtml, { id: "ori-turing" }
     );
 
     /* ④ 聊天机器人 vs 智能体 */
     html += LP.card("ori", "⑥ 聊天机器人 vs 智能体：本质区别是什么？",
-      "很多人把聊天机器人和AI 智能体混为一谈，但它们有本质区别！看看下面的对比表。",
+      "聊天机器人和 AI 智能体有<b>本质区别</b>——看下面的对比表。",
       '<div class="compare-table">' +
         '<div class="ct-head"><div class="ct-dim">对比维度</div><div class="ct-chat">💬 聊天机器人</div><div class="ct-agent">🤖 AI 智能体</div></div>' +
         CHAT_VS_AGENT.map(function (c) {
@@ -708,91 +861,41 @@ AgentLab.LabOrigin = (function () {
           '</div>';
         }).join("") +
       '</div>' +
-      '<div class="gold-box">🎯 <b>一句话总结：</b>聊天机器人是会说话的 AI——你问它才答，只能用训练数据回答。AI 智能体是会做事的 AI——能理解目标、制定计划、调用工具、记住偏好、主动完成复杂任务。这门课学的就是后者！</div>'
+      '<div class="gold-box">🎯 <b>一句话总结：</b>聊天机器人是会说话的 AI——你问它才答，只能用训练数据回答。AI 智能体是会做事的 AI——能理解目标、制定计划、调用工具、记住偏好、主动完成复杂任务。这门课学的就是后者！</div>',
+      /* 稳定 id：供「本课学习地图」定位到这张卡（不占课次编号，也不影响渲染顺序） */
+      { id: "ori-vs" }
     );
 
     /* ⑦ AI 时代职业演变（优化版：四阶段） */
     html += LP.card("ori", "⑦ AI 时代职业演变：哪些职业消失了？哪些新职业出现了？未来还有什么？",
-      "技术进步总是在消灭旧职业的同时创造新职业。AI 时代也不例外——让我们看看职业世界的四阶段演变：已经消失的、正在消失的、正在兴起的、以及未来可能出现的。",
-      /* 顶部四阶段总览条 */
-      '<div class="jobs-overview">' +
-        '<div class="jo-stage jo-gone">' + U.icon("x", 14) + ' 已消失</div>' +
-        '<div class="jo-arrow">→</div>' +
-        '<div class="jo-stage jo-going">' + U.icon("alert", 14) + ' 正在消失</div>' +
-        '<div class="jo-arrow">→</div>' +
-        '<div class="jo-stage jo-new">' + U.icon("star", 14) + ' 正在兴起</div>' +
-        '<div class="jo-arrow">→</div>' +
-        '<div class="jo-stage jo-future">' + U.icon("rocket", 14) + ' 未来</div>' +
-      '</div>' +
-      /* 第一行：已消失 + 正在消失 */
-      '<div class="jobs-row">' +
-        '<div class="jobs-block jobs-block-gone">' +
-          '<div class="jb-head"><span class="jb-icon jb-icon-gone">' + U.icon("x", 16) + '</span><span class="jb-title">已经被技术淘汰的职业</span><span class="jb-count">' + JOBS_DATA.disappeared.length + ' 个</span></div>' +
-          '<div class="jb-desc">这些职业曾经很常见，但因为技术进步已经消失或几乎消失了。每一次技术革命都会带走一些职业。</div>' +
-          '<div class="job-grid job-grid-gone">' +
-            JOBS_DATA.disappeared.map(function (j) {
-              return '<div class="job-card job-card-gone">' +
-                '<div class="job-icon job-icon-gone">' + U.icon(j.icon || "clock", 24) + '</div>' +
-                '<div class="job-title">' + j.name + '</div>' +
-                '<div class="job-desc">' + j.reason + '</div>' +
-                '<div class="job-tag job-tag-gone">📅 消失于 ' + j.era + '</div>' +
-              '</div>';
-            }).join("") +
-          '</div>' +
+      "技术进步总是在消灭旧职业的同时创造新职业。AI 时代也不例外——下面把职业世界分成四个阶段，点一个阶段，看看那个阶段的职业变化。",
+      '<div class="stage-tabs" id="jobs-tabs">' +
+        JOBS_STAGES.map(function (st, i) {
+          return '<button class="stage-tab st-' + st.color + (i === 0 ? " is-on" : "") + '" data-i="' + i + '">' +
+            '<span class="stt-icon">' + U.icon(st.icon, 16) + "</span>" +
+            '<span class="stt-text"><span class="stt-name">' + st.name + '</span>' +
+            '<span class="stt-count">' + JOBS_DATA[st.key].length + ' 个职业</span></span>' +
+          "</button>";
+        }).join("") +
+      "</div>" +
+      '<div class="stage-panel" id="jobs-panel"></div>' +
+      '<div class="tx-points">' +
+        '<div class="tx-point">' + U.icon("refresh", 16) +
+          '<div class="tx-point-txt"><b>核心规律：</b>新技术消灭旧职业，也会创造新职业（汽车 → 司机、汽修、交警）。</div>' +
         '</div>' +
-        '<div class="jobs-block jobs-block-going">' +
-          '<div class="jb-head"><span class="jb-icon jb-icon-going">' + U.icon("alert", 16) + '</span><span class="jb-title">正在被 AI 淘汰的职业</span><span class="jb-count">' + JOBS_DATA.disappearing.length + ' 个</span></div>' +
-          '<div class="jb-desc">这些职业正在被 AI 自动化，未来 5-10 年可能大幅减少。但不是完全消失——而是需要升级技能，和 AI 协作。</div>' +
-          '<div class="job-grid job-grid-going">' +
-            JOBS_DATA.disappearing.map(function (j) {
-              return '<div class="job-card job-card-going">' +
-                '<div class="job-icon job-icon-going">' + U.icon(j.icon || "alert", 24) + '</div>' +
-                '<div class="job-title">' + j.name + '</div>' +
-                '<div class="job-desc">' + j.reason + '</div>' +
-                '<div class="job-tag job-tag-risk job-tag-risk-' + j.risk + '">⚠️ ' + j.risk + '风险</div>' +
-              '</div>';
-            }).join("") +
-          '</div>' +
+        '<div class="tx-point">' + U.icon("brain", 16) +
+          '<div class="tx-point-txt"><b>AI 也一样：</b>淘汰重复性工作，创造需要创造力与情感的新职业。</div>' +
         '</div>' +
-      '</div>' +
-      /* 第二行：正在兴起 + 未来 */
-      '<div class="jobs-row">' +
-        '<div class="jobs-block jobs-block-new">' +
-          '<div class="jb-head"><span class="jb-icon jb-icon-new">' + U.icon("star", 16) + '</span><span class="jb-title">AI 产生的新职业（正在兴起）</span><span class="jb-count">' + JOBS_DATA.emerging.length + ' 个</span></div>' +
-          '<div class="jb-desc">这些职业因为 AI 的发展而出现，正在快速增长。它们的共同点是：都需要和 AI 协作——要么教 AI、要么用 AI、要么管 AI。</div>' +
-          '<div class="job-grid">' +
-            JOBS_DATA.emerging.map(function (j) {
-              return '<div class="job-card">' +
-                '<div class="job-icon">' + U.icon(j.icon, 24) + '</div>' +
-                '<div class="job-title">' + j.title + '</div>' +
-                '<div class="job-desc">' + j.desc + '</div>' +
-                '<div class="job-salary">💰 ' + j.salary + '</div>' +
-              '</div>';
-            }).join("") +
-          '</div>' +
+        '<div class="tx-point">' + U.icon("target", 16) +
+          '<div class="tx-point-txt"><b>记住：</b>不是 AI 取代人，而是会用 AI 的人取代不会用的人——保持学习、拥抱变化。</div>' +
         '</div>' +
-        '<div class="jobs-block jobs-block-future">' +
-          '<div class="jb-head"><span class="jb-icon jb-icon-future">' + U.icon("rocket", 16) + '</span><span class="jb-title">未来可能出现的新职业</span><span class="jb-count">' + JOBS_DATA.future.length + ' 个</span></div>' +
-          '<div class="jb-desc">这些职业目前还很少或不存在，但随着 AI 技术的进一步发展，未来 10-20 年可能出现。你愿意成为这些职业的开创者吗？</div>' +
-          '<div class="job-grid job-grid-future">' +
-            JOBS_DATA.future.map(function (j) {
-              return '<div class="job-card job-card-future">' +
-                '<div class="job-icon job-icon-future">' + U.icon(j.icon || "rocket", 24) + '</div>' +
-                '<div class="job-title">' + j.name + '</div>' +
-                '<div class="job-desc">' + j.desc + '</div>' +
-                '<div class="job-tag job-tag-future">🚀 未来职业</div>' +
-              '</div>';
-            }).join("") +
-          '</div>' +
-        '</div>' +
-      '</div>' +
-      '<div class="gold-box">🌟 <b>核心规律：</b>技术革命总是在消灭旧职业的同时创造新职业——汽车消灭了马车夫，但创造了司机、汽修工、加油站工人、交警等无数新职业。AI 也一样：它会淘汰重复性、规律性的工作，但会创造更多需要创造力、情感、道德判断和跨领域整合的新职业。<b>AI 时代，不是 AI 取代人，而是会用 AI 的人取代不会用 AI 的人。</b>关键是：保持学习、拥抱变化、发展 AI 替代不了的能力！你准备好成为 AI 时代的创造者了吗？</div>'
+      '</div>'
     );
 
     /* ⑦ AI 伦理小讨论 */
     html += LP.card("ori", "⑧ AI 伦理小讨论：AI 带来了哪些挑战？",
       "AI 很强大，但强大的技术也带来了很多伦理问题。和小组同学讨论下面这些问题，说说你的看法！",
-      '<div class="ethics-list">' +
+      '<div class="ethics-list" id="ori-ethics">' +
         ETHICS_DISCUSS.map(function (e, i) {
           return '<div class="ethics-item">' +
             '<div class="ethics-num">' + (i + 1) + '</div>' +
@@ -809,159 +912,207 @@ AgentLab.LabOrigin = (function () {
     /* ⑩ 人类该如何面对 AI */
     html += LP.card("ori", "⑨ 深度思考：当 AI 似乎无所不能，我们作为人类该如何面对？",
       FACE_AI.intro,
-      '<div class="face-cases">' +
-        FACE_AI.cases.map(function (c, i) {
-          return '<div class="face-case">' +
-            '<div class="fc-head"><span class="fc-num">' + (i + 1) + '</span><span class="fc-icon">' + U.icon(c.icon, 18) + '</span><span class="fc-title">' + c.title + '</span><span class="fc-field">' + c.field + '</span></div>' +
-            '<div class="fc-desc">' + c.desc + '</div>' +
-            '<div class="fc-dilemma"><b>⚡ 困境与思考：</b>' + c.dilemma + '</div>' +
-            '<div class="fc-think">💭 <b>想一想：</b>' + c.think + '</div>' +
-          '</div>';
-        }).join("") +
-      '</div>' +
-      '<div class="face-summary">' +
-        '<div class="fs-col">' +
-          '<div class="fs-title">🌟 AI 替代不了的人类能力</div>' +
-          '<div class="fs-list">' + FACE_AI.irreplaceable.map(function (x) { return '<div class="fs-item">• ' + x + '</div>'; }).join("") + '</div>' +
+      '<div class="case-acc">' +
+        '<div class="era-row case-row">' +
+          FACE_AI.cases.map(function (c, i) {
+            return '<button class="case-chip' + (i === 0 ? " is-on" : "") + '" data-i="' + i + '">' +
+              '<span class="cc-icon">' + U.icon(c.icon, 20) + "</span>" +
+              '<span class="cc-text"><span class="cc-meta">案例 ' + (i + 1) + " · " + c.field + '</span><span class="cc-title">' + c.title + "</span></span>" +
+            "</button>";
+          }).join("") +
+        "</div>" +
+        '<div class="case-detail" id="face-detail"></div>' +
+      "</div>" +
+
+      '<div class="fsx-cols">' +
+
+        '<div class="fsx-col fsx-ability">' +
+          '<div class="fsx-title">' + U.icon("star", 16) + ' AI 替代不了的人类能力</div>' +
+          '<div class="fsx-list">' +
+            FACE_AI.irreplaceable.map(function (x) {
+              return '<div class="fsx-chip">' +
+                '<span class="fsc-ico">' + U.icon(x.icon, 15) + '</span>' +
+                '<span class="fsc-txt"><b>' + x.t + '</b><i>' + x.d + '</i></span>' +
+              '</div>';
+            }).join("") +
+          '</div>' +
         '</div>' +
-        '<div class="fs-col">' +
-          '<div class="fs-title">🎯 我们的应对策略</div>' +
-          '<div class="fs-list">' + FACE_AI.strategy.map(function (x) { return '<div class="fs-item">• ' + x + '</div>'; }).join("") + '</div>' +
+
+        '<div class="fsx-col fsx-plan">' +
+          '<div class="fsx-title">' + U.icon("target", 16) + ' 我们的应对策略</div>' +
+          '<div class="fsx-list">' +
+            FACE_AI.strategy.map(function (x) {
+              return '<div class="fsx-chip">' +
+                '<span class="fsc-ico">' + U.icon(x.icon, 15) + '</span>' +
+                '<span class="fsc-txt"><b>' + x.t + '</b><i>' + x.d + '</i></span>' +
+              '</div>';
+            }).join("") +
+          '</div>' +
         '</div>' +
+
       '</div>' +
-      '<div class="gold-box">🌱 <b>核心观点：</b>AI 时代，不是 AI 取代人，而是会用 AI 的人取代不会用 AI 的人。AI 是工具，就像火、电、互联网一样——它能放大人类的能力，但不能替代人类的本质。真正的竞争力不在于和 AI 比谁更强，而在于如何用 AI 让自己变得更强。保持学习、保持好奇、保持人文关怀——这是 AI 时代最珍贵的人类品质！</div>'
+      '<div class="tx-points">' +
+        '<div class="tx-point">' + U.icon("target", 16) +
+          '<div class="tx-point-txt"><b>核心观点：</b>不是 AI 取代人，而是会用 AI 的人取代不会用的人。</div>' +
+        '</div>' +
+        '<div class="tx-point">' + U.icon("gear", 16) +
+          '<div class="tx-point-txt"><b>AI 是工具：</b>像火、电、互联网——放大能力，不替代本质。</div>' +
+        '</div>' +
+        '<div class="tx-point">' + U.icon("heart", 16) +
+          '<div class="tx-point-txt"><b>竞争力：</b>用 AI 让自己变强——保持学习、好奇与人文关怀。</div>' +
+        '</div>' +
+      '</div>'
     );
 
     /* ===== L02 区域标题 ===== */
     html += '<div class="lesson-divider"><span class="ld-num">L02</span><span class="ld-title">身边的智能体</span><span class="ld-desc">AI 智能体已经在我们身边——6 大领域、推荐算法、信息茧房、能力边界</span></div>';
 
-    /* ⑧ 6 大领域智能体案例 */
+    /* ⑧ 6 大领域智能体案例（图标化重排：代表产品 → 胶囊标签） */
     html += LP.card("ori", "⑩ 6 大领域智能体案例：AI 已经无处不在！",
       "AI 智能体已经渗透到我们生活的方方面面。看看下面 6 大领域的智能体案例，你用过哪些？",
-      '<div class="domain-grid">' +
+      '<div class="dcx-grid">' +
         DOMAIN_CASES.map(function (d) {
-          return '<div class="domain-card dc-' + d.color + '">' +
-            '<div class="dc-head">' + U.icon(d.icon, 22) + ' ' + d.title + '</div>' +
-            '<div class="dc-products"><b>代表产品：</b>' + d.products + '</div>' +
-            '<div class="dc-example"><b>具体例子：</b>' + d.example + '</div>' +
-            '<div class="dc-ability"><b>核心能力：</b>' + d.ability + '</div>' +
+          return '<div class="dcx-card dc-' + d.color + '">' +
+            '<div class="dcx-head">' +
+              '<span class="dcx-ico">' + U.icon(d.icon, 20) + '</span>' +
+              '<span class="dcx-name">' + d.title + '</span>' +
+            '</div>' +
+            '<div class="dcx-pills">' +
+              d.products.split("、").map(function (p) { return '<span class="dcx-pill">' + p + '</span>'; }).join("") +
+            '</div>' +
+            '<div class="dcx-row"><span class="dcx-k">' + U.icon("spark", 13) + '例如</span><span class="dcx-v">' + d.example + '</span></div>' +
+            '<div class="dcx-row"><span class="dcx-k">' + U.icon("gear", 13) + '能做什么</span><span class="dcx-v">' + d.ability + '</span></div>' +
           '</div>';
         }).join("") +
       '</div>' +
-      '<div class="gold-box">🌍 <b>想一想：</b>这 6 大领域中，你接触最多的是哪个？你还能想到 AI 在其他领域的应用吗？（比如金融、交通、军事、环保……）AI 正在改变每一个行业！</div>'
+      '<div class="gold-box">🌍 <b>想一想：</b>这 6 大领域中，你接触最多的是哪个？你还能想到 AI 在其他领域的应用吗？（比如金融、交通、军事、环保……）AI 正在改变每一个行业！</div>',
+      { id: "ori-domains" }
     );
 
-    /* ⑪ AI 产品全景 */
+    /* ⑪ AI 产品全景（图标头像 + 短句卡片） */
     html += LP.card("ori", "⑪ AI 产品全景：你身边的 AI 们——6 大类、20+ 款产品",
-      "AI 产品已经无处不在！看看下面 6 大类 AI 产品，你用过哪些？每款产品都有它的特点和适用场景。",
-      '<div class="product-categories">' +
+      "AI 产品已经无处不在！看看下面 6 大类 AI 产品，你用过哪些？",
+      '<div class="pcx-list" id="ori-products">' +
         AI_PRODUCTS.map(function (cat) {
-          return '<div class="prod-cat pc-' + cat.color + '">' +
-            '<div class="pcat-head">' + U.icon(cat.icon, 20) + ' <b>' + cat.category + '</b></div>' +
-            '<div class="pcat-desc">' + cat.desc + '</div>' +
-            '<div class="pcat-grid">' +
+          return '<div class="pcx-cat pc-' + cat.color + '">' +
+            '<div class="pcx-head">' +
+              '<span class="pcx-ico">' + U.icon(cat.icon, 19) + '</span>' +
+              '<span class="pcx-txt"><b>' + cat.category + '</b><span>' + cat.desc + '</span></span>' +
+            '</div>' +
+            '<div class="pcx-grid">' +
               cat.products.map(function (p) {
-                return '<div class="prod-card">' +
-                  '<div class="prod-name">' + p.name + '</div>' +
-                  '<div class="prod-company">' + p.company + '</div>' +
-                  '<div class="prod-feature">' + p.feature + '</div>' +
+                return '<div class="pcx-card">' +
+                  '<span class="pcx-ava">' + p.name.charAt(0) + '</span>' +
+                  '<span class="pcx-info">' +
+                    '<span class="pcx-line"><b>' + p.name + '</b><span class="pcx-co">' + p.company + '</span></span>' +
+                    '<span class="pcx-feat">' + p.feature + '</span>' +
+                  '</span>' +
                 '</div>';
               }).join("") +
             '</div>' +
           '</div>';
         }).join("") +
       '</div>' +
-      '<div class="gold-box">🌍 <b>想一想：</b>这 6 大类 AI 产品中，你最常用的是哪一类？你还能想到其他 AI 产品吗？AI 产品的发展趋势是什么？（提示：从单模态到多模态、从被动回答到主动做事、从通用到垂直领域）。国产 AI 正在快速崛起——豆包、DeepSeek、Kimi、CodeBuddy 等产品已经达到国际先进水平！</div>'
+      '<div class="tx-points">' +
+        '<div class="tx-point">' + U.icon("search", 16) +
+          '<div class="tx-point-txt"><b>想一想：</b>你最常用哪一类 AI 产品？还能想到哪些？</div>' +
+        '</div>' +
+        '<div class="tx-point">' + U.icon("target", 16) +
+          '<div class="tx-point-txt"><b>趋势：</b>单模态 → 多模态，被动回答 → 主动做事，通用 → 垂直。</div>' +
+        '</div>' +
+        '<div class="tx-point">' + U.icon("star", 16) +
+          '<div class="tx-point-txt"><b>国产崛起：</b>豆包、DeepSeek、Kimi、CodeBuddy 已达国际先进水平。</div>' +
+        '</div>' +
+      '</div>'
     );
 
-    /* ⑫ AI 四代进化 */
+    /* ⑫ AI 四代进化（统一紫色系：L1→L4 靠编号与图标区分，不靠颜色） */
     html += LP.card("ori", "⑫ 从聊天机器人到智能体：AI 的四代进化——能力是怎么一步步增强的？",
-      "AI 不是一步到位的——它经历了四代进化！每一代都比上一代能力更强。看看下面的四代对比，理解 AI 是怎么从会说话进化到会做事的。这是 ai-agent-book 的核心脉络！",
-      '<div class="evolution-timeline">' +
-        AI_EVOLUTION.map(function (e) {
-          return '<div class="evo-card evo-' + e.level.toLowerCase() + '">' +
-            '<div class="evo-level">' + e.level + '</div>' +
-            '<div class="evo-icon">' + U.icon(e.icon, 22) + '</div>' +
-            '<div class="evo-title">' + e.title + '</div>' +
-            '<div class="evo-era">' + e.era + '</div>' +
-            '<div class="evo-ability"><b>能力：</b>' + e.ability + '</div>' +
-            '<div class="evo-examples"><b>代表产品：</b>' + e.examples.join('、') + '</div>' +
-            '<div class="evo-tech"><b>核心技术：</b>' + e.tech + '</div>' +
-            '<div class="evo-limit"><b>能力边界：</b>' + e.limit + '</div>' +
+      "AI 不是一步到位的——从会说话到会做事，经历了<b>四代进化</b>。四张卡看懂：每一代强在哪、还差什么。",
+      '<div class="evx-grid" id="ori-generations">' +
+        AI_EVOLUTION.map(function (e, i) {
+          return '<div class="evx-card evx-' + e.level.toLowerCase() + '" style="--i:' + i + '">' +
+            '<div class="evx-head">' +
+              '<span class="evx-level">' + e.level + '</span>' +
+              '<span class="evx-ico">' + U.icon(e.icon, 19) + '</span>' +
+            '</div>' +
+            '<div class="evx-title">' + e.title + '</div>' +
+            '<div class="evx-era">' + e.era + '</div>' +
+            '<div class="evx-ability">' + e.ability + '</div>' +
+            '<div class="evx-meta"><span class="evx-k">' + U.icon("star", 12) + '代表</span><span class="evx-v">' + e.examples.join('、') + '</span></div>' +
+            '<div class="evx-meta"><span class="evx-k">' + U.icon("cog", 12) + '靠什么</span><span class="evx-v">' + e.tech + '</span></div>' +
+            '<div class="evx-meta"><span class="evx-k">' + U.icon("alert", 12) + '还不会</span><span class="evx-v">' + e.limit + '</span></div>' +
           '</div>';
         }).join("") +
       '</div>' +
-      '<div class="gold-box">🚀 <b>进化规律：</b>L1（会回答）→ L2（会对话）→ L3（会用工具）→ L4（会自主做事）。每一代的突破都来自技术创新：L2 来自大语言模型（Transformer），L3 来自 Function Calling（函数调用），L4 来自四大组件协同（感知器+规划器+记忆器+执行器）。我们这门课学的就是 L4——AI 智能体的内部架构！下节课（L03 总装图）我们将深入学习四大组件是怎么协同工作的。</div>'
+      '<div class="tx-points">' +
+        '<div class="tx-point">' + U.icon("rocket", 16) +
+          '<div class="tx-point-txt"><b>进化规律：</b>L1 会回答 → L2 会对话 → L3 会用工具 → L4 会自主做事。</div>' +
+        '</div>' +
+        '<div class="tx-point">' + U.icon("zap", 16) +
+          '<div class="tx-point-txt"><b>突破来源：</b>L2 大语言模型 · L3 函数调用 · L4 四大组件协同。</div>' +
+        '</div>' +
+        '<div class="tx-point">' + U.icon("book", 16) +
+          '<div class="tx-point-txt"><b>本课学 L4：</b>AI 智能体的内部架构，下节看四大组件如何协同。</div>' +
+        '</div>' +
+      '</div>'
     );
 
-    /* ⑩ 推荐算法原理 */
-    html += LP.card("ori", "⑬ 推荐算法原理：协同过滤——AI 怎么知道你喜欢什么？",
-      "你有没有想过：视频网站、音乐 APP、外卖平台，怎么知道你喜欢什么？它们用的就是推荐算法。最经典的推荐算法叫<b>协同过滤（Collaborative Filtering）</b>——核心思想是物以类聚，人以群分。看看下面的例子！",
-      '<div class="rec-demo">' +
-        '<div class="rec-title">📊 三个人对五部电影的评分（1-5 分）</div>' +
-        '<div class="rec-table">' +
-          '<div class="rec-row rec-head"><div class="rec-cell">用户</div>' +
-            REC_DATA.items.map(function (it) { return '<div class="rec-cell">' + it + '</div>'; }).join("") +
-          '</div>' +
-          REC_DATA.users.map(function (u) {
-            return '<div class="rec-row"><div class="rec-cell rec-user">' + u + (u === REC_DATA.target ? ' ⭐' : '') + '</div>' +
-              REC_DATA.items.map(function (it) {
-                var r = REC_DATA.ratings[u][it];
-                var cls = r >= 4 ? 'rec-high' : (r <= 2 ? 'rec-low' : 'rec-mid');
-                return '<div class="rec-cell ' + cls + '">' + r + '</div>';
-              }).join("") +
-            '</div>';
-          }).join("") +
-        '</div>' +
-        '<div class="rec-analysis">' +
-          '<div class="ra-step"><b>第一步：找相似的人</b><br>小明和小红都喜欢《星际穿越》《流浪地球》（都打了 4-5 分），都不喜欢《情书》（都打了 1-2 分）→ 小明和小红品味相似！</div>' +
-          '<div class="ra-step"><b>第二步：看相似的人喜欢什么</b><br>小红给《泰坦尼克号》打了 3 分，给《复仇者联盟》打了 3 分→ 这些小明也可能觉得一般。</div>' +
-          '<div class="ra-step"><b>第三步：推荐</b><br>小明喜欢科幻片（《星际穿越》《流浪地球》都打 5 分）→ 推荐其他科幻片！<br><b>推荐结果：' + REC_DATA.recommend + '</b></div>' +
-        '</div>' +
+    /* ⑬ 身边的“隐形智能体”：推荐系统（L02 桥接卡：⑫ 四代进化 → ⑭ 能力圈）
+     * 定位：用学生每天接触的推荐系统落“身边的智能体”（观察→猜你→推荐），
+     *       再用它的坑（茧房/隐私）引出“智能体有边界”。
+     * 视觉：§17 rs-* 图标卡——三步卡（语义色徽章）/ 两坑卡 / 三招卡，短句化。 */
+    html += LP.card("ori", "⑬ 身边的“隐形智能体”：推荐系统——它怎么猜你？又有什么坑？",
+      "刷视频停不下来、购物 APP 总猜中你想买什么——因为你身边有个<b>隐形智能体：推荐系统</b>。三步看懂它怎么猜你，再看它的两个坑。",
+      /* 一区：它怎么猜你——三步卡 */
+      '<div class="rs-sec" id="ori-rec"><span class="rs-sec-ico">' + U.icon("cog", 15) + '</span>它怎么猜你——三步</div>' +
+      '<div class="rs-steps">' +
+        REC_STEPS.map(function (s, i) {
+          return '<div class="rs-step">' +
+            '<div class="rs-ico">' + U.icon(s.icon, 22) + '</div>' +
+            '<div class="rs-kicker">第 ' + (i + 1) + ' 步</div>' +
+            '<div class="rs-name">' + s.name + '</div>' +
+            '<div class="rs-text">' + s.text + '</div>' +
+            '<div class="rs-tag">' + s.tag + '</div>' +
+          '</div>';
+        }).join("") +
       '</div>' +
-      '<div class="gold-box">🎯 <b>协同过滤的核心：</b>和你喜欢同样东西的人，喜欢的其他东西你也大概率喜欢。这就是为什么你在淘宝看了一双鞋，之后到处都能看到鞋的广告——算法记住了你的喜好，并据此推荐！</div>'
-    );
-
-    /* ⑪ 信息茧房与隐私保护 */
-    html += LP.card("ori", "⑭ 信息茧房与隐私保护：推荐算法的另一面",
-      "推荐算法很方便——它能帮你找到喜欢的内容。但它也有另一面——信息茧房和隐私问题。看看下面这些案例，思考推荐算法带来的挑战。",
-      '<div class="cocoon-list">' +
-        COCOON_CASES.map(function (c, i) {
-          return '<div class="cocoon-item">' +
-            '<div class="cocoon-num">' + (i + 1) + '</div>' +
-            '<div class="cocoon-content">' +
-              '<div class="cocoon-title">' + c.title + '</div>' +
-              '<div class="cocoon-desc">' + c.desc + '</div>' +
+      /* 二区：它的另一面——两坑卡 */
+      '<div class="rs-sec"><span class="rs-sec-ico">' + U.icon("alert", 15) + '</span>它的另一面——两个坑</div>' +
+      '<div class="rs-pits">' +
+        REC_PITS.map(function (p) {
+          return '<div class="rs-pit">' +
+            '<div class="rs-pit-ico">' + U.icon(p.icon, 19) + '</div>' +
+            '<div class="rs-pit-body">' +
+              '<div class="rs-pit-title">' + p.title + '</div>' +
+              '<div class="rs-pit-text">' + p.text + '</div>' +
             '</div>' +
           '</div>';
         }).join("") +
       '</div>' +
-      '<div class="privacy-tips">' +
-        '<div class="pt-title">🛡️ 保护自己的 5 个方法</div>' +
-        '<div class="pt-grid">' +
-          '<div class="pt-item">1. 不随便告诉 AI 你的密码、身份证号、家庭住址</div>' +
-          '<div class="pt-item">2. 定期清理 APP 的缓存和历史记录</div>' +
-          '<div class="pt-item">3. 仔细阅读 APP 的隐私政策，知道它收集了什么数据</div>' +
-          '<div class="pt-item">4. 主动搜索不同观点的内容，打破信息茧房</div>' +
-          '<div class="pt-item">5. 控制使用时间，不要被算法绑架——放下手机，看看真实世界！</div>' +
-        '</div>' +
+      /* 三区：做有意识的用户——三招卡 */
+      '<div class="rs-sec"><span class="rs-sec-ico">' + U.icon("shield", 15) + '</span>做有意识的用户——3 件事</div>' +
+      '<div class="rs-tips">' +
+        REC_TIPS.map(function (t) {
+          return '<div class="rs-tip">' + U.icon(t.icon, 16) + '<span>' + t.text + '</span></div>';
+        }).join("") +
       '</div>' +
-      '<div class="gold-box">⚖️ <b>记住：</b>技术本身没有好坏，关键在于怎么用。推荐算法可以帮你发现喜欢的内容，但也可能让你陷入信息茧房。做一个有意识的用户——知道算法在做什么，主动控制自己的信息摄入，保护好自己的隐私！</div>'
+      '<div class="gold-box">⚖️ <b>记住：</b>技术没有好坏，关键在用的人。知道算法在做什么，你才不会被它牵着走！</div>'
     );
 
     /* ⑫ 智能体能力圈拼图游戏 */
     var ag = ABILITY_GAME[gameState.abilityIdx];
-    html += LP.card("ori", "⑮ 游戏：智能体能力圈——它能做什么？不能做什么？",
-      "每个智能体都有自己的能力圈——能做什么、不能做什么。了解能力圈，才能正确使用智能体，不高估也不低估。下面这个智能体，哪些是它能做的？哪些是它不能做的？点击分类！",
+    html += LP.card("ori", "⑭ 游戏：智能体能力圈——它能做什么？不能做什么？",
+      "能做什么、不能做什么——这就是<b>能力圈</b>。用下面的按钮切换 3 个智能体，想一想：它为什么做不到？",
       '<div class="ability-agent">' + U.icon("robot", 24) + ' <b>' + ag.agent + '</b></div>' +
       '<div class="ability-columns">' +
         '<div class="ability-col ac-can">' +
-          '<div class="ac-title">✅ 能做的</div>' +
-          ag.can.map(function (c, i) { return '<div class="ac-item">' + c + '</div>'; }).join("") +
+          '<div class="ac-title"><span class="ac-tbadge">' + U.icon("check", 14) + '</span>能做的</div>' +
+          ag.can.map(function (c) { return '<div class="ac-item">' + U.icon("check", 13) + '<span>' + c + '</span></div>'; }).join("") +
         '</div>' +
         '<div class="ability-col ac-cannot">' +
-          '<div class="ac-title">❌ 不能做的</div>' +
-          ag.cannot.map(function (c, i) { return '<div class="ac-item">' + c + '</div>'; }).join("") +
+          '<div class="ac-title"><span class="ac-tbadge">' + U.icon("xmark", 13) + '</span>不能做的</div>' +
+          ag.cannot.map(function (c) { return '<div class="ac-item">' + U.icon("xmark", 13) + '<span>' + c + '</span></div>'; }).join("") +
         '</div>' +
       '</div>' +
       '<div class="ability-actions">' +
@@ -969,86 +1120,453 @@ AgentLab.LabOrigin = (function () {
         '<span class="ability-hint">第 ' + (gameState.abilityIdx + 1) + ' / ' + ABILITY_GAME.length + ' 个智能体</span>' +
         '<button class="btn btn-ori btn-sm" id="ability-next">下一个 →</button>' +
       '</div>' +
-      '<div class="gold-box">🎯 <b>想一想：</b>为什么这些是它不能做的？（提示：观察空间限制——它看不到你的真实情绪；动作空间限制——它没有对应的工具；本质限制——AI 没有真正的意识和情感）。了解智能体的能力圈，你就能正确使用它——让它做它擅长的，不指望它做它做不到的！</div>'
+      '<div class="tx-points">' +
+        '<div class="tx-point">' + U.icon("search", 16) +
+          '<div class="tx-point-txt"><b>想一想：</b>为什么它做不到？—— 观察不到 · 没有工具 · 没有意识。</div>' +
+        '</div>' +
+        '<div class="tx-point">' + U.icon("target", 16) +
+          '<div class="tx-point-txt"><b>结论：</b>了解能力圈，让它做擅长的，别指望它做不到的。</div>' +
+        '</div>' +
+      '</div>'
     );
 
     /* ⑲ AI 有意识吗？会取代人类吗？ */
-    html += LP.card("ori", "⑯ 终极思辨：AI 有意识吗？会取代人类吗？——科幻、预言与现实",
+    html += LP.card("ori", "⑮ 终极思辨：AI 有意识吗？会取代人类吗？——科幻、预言与现实",
       AI_CONSCIOUSNESS.intro,
-      '<div class="consciousness-section">' +
-        '<div class="cs-subtitle">🎬 科幻电影中的 AI——人类对 AI 的想象和恐惧</div>' +
-        '<div class="movie-grid">' +
-          AI_CONSCIOUSNESS.movies.map(function (m) {
-            return '<div class="movie-card">' +
-              '<div class="mc-head">' + U.icon(m.icon, 16) + ' <b>' + m.name + '</b><span class="mc-year">' + m.year + '</span></div>' +
-              '<div class="mc-plot">' + m.plot + '</div>' +
-              '<div class="mc-lesson">💡 ' + m.lesson + '</div>' +
-            '</div>';
+      '<div class="stage-tabs think-tabs" id="think-tabs">' +
+        [[ "movie", "img", "电影里的 AI", AI_CONSCIOUSNESS.movies.length ],
+          [ "pred", "chat", "名人的预言", AI_CONSCIOUSNESS.predictions.length ],
+          [ "real", "brain", "科学现实", 3 ]].map(function (b, i) {
+            return '<button class="stage-tab ttab-' + b[0] + (i === 0 ? " is-on" : "") + '" data-i="' + i + '">' +
+              '<span class="stt-icon">' + U.icon(b[1], 16) + "</span>" +
+              '<span class="stt-text"><span class="stt-name">' + b[2] + '</span><span class="stt-count">' + b[3] + " 条</span></span>" +
+            "</button>";
           }).join("") +
-        '</div>' +
-      '</div>' +
-      '<div class="consciousness-section">' +
-        '<div class="cs-subtitle">🗣️ 名人预言——他们怎么看 AI 的未来？</div>' +
-        '<div class="prediction-list">' +
-          AI_CONSCIOUSNESS.predictions.map(function (p) {
-            return '<div class="pred-card">' +
-              '<div class="pc-person"><b>' + p.person + '</b><span class="pc-role">' + p.role + '</span></div>' +
-              '<div class="pc-quote">「' + p.quote + '」</div>' +
-              '<div class="pc-stance">立场：' + p.stance + '</div>' +
-            '</div>';
-          }).join("") +
-        '</div>' +
-      '</div>' +
-      '<div class="consciousness-section">' +
-        '<div class="cs-subtitle">🔬 科学现实——基于当前技术的理性分析</div>' +
-        '<div class="reality-grid">' +
-          '<div class="reality-card">' +
-            '<div class="rc-q">AI 有意识吗？</div>' +
-            '<div class="rc-a"><b>' + AI_CONSCIOUSNESS.reality.has_consciousness.answer + '</b></div>' +
-            '<div class="rc-detail">' + AI_CONSCIOUSNESS.reality.has_consciousness.detail + '</div>' +
-          '</div>' +
-          '<div class="reality-card">' +
-            '<div class="rc-q">AI 会取代人类吗？</div>' +
-            '<div class="rc-a"><b>' + AI_CONSCIOUSNESS.reality.will_replace.answer + '</b></div>' +
-            '<div class="rc-detail">' + AI_CONSCIOUSNESS.reality.will_replace.detail + '</div>' +
-          '</div>' +
-          '<div class="reality-card">' +
-            '<div class="rc-q">我们该担心什么？</div>' +
-            '<div class="rc-a"><b>' + AI_CONSCIOUSNESS.reality.should_worry.answer + '</b></div>' +
-            '<div class="rc-detail">' + AI_CONSCIOUSNESS.reality.should_worry.detail + '</div>' +
-          '</div>' +
-        '</div>' +
-      '</div>' +
+      "</div>" +
+      '<div class="stage-panel" id="think-panel"></div>' +
       '<div class="final-question">🤔 <b>留给你的思考：</b>' + AI_CONSCIOUSNESS.final_question + '</div>'
     );
 
     /* ⑭ 小测验 */
-    html += LP.card("ori", "⑰ 小测验：你是 AI 起源小达人吗？",
+    html += LP.card("ori", "⑯ 小测验：你是 AI 起源小达人吗？",
       "综合 L01+L02 的内容，共 " + QUIZ.length + " 题，答对一题加一颗星！看看你能得几颗星？",
       '<div class="quiz-box" id="ori-quiz">' +
-        '<div class="quiz-score">⭐ <span id="ori-quiz-score">0</span> / ' + QUIZ.length + '</div>' +
-        '<div class="quiz-progress"><div class="quiz-bar" id="ori-quiz-bar"></div></div>' +
+        '<div class="quiz-score">得分：<span class="score-badge" id="ori-quiz-score" data-score="0">★ 0</span> / ' + QUIZ.length + '</div>' +
         '<div id="ori-quiz-content"></div>' +
       '</div>'
     );
 
-    /* ===== 课堂小结 ===== */
-    html += '<div class="lesson-summary">' +
-      '<div class="ls-title">📝 课堂小结</div>' +
-      '<div class="ls-content">' +
-        '<div class="ls-item"><b>L01 核心：</b>AI 经历了 70 多年发展（图灵测试→达特茅斯→专家系统→AI冬天→深度学习→AlphaGo→ChatGPT→AI Agent）；聊天机器人是会说话的 AI，智能体是会做事的 AI；AI 时代有很多新职业（提示词工程师、AI 训练师、AI 伦理师等）。</div>' +
-        '<div class="ls-item"><b>L02 核心：</b>AI 智能体已渗透 6 大领域（教育/医疗/创作/科研/农业/服务）；推荐算法用协同过滤（人以群分）；但要警惕信息茧房和隐私问题；每个智能体都有自己的能力边界（能做什么、不能做什么）。</div>' +
-        '<div class="ls-item"><b>关键公式：</b>智能体能力 = 感知能力（能获取什么信息）+ 行动能力（能调用什么工具）+ 规划能力（怎么决定做什么）。</div>' +
-        '<div class="ls-item"><b>下节课预告：</b>L03《智能体总装图》——我们将深入学习智能体的四大组件（感知器、规划器、记忆器、执行器），看看智能体的内部结构是什么样的！</div>' +
+    /* ===== 课堂小结（与另外六页统一：核心结论 + 要点列表 + 课后思考） =====
+     * 本轮改造前这里用的是另一套结构（.ls-title / .ls-content / .ls-item），
+     * 只有 4 条陈述、没有"核心结论"也没有"课后思考"，教学闭环缺后半句。
+     * 现在换成全站统一的 .lesson-summary.card-ori + .summary-core/-points/-think；
+     * 加上 card-ori 之后，style.css 里那条 .lesson-summary.card-ori h3 也终于生效。 ===== */
+    html += '<div class="lesson-summary card-ori">' +
+      '<h3>' + U.icon("check", 18) + ' 课堂小结（L01+L02）</h3>' +
+      '<div class="summary-core"><b>核心结论：</b>智能体能力 = <b>感知能力</b>（能获取什么信息）+ <b>行动能力</b>（能调用什么工具）+ <b>规划能力</b>（怎么决定做什么）。把 AI 的 70 多年串起来看，是一条很清楚的线：<b>能查会算</b>的专家系统 → <b>会看会听</b>的深度学习 → <b>会说话</b>的大模型 → 今天<b>会做事</b>的智能体。而真正的分水岭，不是"会不会说话"，是<b>有没有那四样零件、能不能自己把一件事做完</b>。</div>' +
+      '<div class="summary-points">' +
+        '<div class="sp-item"><span class="sp-icon">' + U.icon("clock", 14) + '</span><div><b>AI 的来路（L01）：</b>图灵测试（1950）→ 达特茅斯会议（1956）→ 专家系统 → AI 冬天 → 深度学习（2012）→ AlphaGo（2016）→ Transformer（2017）→ ChatGPT（2022）→ AI Agent（今天）。每一次爆发，都是<b>数据、算法、算力</b>三根支柱同时变强的结果——只强一根，AI 还是"笨"的。</div></div>' +
+        '<div class="sp-item"><span class="sp-icon">' + U.icon("brain", 14) + '</span><div><b>大模型怎么"说话"：</b>文字先切成 <b>Token</b>、再转成<b>向量</b>；Transformer 的<b>自注意力</b>让每个词都"看一眼上下文"；最后靠<b>"预测下一个词"</b>一个词一个词往外蹦，循环出整段回答。它并不是"想好了再说"，而是"边说边猜"。</div></div>' +
+        '<div class="sp-item"><span class="sp-icon">' + U.icon("robot", 14) + '</span><div><b>聊天机器人 vs 智能体：</b>前者"会说话"——你问它才答，只能用训练数据回答；后者"会做事"——能理解目标、制定计划、调用工具、记住偏好。差别就在有没有<b>感知器、规划器、记忆器、执行器</b>这四样零件。</div></div>' +
+        '<div class="sp-item"><span class="sp-icon">' + U.icon("globe", 14) + '</span><div><b>身边的智能体（L02）：</b>教育 / 医疗 / 创作 / 科研 / 农业 / 服务 六大领域都已有落地。判断它"能干什么"看两样东西：<b>观察空间</b>（它看得到什么）+ <b>动作空间</b>（它能做什么）——两者合起来就是它的<b>能力边界</b>。</div></div>' +
+        '<div class="sp-item"><span class="sp-icon">' + U.icon("users", 14) + '</span><div><b>推荐算法与信息茧房：</b>协同过滤的思路是"人以群分"——先找和你口味相近的人，再把他们喜欢的东西推给你。好用的代价是<b>越推越窄</b>：要主动去看不同观点，也要守住自己的隐私。</div></div>' +
+        '<div class="sp-item"><span class="sp-icon">' + U.icon("spark", 14) + '</span><div><b>下一站：</b>L03《智能体总装图》——把上面这"四样零件"摊开看清楚，并学会用<b>"拆解四问"</b>把任何一个智能体拆开看。</div></div>' +
       '</div>' +
+      '<div class="summary-think"><b>课后思考：</b>挑一件你最近真的用 AI 帮过忙的事（查资料、改作文、翻译、讲题都行），试着判断：这件事里<b>有感知器吗？有规划器吗？有记忆器吗？有执行器吗？</b>——只要少了哪一样，它就还只是个"会说话"的聊天机器人。下节课带来分享。</div>' +
     '</div>';
 
     sec.innerHTML = html;
 
     /* ---------- 绑定交互 ---------- */
+    bindDay();
+    bindHistory();
+    bindPillars();
+    bindFigSwitch();
+    bindFigZoom();
+    bindTxChips();
+    bindLlmDemo();
+    bindJobs();
+    bindFace();
+    bindThink();
     bindTuring();
     bindAbility();
     bindQuiz();
+  }
+
+  /* ---------- ③ 三大支柱：点击选择 + 详情面板 ---------- */
+  function bindPillars() {
+    var row = document.querySelector(".pillar-row");
+    var panel = $("pillar-panel");
+    var foot = $("pillar-foot");
+    if (!row || !panel) return;
+    var seen = {};
+
+    function paint(i) {
+      var p = AI_PILLARS[i];
+      if (!p) return;
+      row.querySelectorAll(".pillar-stop").forEach(function (b) {
+        b.classList.toggle("is-on", parseInt(b.getAttribute("data-i"), 10) === i);
+      });
+      panel.innerHTML =
+        '<div class="sp-top">' +
+          '<span class="ps-mini pp-' + p.color + '">' + U.icon(p.icon, 17) + "</span>" +
+          '<span class="sp-title">' + p.title + "</span>" +
+          '<span class="sp-tag">' + p.analogy + "</span>" +
+        "</div>" +
+        '<div class="sp-desc">' + p.desc + "</div>" +
+        '<div class="pp-list"><span class="pp-label">具体例子</span>' +
+          p.examples.map(function (e) { return '<span class="pp-item">' + e + "</span>"; }).join("") +
+        "</div>" +
+        '<div class="pp-num">' + U.icon("percent", 15) + " <b>关键数字：</b>" + p.numbers + "</div>";
+      panel.classList.remove("sp-in");
+      void panel.offsetWidth;
+      panel.classList.add("sp-in");
+      seen[i] = 1;
+      if (foot) {
+        var n = Object.keys(seen).length;
+        foot.innerHTML = n >= AI_PILLARS.length
+          ? U.icon("happy", 15) + " 三大支柱都看过了！记住核心公式：<b>AI 的能力 = 数据 × 算法 × 算力</b>，缺一不可。"
+          : U.icon("check", 15) + ' 已查看 <b>' + n + " / " + AI_PILLARS.length + "</b> 个支柱，继续点其它的 →";
+      }
+    }
+
+    row.querySelectorAll(".pillar-stop").forEach(function (b) {
+      b.addEventListener("click", function () { paint(parseInt(b.getAttribute("data-i"), 10)); });
+    });
+    paint(0);
+  }
+
+  /* ---------- ④ 大模型：架构图切换（中文重绘版 ⇄ 论文英文原图） ---------- */
+  function bindFigSwitch() {
+    var box = $("ta-fig-switch");
+    var img = $("ta-fig-img");
+    var note = $("ta-fig-src");
+    if (!box || !img) return;
+    /* 两张图都按“左图右讲”的同一位置展示：中文重绘版为教学用图（带 Q/K/V 标注），
+     * 英文原图为论文 Figure 1 原图，用于对照原始出处。 */
+    var FIGS = {
+      cn: {
+        src: "images/transformer-architecture.svg",
+        alt: "Transformer 经典架构图（按论文结构中文重绘）",
+        note: '📐 本教学系统重绘 · 结构依据 Vaswani et al., "Attention Is All You Need", NeurIPS 2017'
+      },
+      en: {
+        src: "images/transformer-architecture-original.png",
+        alt: "Transformer 论文原图（Attention Is All You Need, NeurIPS 2017）",
+        note: '📷 论文英文原图：Vaswani et al., "Attention Is All You Need", NeurIPS 2017'
+      }
+    };
+    box.querySelectorAll(".ta-fig-btn").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var f = FIGS[b.getAttribute("data-fig")];
+        if (!f) return;
+        box.querySelectorAll(".ta-fig-btn").forEach(function (x) { x.classList.toggle("is-on", x === b); });
+        img.setAttribute("src", f.src);
+        img.setAttribute("alt", f.alt);
+        if (note) note.textContent = f.note;
+      });
+    });
+  }
+
+  /* ---------- ④ 大模型：架构图点击放大到全屏 ---------- */
+  /* 浮层挂在 body 上、只创建一次（栏目重复渲染时不重复插入）；
+   * 点图打开，点浮层任意处或按 Esc 关闭；切到哪一版（中文重绘/英文原图）就放大哪一版。 */
+  function bindFigZoom() {
+    var img = $("ta-fig-img");
+    if (!img) return;
+
+    var box = document.querySelector(".fig-zoom");
+    if (!box) {
+      box = document.createElement("div");
+      box.className = "fig-zoom";
+      box.setAttribute("role", "dialog");
+      box.setAttribute("aria-modal", "true");
+      box.setAttribute("aria-label", "架构图全屏查看");
+      box.innerHTML = '<img alt=""><button type="button" class="fig-zoom-close" aria-label="关闭（Esc）">&#215;</button>';
+      box.hidden = true;
+      document.body.appendChild(box);
+      box.addEventListener("click", closeZoom);
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && !box.hidden) closeZoom();
+      });
+    }
+    var zimg = box.querySelector("img");
+
+    function closeZoom() {
+      box.hidden = true;
+      document.body.classList.remove("is-zoomed");
+    }
+    /* 每次都从当前展示的图取 src：切换“中文重绘版 / 英文原图”后放大的是当前那版 */
+    function openZoom() {
+      var cur = $("ta-fig-img") || img;
+      zimg.setAttribute("src", cur.getAttribute("src"));
+      zimg.setAttribute("alt", cur.getAttribute("alt") || "Transformer 架构图");
+      box.hidden = false;
+      document.body.classList.add("is-zoomed");
+    }
+    img.addEventListener("click", openZoom);
+  }
+
+  /* ---------- ④ 大模型：架构图解读条（点一条展开详细解释） ---------- */
+  /* 交互与感知器实验室的 ASR / OCR 解读条一致：默认只显示“术语 + 一句话”，
+   * 点一下展开“一句话概括 → 大白话解释 → 打个比方”的详解。 */
+  function bindTxChips() {
+    var box = $("ori-tf-chips");
+    if (!box) return;
+    box.querySelectorAll(".tx-chip-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var item = btn.parentNode;
+        var open = item.classList.toggle("is-open");
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+    });
+  }
+
+  /* ---------- ④ 大模型：生成过程演示（单步播放） ---------- */
+  function bindLlmDemo() {
+    var host = $("llm-pipeline");
+    if (!host || !AgentLab.Adv) return;
+    var d = {
+      title: "跟着走一遍：输入「今天天气很」，AI 怎么一步步生成「今天天气很好」",
+      hint: "点下一步", icon: "spark", color: "per",
+      playLabel: "自动播放", stepLabel: "下一步", resetLabel: "重来", logTitle: "这一步发生了什么",
+      stages: [
+        { id: "input", name: "输入", icon: "pen", en: "Prompt", io: "你打出：“今天天气很”" },
+        { id: "token", name: "分词", icon: "txt", en: "Tokenize", io: "切成 3 个 token：今天 / 天气 / 很" },
+        { id: "vector", name: "向量化", icon: "database", en: "Embedding", io: "每个 token 变成一串数字（向量），AI 才能计算" },
+        { id: "attention", name: "注意力处理", icon: "brain", en: "Transformer", io: "注意力机制理解“今天”和“天气”的关联，判断“很”后面该接形容词" },
+        { id: "predict", name: "第 1 次预测", icon: "percent", en: "Predict", io: "预测下一个词：“好”(45%) ＞ “热”(25%) ＞ “冷”(1%)" },
+        { id: "loop", name: "循环生成", icon: "refresh", en: "Loop", io: "把“好”加进去继续预测，直到出现结束符 EOS（92%）→ 停止" },
+        { id: "output", name: "输出", icon: "check", en: "Output", io: "AI 回答：“今天天气很好”——整个过程几毫秒内完成" }
+      ]
+    };
+    host.innerHTML = AgentLab.Adv.types.pipeline.demoHTML(d);
+    AgentLab.Adv.types.pipeline.bind(host, d);
+  }
+
+  /* ---------- ⑦ 职业演变：四阶段切换 ---------- */
+  function bindJobs() {
+    var tabs = $("jobs-tabs");
+    var panel = $("jobs-panel");
+    if (!tabs || !panel) return;
+
+    /* 统一的紧凑子卡片：图标 + 名称同一行，下方是说明，卡片底部放标签 */
+    function jobCard(opt) {
+      var inner =
+        '<div class="jc-head">' +
+          '<div class="job-icon ' + opt.iconCls + '">' + U.icon(opt.icon, 17) + '</div>' +
+          '<div class="job-title">' + opt.title + '</div>' +
+          (opt.headTag ? '<span class="job-tag ' + opt.headTag + '">' + opt.headTagText + '</span>' : '') +
+        '</div>' +
+        '<div class="job-desc">' + opt.desc + '</div>' +
+        (opt.advice ? '<div class="job-advice">' + U.icon("graduation", 14) + "<span>" + opt.advice + "</span></div>" : "") +
+        (opt.foot ? '<div class="' + opt.footCls + '">' + opt.foot + "</div>" : "");
+      return '<div class="job-card ' + opt.cardCls + '">' + inner + "</div>";
+    }
+
+    function cardsOf(key) {
+      return JOBS_DATA[key].map(function (j) {
+        if (key === "disappeared") {
+          return jobCard({
+            cardCls: "job-card-gone", iconCls: "job-icon-gone", icon: j.icon || "clock",
+            title: j.name, desc: j.reason,
+            footCls: "job-tag job-tag-gone", foot: "📅 消失于 " + j.era
+          });
+        }
+        if (key === "disappearing") {
+          return jobCard({
+            cardCls: "job-card-going", iconCls: "job-icon-going", icon: j.icon || "alert",
+            title: j.name, desc: j.reason,
+            headTag: "job-tag job-tag-risk job-tag-risk-" + j.risk, headTagText: j.risk + "风险",
+            advice: j.advice
+          });
+        }
+        if (key === "emerging") {
+          return jobCard({
+            cardCls: "job-card-new", iconCls: "job-icon-new", icon: j.icon,
+            title: j.title, desc: j.desc,
+            footCls: "job-salary", foot: "💰 " + j.salary
+          });
+        }
+        return jobCard({
+          cardCls: "job-card-future", iconCls: "job-icon-future", icon: j.icon || "rocket",
+          title: j.name, desc: j.desc,
+          footCls: "job-tag job-tag-future", foot: "🚀 未来职业"
+        });
+      }).join("");
+    }
+
+    function paint(i) {
+      var st = JOBS_STAGES[i];
+      tabs.querySelectorAll(".stage-tab").forEach(function (b, k) { b.classList.toggle("is-on", k === i); });
+      panel.innerHTML =
+        '<div class="jobs-block jobs-block-' + st.color + '">' +
+          '<div class="jb-head"><span class="jb-icon jb-icon-' + st.color + '">' + U.icon(st.icon, 16) + '</span><span class="jb-title">' + st.head + '</span></div>' +
+          '<div class="jb-desc">' + st.desc + "</div>" +
+          '<div class="job-grid">' + cardsOf(st.key) + "</div>" +
+        "</div>";
+      panel.classList.remove("sp-in");
+      void panel.offsetWidth;
+      panel.classList.add("sp-in");
+    }
+
+    tabs.querySelectorAll(".stage-tab").forEach(function (b, i) {
+      b.addEventListener("click", function () { paint(i); });
+    });
+    paint(0);
+  }
+
+  /* ---------- ⑨ 深度思考：精简版案例手风琴（点谁看谁，大字号） ---------- */
+  function bindFace() {
+    var acc = document.querySelector(".case-acc");
+    if (!acc) return;
+
+    function paint(i) {
+      var c = FACE_AI.cases[i];
+      if (!c) return;
+      acc.querySelectorAll(".case-chip").forEach(function (b) {
+        b.classList.toggle("is-on", parseInt(b.getAttribute("data-i"), 10) === i);
+      });
+      var box = $("face-detail");
+      if (!box) return;
+      box.innerHTML =
+        '<div class="cd-row cd-good"><span class="cd-label">' + U.icon("check", 14) + " 它能做什么</span><p>" + c.desc + "</p></div>" +
+        '<div class="cd-row cd-worry"><span class="cd-label">' + U.icon("alert", 14) + " 让人担心的是</span><p>" + c.dilemma + "</p></div>" +
+        (c.reply ? '<div class="cd-row cd-reply"><span class="cd-label">' + U.icon("happy", 14) + " 再想一层</span><p>" + c.reply + "</p></div>" : "") +
+        '<div class="cd-row cd-think"><span class="cd-label">' + U.icon("pen", 14) + " 想一想</span><p>" + c.think + "</p></div>";
+      box.classList.remove("sp-in");
+      void box.offsetWidth;
+      box.classList.add("sp-in");
+    }
+
+    acc.querySelectorAll(".case-chip").forEach(function (b) {
+      b.addEventListener("click", function () {
+        paint(parseInt(b.getAttribute("data-i"), 10));
+      });
+    });
+    paint(0);
+  }
+
+  /* ---------- ⑮ 终极思辨：三块切换 ---------- */
+  function bindThink() {
+    var tabs = $("think-tabs");
+    var panel = $("think-panel");
+    if (!tabs || !panel) return;
+
+    function moviesHTML() {
+      return '<div class="cs-subtitle">🎬 科幻电影中的 AI——人类对 AI 的想象和恐惧</div><div class="movie-grid">' +
+        AI_CONSCIOUSNESS.movies.map(function (m) {
+          return '<div class="movie-card"><div class="mc-head">' + U.icon(m.icon, 16) + " <b>" + m.name + '</b><span class="mc-year">' + m.year + '</span></div><div class="mc-plot">' + m.plot + '</div><div class="mc-lesson">💡 ' + m.lesson + "</div></div>";
+        }).join("") + "</div>";
+    }
+    function predsHTML() {
+      return '<div class="cs-subtitle">🗣️ 名人预言——他们怎么看 AI 的未来？</div><div class="prediction-list">' +
+        AI_CONSCIOUSNESS.predictions.map(function (p) {
+          return '<div class="pred-card"><div class="pc-person"><b>' + p.person + '</b><span class="pc-role">' + p.role + '</span></div><div class="pc-quote">「' + p.quote + '」</div><div class="pc-stance">立场：' + p.stance + "</div></div>";
+        }).join("") + "</div>";
+    }
+    function realityHTML() {
+      return '<div class="cs-subtitle">🔬 科学现实——基于当前技术的理性分析</div><div class="reality-grid">' +
+        [[ "AI 有意识吗？", AI_CONSCIOUSNESS.reality.has_consciousness ],
+          [ "AI 会取代人类吗？", AI_CONSCIOUSNESS.reality.will_replace ],
+          [ "我们该担心什么？", AI_CONSCIOUSNESS.reality.should_worry ]].map(function (r) {
+            return '<div class="reality-card"><div class="rc-q">' + r[0] + '</div><div class="rc-a"><b>' + r[1].answer + '</b></div><div class="rc-detail">' + r[1].detail + "</div></div>";
+          }).join("") + "</div>";
+    }
+
+    var blocks = [moviesHTML, predsHTML, realityHTML];
+    function paint(i) {
+      tabs.querySelectorAll(".stage-tab").forEach(function (b, k) { b.classList.toggle("is-on", k === i); });
+      panel.innerHTML = blocks[i]();
+      panel.classList.remove("sp-in");
+      void panel.offsetWidth;
+      panel.classList.add("sp-in");
+    }
+    tabs.querySelectorAll(".stage-tab").forEach(function (b, i) {
+      b.addEventListener("click", function () { paint(i); });
+    });
+    paint(0);
+  }
+
+  /* ---------- ① 小明的一天：一日时间轴交互 ---------- */
+  function bindDay() {
+    var track = document.querySelector(".dayrail-track");
+    var panel = $("day-panel");
+    var foot = $("day-foot");
+    if (!track || !panel) return;
+    var seen = {};
+
+    function paint(i) {
+      var d = DAY_AI[i];
+      if (!d) return;
+      track.querySelectorAll(".daystop").forEach(function (b) {
+        b.classList.toggle("is-on", parseInt(b.getAttribute("data-i"), 10) === i);
+      });
+      panel.innerHTML =
+        '<div class="sp-top">' +
+          '<span class="sp-time">' + d.time + "</span>" +
+          '<span class="sp-title">' + d.title + "</span>" +
+          '<span class="sp-tag">' + d.tag + "</span>" +
+        "</div>" +
+        '<div class="sp-desc">' + d.desc + "</div>";
+      panel.classList.remove("sp-in");
+      void panel.offsetWidth;
+      panel.classList.add("sp-in");
+      seen[i] = 1;
+      if (foot) {
+        var n = Object.keys(seen).length;
+        foot.innerHTML = n >= DAY_AI.length
+          ? U.icon("happy", 15) + " " + DAY_AI.length + " 个场景都看过了！它们的共同点是：<b>都在根据你的数据，替你猜、替你选</b>——这就是推荐类 AI。"
+          : U.icon("check", 15) + ' 已查看 <b>' + n + " / " + DAY_AI.length + "</b> 个场景，继续点其它时间点 →";
+      }
+    }
+
+    track.querySelectorAll(".daystop").forEach(function (b) {
+      b.addEventListener("click", function () { paint(parseInt(b.getAttribute("data-i"), 10)); });
+    });
+    paint(0);
+  }
+
+  /* ---------- ② AI 发展史：四幕时间轴交互（点击展开，不依赖 hover） ---------- */
+  function bindHistory() {
+    var stack = document.querySelector(".era-stack");
+    if (!stack) return;
+    var open = null;
+
+    function closeAll() {
+      stack.querySelectorAll(".mile").forEach(function (b) { b.classList.remove("is-on"); });
+      stack.querySelectorAll(".era-detail").forEach(function (d) {
+        d.classList.remove("is-open");
+        d.innerHTML = "";
+      });
+      open = null;
+    }
+
+    stack.querySelectorAll(".mile").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var i = parseInt(b.getAttribute("data-i"), 10);
+        var h = AI_HISTORY[i];
+        if (!h) return;
+        if (open === i) { closeAll(); return; }
+        closeAll();
+        var box = stack.querySelector("#era-detail-" + b.getAttribute("data-era"));
+        if (!box) return;
+        box.innerHTML =
+          '<div class="ed-inner">' +
+            '<div class="ed-head">' + U.icon(h.icon, 17) + " <b>" + h.year + "　" + h.title + "</b>" +
+              '<span class="ed-key">' + h.key + "</span>" +
+            "</div>" +
+            '<div class="ed-desc">' + h.desc + "</div>" +
+          "</div>";
+        box.classList.add("is-open");
+        b.classList.add("is-on");
+        open = i;
+      });
+    });
+
+    /* 默认展开第一张卡片：一进来就有内容，也提示"卡片可以点" */
+    var first = stack.querySelector(".mile");
+    if (first) first.click();
   }
 
   /* ---------- 图灵测试体验站交互（重新设计版） ---------- */
@@ -1111,62 +1629,15 @@ AgentLab.LabOrigin = (function () {
   }
 
   /* ---------- 小测验 ---------- */
-  var quizState = { idx: 0, score: 0 };
+  /* ---------- ⑯ 小测验（单题闯关） ---------- */
   function bindQuiz() {
-    quizState = { idx: 0, score: 0 };
-    showQuizQuestion();
-  }
-  function showQuizQuestion() {
-    var content = $("ori-quiz-content");
-    var scoreEl = $("ori-quiz-score");
-    var barEl = $("ori-quiz-bar");
-    if (!content) return;
-    if (scoreEl) scoreEl.textContent = quizState.score;
-    if (barEl) barEl.style.width = (quizState.idx / QUIZ.length * 100) + "%";
-
-    if (quizState.idx >= QUIZ.length) {
-      var pct = Math.round(quizState.score / QUIZ.length * 100);
-      var msg = pct >= 80 ? "🎉 太棒了！你是 AI 起源小达人！" : (pct >= 60 ? "👍 不错！再复习一下就更好了！" : "💪 加油！回去再看看课程内容吧！");
-      content.innerHTML = '<div class="quiz-result">' +
-        '<div class="qr-score">' + quizState.score + ' / ' + QUIZ.length + '</div>' +
-        '<div class="qr-pct">' + pct + ' 分</div>' +
-        '<div class="qr-msg">' + msg + '</div>' +
-        '<button class="btn btn-ori" id="ori-quiz-restart">重新开始</button>' +
-      '</div>';
-      var restart = $("ori-quiz-restart");
-      if (restart) restart.addEventListener("click", function () { bindQuiz(); });
-      return;
-    }
-
-    var q = QUIZ[quizState.idx];
-    content.innerHTML = '<div class="quiz-q">' + (quizState.idx + 1) + '. ' + q.q + '</div>' +
-      '<div class="quiz-opts">' +
-        q.opts.map(function (op, i) {
-          return '<button class="quiz-opt" data-i="' + i + '">' + String.fromCharCode(65 + i) + '. ' + op + '</button>';
-        }).join("") +
-      '</div>' +
-      '<div class="quiz-feedback"></div>';
-
-    content.querySelectorAll(".quiz-opt").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        if (content.classList.contains("answered")) return;
-        content.classList.add("answered");
-        var i = parseInt(btn.getAttribute("data-i"), 10);
-        var fb = content.querySelector(".quiz-feedback");
-        if (i === q.ans) {
-          btn.classList.add("correct");
-          quizState.score++;
-          fb.innerHTML = '<span class="fb-ok">' + U.icon("check", 15) + ' 答对啦！' + q.why + '</span>';
-        } else {
-          btn.classList.add("wrong");
-          content.querySelectorAll(".quiz-opt")[q.ans].classList.add("correct");
-          fb.innerHTML = '<span class="fb-no">' + U.icon("x", 15) + ' 不对哦。正确答案是 ' + String.fromCharCode(65 + q.ans) + '。' + q.why + '</span>';
-        }
-        setTimeout(function () {
-          quizState.idx++;
-          showQuizQuestion();
-        }, 2000);
-      });
+    AgentLab.Quiz.mount({
+      host: "ori-quiz-content",
+      color: "ori",
+      name: "AI 起源小达人",
+      star: "ori-quiz-score",
+      questions: QUIZ,
+      hint: "再想想——可以回到上面的时间轴、案例和“会说话 vs 会做事”对比里找线索。"
     });
   }
 

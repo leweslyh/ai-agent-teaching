@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 500" width="460" height="500" font-family="'Microsoft YaHei','PingFang SC','Noto Sans SC',sans-serif">
+  <rect x="0" y="0" width="460" height="500" rx="14" fill="#FFFFFF" stroke="#B9D9FF" stroke-width="1.4"/>
+
+  <path d="M46,64 L46,106" stroke="#A8E5C6" stroke-width="2"/>
+  <path d="M46,134 L46,176" stroke="#A8E5C6" stroke-width="2"/>
+  <path d="M46,204 L46,247" stroke="#A8E5C6" stroke-width="2"/>
+  <path d="M48,277 L48,334" stroke="#A8E5C6" stroke-width="2"/>
+
+  <circle cx="46" cy="50" r="14" fill="#2FBF71"/>
+  <text x="46" y="55" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">1</text>
+  <text x="74" y="55" font-size="15" font-weight="700" fill="#14629E">编码</text>
+  <text x="74" y="77" font-size="12.5" fill="#5D6B7C">把信息转成能存的形式</text>
+
+  <circle cx="46" cy="120" r="14" fill="#2FBF71"/>
+  <text x="46" y="125" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">2</text>
+  <text x="74" y="125" font-size="15" font-weight="700" fill="#14629E">存储</text>
+  <text x="74" y="147" font-size="12.5" fill="#5D6B7C">写进小本子（短期 / 长期）</text>
+
+  <circle cx="46" cy="190" r="14" fill="#2FBF71"/>
+  <text x="46" y="195" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">3</text>
+  <text x="74" y="195" font-size="15" font-weight="700" fill="#14629E">检索</text>
+  <text x="74" y="217" font-size="12.5" fill="#5D6B7C">用到的时候能翻出来</text>
+
+  <rect x="20" y="232" width="420" height="88" rx="10" fill="#E6F7EE" stroke="#A8E5C6" stroke-width="2"/>
+  <circle cx="48" cy="262" r="15" fill="#179A55"/>
+  <text x="48" y="267" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">4</text>
+  <text x="76" y="267" font-size="15" font-weight="700" fill="#106B3D">整合</text>
+  <text x="76" y="291" font-size="12.5" fill="#106B3D">短期结论 → 长期记忆</text>
+  <text x="76" y="311" font-size="11.5" fill="#179A55">只存不整合 = 什么都没留下</text>
+
+  <circle cx="46" cy="348" r="14" fill="#2FBF71"/>
+  <text x="46" y="353" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">5</text>
+  <text x="74" y="353" font-size="15" font-weight="700" fill="#14629E">遗忘</text>
+  <text x="74" y="375" font-size="12.5" fill="#5D6B7C">过期就清、不常用的先走</text>
+
+  <rect x="20" y="396" width="180" height="60" rx="10" fill="#F7FAFF" stroke="#B9D9FF" stroke-width="1.2"/>
+  <text x="110" y="420" font-size="13.5" font-weight="700" fill="#5D6B7C" text-anchor="middle">短期记忆</text>
+  <text x="110" y="440" font-size="11" fill="#9AA7B8" text-anchor="middle">本次对话的流水账，关掉就忘</text>
+
+  <path d="M208,426 L252,426 M244,420 L252.5,426 L244,432" fill="none" stroke="#2FBF71" stroke-width="1.8" stroke-linecap="round"/>
+
+  <rect x="262" y="396" width="178" height="60" rx="10" fill="#E6F7EE" stroke="#A8E5C6" stroke-width="1.2"/>
+  <text x="351" y="420" font-size="13.5" font-weight="700" fill="#106B3D" text-anchor="middle">长期记忆</text>
+  <text x="351" y="440" font-size="11" fill="#179A55" text-anchor="middle">跨会话的档案</text>
+</svg>

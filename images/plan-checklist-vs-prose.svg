@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 500" width="460" height="500" font-family="'Microsoft YaHei','PingFang SC','Noto Sans SC',sans-serif">
+  <rect x="0" y="0" width="460" height="500" rx="14" fill="#FFFFFF" stroke="#B9D9FF" stroke-width="1.4"/>
+
+  <!-- 同一件事 -->
+  <rect x="18" y="18" width="424" height="32" rx="16" fill="#F7FAFF" stroke="#B9D9FF" stroke-width="1.2"/>
+  <text x="230" y="39" font-size="12.5" fill="#5D6B7C" text-anchor="middle">同一件事：帮我准备明天的春游</text>
+
+  <!-- ===== 左：一段话计划（红系，卡住） ===== -->
+  <rect x="18" y="60" width="206" height="350" rx="12" fill="#FFF6F4" stroke="#E4572E" stroke-width="1.4"/>
+  <text x="32" y="84" font-size="14" font-weight="700" fill="#C0553F">一段话计划</text>
+  <text x="32" y="101" font-size="11" fill="#9AA7B8">全挤在一句话里，没写标准</text>
+
+  <rect x="30" y="108" width="182" height="84" rx="8" fill="#FFFFFF" stroke="#F2C9BC" stroke-width="1.2"/>
+  <text x="40" y="130" font-size="12.5" fill="#5D6B7C">先看看天气，然后准备</text>
+  <text x="40" y="150" font-size="12.5" fill="#5D6B7C">东西，记得带伞和水壶，</text>
+  <text x="40" y="170" font-size="12.5" fill="#5D6B7C">还要早点睡……</text>
+
+  <rect x="30" y="200" width="182" height="30" rx="8" fill="#FFFFFF" stroke="#B9D9FF" stroke-width="1.2"/>
+  <circle cx="44" cy="215" r="8.5" fill="#F7FAFF" stroke="#B9D9FF" stroke-width="1.2"/>
+  <text x="44" y="219" font-size="11" fill="#9AA7B8" text-anchor="middle">1</text>
+  <text x="60" y="219" font-size="12.5" fill="#5D6B7C">看天气</text>
+  <text x="200" y="218" font-size="11" fill="#9AA7B8" text-anchor="end">勉强做了</text>
+
+  <rect x="30" y="236" width="182" height="30" rx="8" fill="#FFFFFF" stroke="#E4572E" stroke-width="1.6"/>
+  <circle cx="44" cy="251" r="8.5" fill="#E4572E"/>
+  <text x="44" y="255" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle">2</text>
+  <text x="60" y="255" font-size="12.5" font-weight="700" fill="#C0553F">准备东西</text>
+  <text x="200" y="254" font-size="11" font-weight="700" fill="#C0553F" text-anchor="end">没标准</text>
+
+  <text x="40" y="286" font-size="11" fill="#C0553F">这里卡住了：说不清带什么、</text>
+  <text x="40" y="301" font-size="11" fill="#C0553F">更说不清做没做完。</text>
+
+  <rect x="30" y="312" width="182" height="30" rx="8" fill="#FDFEFF" stroke="#D8E2EE" stroke-width="1.2" stroke-dasharray="4 4"/>
+  <circle cx="44" cy="327" r="8.5" fill="#F7FAFF" stroke="#D8E2EE" stroke-width="1.2"/>
+  <text x="44" y="331" font-size="11" fill="#9AA7B8" text-anchor="middle">3</text>
+  <text x="60" y="331" font-size="12.5" fill="#9AA7B8">早点睡</text>
+  <text x="200" y="330" font-size="11" fill="#B9C4D1" text-anchor="end">还没轮到</text>
+
+  <rect x="30" y="352" width="182" height="44" rx="9" fill="#FFF6F4" stroke="#E4572E" stroke-width="1.4"/>
+  <text x="121" y="371" font-size="11.5" font-weight="700" fill="#C0553F" text-anchor="middle">✗ 卡在第 2 步</text>
+  <text x="121" y="388" font-size="11.5" fill="#C0553F" text-anchor="middle">—— 没有完成标准</text>
+
+  <!-- ===== 右：清单计划（绿系，全部完成） ===== -->
+  <rect x="236" y="60" width="206" height="350" rx="12" fill="#E8F5EC" stroke="#1F7A45" stroke-width="1.4"/>
+  <text x="250" y="84" font-size="14" font-weight="700" fill="#1F7A45">清单计划</text>
+  <text x="250" y="101" font-size="11" fill="#9AA7B8">每条都有工具和完成标准</text>
+
+  <rect x="248" y="112" width="182" height="48" rx="9" fill="#FFFFFF" stroke="#B8E0C6" stroke-width="1.2"/>
+  <rect x="258" y="127" width="18" height="18" rx="5" fill="#1F7A45"/>
+  <path d="M262,136 L266,140 L272,132" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+  <text x="284" y="134" font-size="12.5" font-weight="700" fill="#1F7A45">查天气</text>
+  <text x="284" y="150" font-size="11" fill="#5D6B7C">天气工具 · 拿到降雨概率</text>
+
+  <rect x="248" y="168" width="182" height="48" rx="9" fill="#FFFFFF" stroke="#B8E0C6" stroke-width="1.2"/>
+  <rect x="258" y="183" width="18" height="18" rx="5" fill="#1F7A45"/>
+  <path d="M262,192 L266,196 L272,188" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+  <text x="284" y="190" font-size="12.5" font-weight="700" fill="#1F7A45">准备雨具</text>
+  <text x="284" y="206" font-size="11" fill="#5D6B7C">提醒工具 · 伞已装包</text>
+
+  <rect x="248" y="224" width="182" height="48" rx="9" fill="#FFFFFF" stroke="#B8E0C6" stroke-width="1.2"/>
+  <rect x="258" y="239" width="18" height="18" rx="5" fill="#1F7A45"/>
+  <path d="M262,248 L266,252 L272,244" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+  <text x="284" y="246" font-size="12.5" font-weight="700" fill="#1F7A45">准备水壶</text>
+  <text x="284" y="262" font-size="11" fill="#5D6B7C">提醒工具 · 水壶已装包</text>
+
+  <rect x="248" y="280" width="182" height="48" rx="9" fill="#FFFFFF" stroke="#B8E0C6" stroke-width="1.2"/>
+  <rect x="258" y="295" width="18" height="18" rx="5" fill="#1F7A45"/>
+  <path d="M262,304 L266,308 L272,300" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+  <text x="284" y="302" font-size="12.5" font-weight="700" fill="#1F7A45">早点睡</text>
+  <text x="284" y="318" font-size="11" fill="#5D6B7C">提醒工具 · 21:30 提醒</text>
+
+  <rect x="248" y="352" width="182" height="44" rx="9" fill="#E8F5EC" stroke="#1F7A45" stroke-width="1.4"/>
+  <text x="339" y="379" font-size="12" font-weight="700" fill="#1F7A45" text-anchor="middle">✓ 4 步全部执行完成</text>
+
+  <!-- 口诀 -->
+  <rect x="18" y="424" width="424" height="50" rx="10" fill="#FFF4E5" stroke="#FFDCA8" stroke-width="1.2"/>
+  <text x="230" y="454" font-size="12.5" fill="#98550A" text-anchor="middle">每步写清：<tspan font-weight="700">做什么 + 用什么工具 + 完成标准</tspan></text>
+</svg>
