@@ -6798,12 +6798,28 @@ kbd {
   border-radius: 12px;
   padding: 10px 13px;
   font-size: 14px;
-  line-height: 1.75;
+  /* 气泡自己的行距与 .md-body 保持一致（.md-body 那里按 1.62 收过），
+   * 否则同一个框里"正文"和"委托单"两种气泡的行距会不一样。 */
+  line-height: 1.62;
   word-break: break-word;
   white-space: pre-wrap;
 }
 .adv-bubble.is-user { background: rgba(62, 155, 255, .10); border: 1px solid rgba(62, 155, 255, .22); }
 .adv-bubble.is-ai   { background: rgba(52, 199, 89, .09);  border: 1px solid rgba(52, 199, 89, .22); }
+/* 气泡里的 Markdown：
+ * ① .adv-bubble 本身是 white-space: pre-wrap（为了原样保留模型输出里的换行），
+ *    但 U.md 生成的块与块之间本身带着换行（out.join("\n")），pre-wrap 会把它
+ *    渲染成实打实的一行空白——看起来就像"每段之间空了一行"。所以内部恢复普通折叠
+ *    （和 .msg .md-body 是同一处修法）。
+ * ② 行距与段距按气泡收一收：卡片正文用的是 .card p（1.75 / 12px），
+ *    套在窄列的气泡里偏松，这里按气泡自己的尺度给值（并盖过 .card p）。 */
+.adv-bubble .md-body { white-space: normal; line-height: 1.62; }
+.adv-bubble .md-body p { margin: 0 0 6px; line-height: 1.62; }
+/* 列表也要一起收：.card li / .card ul（1.7 / 12px）比 .md-body 那几条更晚出现，
+ * 不覆盖的话同一个气泡里段落紧、列表松，看着像两套排版。 */
+.adv-bubble .md-body ul, .adv-bubble .md-body ol { margin: 6px 0; padding-left: 20px; }
+.adv-bubble .md-body li { line-height: 1.62; margin: 2px 0; }
+.adv-bubble .md-body > *:last-child { margin-bottom: 0; }
 .adv-bubble.is-tool {
   background: rgba(255, 149, 0, .10);
   border: 1px solid rgba(255, 149, 0, .30);
@@ -6850,20 +6866,43 @@ kbd {
  * 写入请求体的那张卡片整张点亮，一眼看出"这次带了什么"。
  * 宽屏自动两列、窄屏自动一列（auto-fit，不写死列数）。 */
 .adv-params { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
+/* 「其他参数」= 五个开关之后那一排的第六个按钮：虚线边框表示"这里还能展开"，
+   角标显示已写入几项（折叠着也知道自己动过手），箭头展开时翻上来。 */
+.adv-chip.adv-chip-more { border-style: dashed; color: var(--per-ink); }
+.adv-chip.adv-chip-more:hover { border-style: solid; }
+.adv-chip.adv-chip-more.is-open {
+  border-style: solid; border-color: var(--c-per);
+  background: var(--per-tint); color: var(--c-per-deep);
+}
+.adv-chip.adv-chip-more.has-on { border-color: var(--per-line); }
+.adv-chip-badge {
+  font-size: 11px; font-weight: 800; color: var(--c-per-deep);
+  background: rgba(62, 155, 255, .16); border-radius: 999px; padding: 1px 7px;
+}
+.adv-chip-badge:empty { display: none; }
+.adv-chip-caret { display: inline-flex; transform: rotate(-90deg); transition: transform .18s ease; }
+.adv-chip.adv-chip-more.is-open .adv-chip-caret { transform: rotate(90deg); }
+/* 参数区默认折叠——折叠的只是面板，参数值照旧留在请求体里 */
+.adv-params-wrap { display: none; }
+.adv-params-wrap.open { display: block; animation: advParamsIn .18s ease; }
+@keyframes advParamsIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
 .adv-pgroup-name {
   display: inline-block; margin-bottom: 7px;
   font-size: 11.5px; font-weight: 800; color: var(--per-ink);
   background: var(--per-tint); border: 1px solid var(--per-line);
   border-radius: var(--r-pill, 999px); padding: 1px 10px;
 }
-.adv-pgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(244px, 1fr)); gap: 10px; }
+.adv-pgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
 .adv-param {
   background: #fff; border: 2px solid var(--c-line); border-radius: 12px;
   padding: 9px 11px 10px; transition: border-color .15s, background .15s, box-shadow .15s;
 }
 .adv-param.on { border-color: var(--per-line); background: var(--per-tint); }
 .adv-param:focus-within { box-shadow: 0 0 0 3px rgba(62, 155, 255, .14); }
-.adv-param-head { display: flex; align-items: center; gap: 6px; }
+.adv-param-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .adv-param-ic { display: inline-flex; color: var(--c-dim); }
 .adv-param.on .adv-param-ic { color: var(--c-per); }
 /* 参数名是代码字段名，但这里按"名字"用，不要像正文里那样染成红色 */
@@ -6872,7 +6911,7 @@ kbd {
   font-family: "JetBrains Mono", Consolas, "Courier New", monospace; color: var(--c-ink-2);
 }
 .adv-param.on .adv-param-k { color: var(--per-ink); }
-.adv-param-cn { font-size: 11.5px; color: var(--c-sub); }
+.adv-param-cn { font-size: 11.5px; color: var(--c-sub); white-space: nowrap; }
 /* 写入状态钮：显示的是"当前状态"，点一下切换（不是"已启用/已禁用"那种开关感） */
 .adv-param-sw {
   margin-left: auto; display: inline-flex; align-items: center; gap: 3px;
@@ -6899,6 +6938,45 @@ kbd {
 .adv-param:not(.on) .adv-param-val { color: var(--c-dim); background: rgba(120, 120, 140, .10); }
 .adv-param:not(.on) .adv-param-range { opacity: .72; }
 .adv-param-hint { margin-top: 6px; font-size: 11.5px; line-height: 1.6; color: var(--c-sub); }
+/* 手动输入的数字框（max_tokens / seed）：和滑条共用同一条取值链路 */
+.adv-param-num {
+  width: 96px; font-family: "JetBrains Mono", Consolas, "Courier New", monospace;
+  font-size: 12.5px; font-weight: 700; color: var(--per-ink);
+  border: 1.5px solid var(--c-line); border-radius: 8px; padding: 3px 7px;
+  background: #fff; text-align: right;
+}
+.adv-param-num:focus { outline: 2px solid var(--c-per); outline-offset: 1px; border-color: var(--c-per); }
+.adv-param:not(.on) .adv-param-num { color: var(--c-dim); }
+/* max_tokens：档位（0 到上限几个常用档）+ 手动输入兜底任意值 */
+.adv-tok { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-width: 0; }
+.adv-tok-presets { display: flex; gap: 5px; flex-wrap: wrap; }
+.adv-tok-p {
+  border: 1.5px solid var(--c-line); background: #fff; color: var(--c-sub);
+  border-radius: 999px; padding: 1px 9px; font-size: 11.5px; font-weight: 800;
+  font-family: inherit; cursor: pointer; transition: all .15s;
+}
+.adv-tok-p:hover { border-color: var(--c-per); color: var(--c-per-deep); }
+.adv-tok-p.on { border-color: var(--c-per); background: var(--per-tint); color: var(--c-per-deep); }
+.adv-tok-row { display: flex; align-items: center; gap: 6px; }
+.adv-tok-unit { font-size: 11.5px; color: var(--c-sub); }
+.adv-tok-cap {
+  font-size: 11px; color: var(--c-dim); margin-left: auto;
+  font-family: "JetBrains Mono", Consolas, "Courier New", monospace;
+}
+/* 这个开关开着时，本参数会被服务端忽略（例：思考模式下的 temperature）
+   ——整张卡片压暗 + 一行说明；照旧能拖，但一眼知道"现在发过去不算数" */
+.adv-param.is-muted { background: #FBFAF6; border-color: var(--c-line); border-style: dashed; }
+.adv-param.is-muted .adv-param-body { opacity: .5; }
+.adv-param.is-muted .adv-param-ic { color: var(--c-dim); }
+/* 注意：这里不能用 flex——说明文字里夹着 <code> 标签，
+ * flex 会把每个行内子节点（文本段、code）都变成独立 flex item，
+ * 文字被拆成几块、还会和相邻字重叠。 */
+.adv-param-muted {
+  margin-top: 6px; font-size: 11.5px; font-weight: 700; color: #8a6a00; line-height: 1.55;
+}
+.adv-param-muted .icon { vertical-align: -2px; margin-right: 2px; }
+.adv-param-muted code { font-size: 11px; background: rgba(246, 185, 59, .18); }
+
 /* 「已写入 n / m」计数 + 「恢复默认」：都挂在参数区标题行右端 */
 .adv-pcount {
   margin-left: auto; font-size: 11.5px; font-weight: 800;
@@ -9376,19 +9454,50 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
  * 描边/文字压在 tint 底上对比度不足——实测 2.7:1 / 2.2:1，不达 WCAG）。 */
 .mcp-pane.is-bad .mcp-svg { color: var(--exe-ink); }
 .mcp-pane.is-ok  .mcp-svg { color: var(--mem-ink); }
-.mcp-svg .ln { stroke: currentColor; stroke-width: 1.4; opacity: .55; }
+.mcp-svg .ln { stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; opacity: .55; }
+.mcp-pane.is-ok .mcp-svg .ln { opacity: .72; }   /* 解决侧连线少而清晰：不靠“密”制造压迫感 */
 .mcp-svg .nd { fill: #fff; stroke: currentColor; stroke-width: 2; }
 .mcp-svg .tx { font-size: 10.5px; font-weight: 700; text-anchor: middle; fill: currentColor; }
-.mcp-svg .bar { fill: currentColor; opacity: .17; }
+/* 列标题：两栏（模型 / 应用 ↔ 工具）在图上直接标出，不必回头猜 A/B/C 和 1/2/3 是什么 */
+.mcp-svg .tx-cap {
+  font-size: 9.5px; font-weight: 700; text-anchor: middle;
+  fill: currentColor; opacity: .72; letter-spacing: .02em;
+}
+.mcp-svg .bar { fill: currentColor; opacity: .15; stroke: currentColor; stroke-opacity: .35; stroke-width: 1; }
 .mcp-svg .tx-bar { font-size: 10.5px; font-weight: 800; text-anchor: middle; fill: currentColor; }
+/* 表头算式胶囊（N × M / N + M）：与 .pf-chan 同一语言，颜色随本栏语义色 */
+.mcp-chan {
+  margin-left: auto; flex-shrink: 0;
+  font-size: var(--fs-xs); font-weight: 700; letter-spacing: .02em;
+  padding: 2px 10px; border-radius: var(--r-pill);
+  background: var(--c-card); border: 1px solid currentColor;
+}
 .mcp-pane-foot {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--c-line);
   font-size: var(--fs-xs); color: var(--c-sub);
 }
-.mcp-pane-foot b { font-size: var(--fs-sm); }
+.mcp-pane-foot span { flex: 1 1 auto; min-width: 0; }
+.mcp-pane-foot b { flex: 0 0 auto; font-size: var(--fs-sm); }
 .mcp-pane.is-bad .mcp-pane-foot b { color: var(--exe-ink); }
 .mcp-pane.is-ok  .mcp-pane-foot b { color: var(--mem-ink); }
+
+/* 结论条：把左右两图压成一条能记住的算式（N × M → N + M） */
+.mcp-concl {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  margin-top: 12px; padding: 12px 16px;
+  border: 1px solid var(--c-line); border-radius: var(--r-md);
+  background: var(--c-bg-alt);
+}
+.mcp-concl .mc-tag {
+  flex: 0 0 auto;
+  font-size: var(--fs-md); font-weight: 800; letter-spacing: .02em;
+  padding: 3px 13px; border-radius: var(--r-pill);
+}
+.mcp-concl .mc-tag.is-mul { background: var(--exe-tint);  color: var(--exe-ink);  border: 1px solid var(--exe-line); }
+.mcp-concl .mc-tag.is-add { background: var(--mem-tint);  color: var(--mem-ink);  border: 1px solid var(--mem-line); }
+.mcp-concl .mc-to { flex: 0 0 auto; font-size: var(--fs-md); font-weight: 800; color: var(--c-dim); }
+.mcp-concl .mc-txt { flex: 1 1 260px; min-width: 0; font-size: var(--fs-sm); line-height: 1.65; color: var(--c-sub); }
 
 /* ============================================================
  * 苹果风统一层 §18 —— 执行器实验室：多工具协作（工具链 + 上下文）
@@ -10597,17 +10706,18 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
 }
 /* 格子按钮行：轻微左缩进，读起来明确"属于上面这一组" */
 .sec-map-items { display: flex; flex-wrap: wrap; gap: 8px; padding-left: 3px; }
-/* 节点与「本课学习目标」卡的 .goal-item 同规格：白底 + 中性描边 + 10px 圆角 */
+/* 节点与「本课学习目标」卡的 .goal-item 同规格：白底 + 中性描边 + 10px 圆角；
+ * 字号也一并取值 15px，与「本课学习目标」正文（.brief-card[data-brief-kind="goal"] .goal-item）保持一致 */
 .sec-map-node {
   display: inline-flex; align-items: baseline; gap: 6px;
-  font-family: inherit; font-size: 13.5px; line-height: 1.7; text-align: left;
+  font-family: inherit; font-size: 15px; line-height: 1.7; text-align: left;
   padding: 8px 14px; border-radius: 10px;
   background: #fff; border: 1px solid var(--c-line);
   color: var(--c-ink-2); cursor: pointer;
   transition: transform .16s var(--ease), border-color .16s var(--ease), background .16s var(--ease);
 }
 .sec-map-node .sec-map-t { font-weight: 700; }
-.sec-map-node .sec-map-note { font-size: var(--fs-xs); color: var(--c-dim); font-weight: 400; }
+/* 节点里的灰色说明小字（.sec-map-note）已按需求整体去掉，样式随之移除 */
 /* 不可点的节点：只作展示，视觉上明显"更轻"，避免学生反复点空 */
 .sec-map-node.is-plain {
   cursor: default;
@@ -10654,6 +10764,9 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
   align-items: start;
   margin: 0 0 var(--sp-5);
 }
+/* 两张卡都展开时，用 grid 的 stretch 让它们在同行内自动等高（取较高的那张为准）；
+ * 只要有任一张仍是折叠状态，就退回 start——折叠卡只占表头那一行，不会被撑出空白。 */
+.lab-brief:not(:has(.brief-card.is-folded)) { align-items: stretch; }
 .lab-brief .brief-card {
   background: var(--c-bg-alt);
   border: 1px solid var(--c-line);
@@ -10709,6 +10822,10 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
 .brief-card[data-brief-kind="map"] .sec-map-body { gap: 10px; }
 .brief-card[data-brief-kind="map"] .sec-map-foot { margin-top: 14px; }
 .brief-card .goal-list { margin-top: 12px; }
+/* 「本课学习目标」正文与智能体实验室（该栏目 --fs-sm: 15px）口径一致。
+ * 其他栏目的 --fs-sm 只有 13.5px，若沿用变量会与智能体实验室不一致，
+ * 故在此写死 15px，保证七页的目标卡文字大小统一。 */
+.brief-card[data-brief-kind="goal"] .goal-item { font-size: 15px; }
 
 @media (max-width: 1068px) {
   .lab-brief { grid-template-columns: minmax(0, 1fr); gap: var(--sp-3); }
@@ -10858,25 +10975,30 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
   background: var(--c-works); box-shadow: 0 0 0 3px var(--works-tint);
 }
 
-/* ---------- 22.4 制作过程：分步骤图解（横向流程 + 可逐步点亮） ---------- */
+/* ---------- 22.4 制作过程：分步骤图解（六步一屏看全 + 可逐步点亮） ----------
+ * 原来是横向滚动条（每张 196px，第 5 张永远被切一半，读起来像没做完）。
+ * 改成网格：宽屏 3 列 × 2 行、中屏 2 列、窄屏 1 列——六步永远一屏看完。
+ * 步骤之间的虚线箭头只画在「同一行内」的位置上，行尾不画（三套断点各写一条）。 */
 .works-steps-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
 .works-steps-hint { flex: 1 1 240px; font-size: 12.5px; line-height: 1.6; color: var(--c-sub); display: inline-flex; align-items: flex-start; gap: 6px; }
 .works-steps-hint .icon { flex-shrink: 0; margin-top: 3px; color: var(--c-works); }
 .works-steps {
-  list-style: none; margin: 0; padding: 4px 2px 12px;
-  display: flex; gap: 26px; overflow-x: auto;
-  scroll-snap-type: x proximity;
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 20px; row-gap: 28px;      /* 行距要留够：序号圆点是 -11px 上浮的 */
 }
 .works-step {
-  position: relative; flex: 0 0 196px; scroll-snap-align: start;
+  position: relative;
   padding: 15px 14px 13px; border-radius: var(--r-md, 12px);
   background: #fff; border: 1.5px solid var(--c-line);
   transition: transform .18s var(--ease, ease), box-shadow .18s ease, border-color .18s ease, background .18s ease;
 }
-.works-step:not(:last-child)::after {
-  content: ""; position: absolute; right: -20px; top: 46px; width: 14px; height: 2px;
+/* 行内箭头（默认画），行尾那两格（第 3、6 格）不画 */
+.works-step::after {
+  content: ""; position: absolute; right: -16px; top: 46px; width: 12px; height: 2px;
   background: repeating-linear-gradient(to right, var(--works-line) 0 4px, transparent 4px 7px);
 }
+.works-step:nth-child(3n)::after { content: none; }
 .works-step:hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(0,0,0,.07); }
 .works-step.lit {
   border-color: var(--c-works);
@@ -10927,10 +11049,66 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
 }
 .works-prin-note .icon { flex-shrink: 0; margin-top: 3px; }
 
-/* ---------- 22.6 可交互演示区 ---------- */
-/* 两列等高（stretch）：左边是对话，右边是「内部工作信息」。
- * 右侧信息量要撑得起一整列（小灯行 + 本轮轨迹），所以让它和对话区齐平。 */
-.works-demo { display: grid; grid-template-columns: minmax(0, 1.32fr) minmax(0, 1fr); gap: 18px; align-items: stretch; }
+/* ---------- 22.6 岗位说明书（真实系统提示词） ----------
+ * 先说清「这份提示词由哪几段组成」，再让学生按需展开看原文——
+ * 一上来就摊一大段文字，学生只会跳过。 */
+.works-prompt-lead {
+  margin: 0 0 14px; padding: 12px 15px; border-radius: var(--r-md, 12px);
+  background: var(--works-tint); border: 1px dashed var(--works-line);
+  font-size: 13.5px; line-height: 1.8; color: var(--works-ink);
+}
+.works-prompt-lead .icon { vertical-align: -3px; margin-right: 4px; }
+.works-prompt-segs { display: grid; grid-template-columns: repeat(auto-fit, minmax(268px, 1fr)); gap: 10px; }
+.wps-item {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 12px 14px; border-radius: var(--r-md, 12px);
+  background: var(--c-elev, #fafafa); border: 1px solid var(--c-line);
+  border-left: 3px solid var(--c-works);
+}
+/* 本作品不带的那一段（例如出行小管家没有班级知识库）：整格压暗，说明"为什么没有" */
+.wps-item.is-off { border-left-color: var(--c-line); background: #fff; }
+.wps-item.is-off .wps-k { background: #fff; color: var(--c-dim); border-color: var(--c-line); }
+.wps-item.is-off .wps-t { color: var(--c-sub); }
+.wps-k {
+  flex: 0 0 auto; width: 22px; height: 22px; margin-top: 1px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 800;
+  background: var(--works-tint); color: var(--works-ink); border: 1px solid var(--works-line);
+}
+.wps-body { min-width: 0; }
+.wps-t { font-size: 13.8px; font-weight: 800; color: var(--c-ink); margin-bottom: 3px; }
+.wps-d { font-size: 12.6px; line-height: 1.7; color: var(--c-ink-2); word-break: break-word; }
+.works-prompt-box {
+  margin-top: 14px; border: 1px solid var(--c-line); border-radius: var(--r-md, 12px);
+  background: #fff; overflow: hidden;
+}
+.works-prompt-box > summary {
+  cursor: pointer; padding: 12px 15px; list-style: none;
+  display: flex; align-items: center; gap: 7px;
+  font-size: 13.5px; font-weight: 700; color: var(--works-ink);
+  background: var(--c-elev, #fafafa);
+}
+.works-prompt-box > summary::-webkit-details-marker { display: none; }
+.works-prompt-box > summary::after { content: "▾"; margin-left: auto; color: var(--c-dim); transition: transform .18s ease; }
+.works-prompt-box[open] > summary { border-bottom: 1px solid var(--c-line); }
+.works-prompt-box[open] > summary::after { transform: rotate(180deg); }
+.works-prompt-pre {
+  margin: 0; padding: 14px 16px; max-height: 340px; overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
+  font-size: 12.2px; line-height: 1.75; white-space: pre-wrap; word-break: break-word;
+  color: var(--c-ink-2); background: #fff;
+}
+.works-prompt-foot {
+  padding: 11px 15px; border-top: 1px dashed var(--c-line);
+  font-size: 12.4px; line-height: 1.7; color: var(--c-sub); background: var(--c-elev, #fafafa);
+}
+.works-prompt-foot .icon { vertical-align: -2px; margin-right: 3px; }
+
+/* ---------- 22.7 可交互演示区 ---------- */
+/* 两列等宽 + 等高（stretch）：左边对话，右边「内部工作台」。
+ * 等宽的理由：右栏才是这一节的主角（总装图 + 状态 + 本轮轨迹），
+ * 左栏只负责"提一句问"——它不需要更宽，也不该宽出一片空白。 */
+.works-demo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: stretch; }
 .works-chat {
   display: flex; flex-direction: column;
   height: clamp(560px, 72vh, 700px);
@@ -10971,22 +11149,27 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
   display: flex; align-items: flex-start; gap: 7px;
 }
 .works-keyhint .icon { flex-shrink: 0; margin-top: 2px; }
+.works-keyhint .wk-txt { flex: 1 1 auto; min-width: 0; }
 
-/* ---- 右栏：它在想什么（内部工作信息） ----
- * 结构与学生熟悉的「智能体实验室 · 内部工作台」一致：
- *   ① 统计胶囊（轮次 / 工具 / 用时）② 组件小灯（每行带"这一步做了什么"）
- *   ③ 本轮轨迹（按真实顺序记下每一步）④ 原理注解。 */
+/* ---- 右栏：它的内部工作台 ----
+ * 与「智能体实验室 · 智能体内部工作台」同一套语言（学生两页看到的是同一张图）：
+ *   ① 状态牌 + 图例 ② 放射状总装图（大脑居中、四组件环绕）
+ *   ③ 统计胶囊（轮次 / 工具 / 用时）④ 本轮轨迹（按轮次分组）⑤ 原理注解。
+ * 总装图直接复用 .pg-hub 系列（样式定义在智能体实验室那一节），这里只调尺寸与字号。 */
 .works-live {
   display: flex; flex-direction: column; min-height: 0;
   /* 与左侧对话区同高（同一套 clamp），两栏齐平才不显得"一高一矮" */
   height: clamp(560px, 72vh, 700px);
-  padding: 16px 17px; border-radius: var(--r-md, 14px);
+  padding: 14px 16px; border-radius: var(--r-md, 14px);
   background: linear-gradient(180deg, #fbfdfc, var(--c-elev, #fafafa));
   border: 1px solid var(--c-line);
+  overflow-y: auto; scrollbar-width: thin;      /* 工作台内容比对话长：整栏可滚 */
 }
+.works-live::-webkit-scrollbar { width: 6px; }
+.works-live::-webkit-scrollbar-thumb { background: var(--works-line); border-radius: 999px; }
 .works-live-head {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
-  gap: 10px; flex-wrap: wrap; margin-bottom: 12px;
+  gap: 10px; flex-wrap: wrap; margin-bottom: 10px;
 }
 .works-live-title { font-size: 14.5px; font-weight: 800; color: var(--c-ink); display: flex; align-items: center; gap: 6px; }
 .works-live-title .icon { color: var(--c-works); }
@@ -11003,78 +11186,24 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
 .wl-meta i { font-style: normal; color: var(--c-sub); }
 .wl-meta b { font-weight: 800; color: var(--works-ink); font-variant-numeric: tabular-nums; }
 
-/* 小灯：行式（组件名 + 这一轮它做了什么）——比圆点标签多给一条证据 */
-.works-stages { flex: 0 0 auto; display: flex; flex-direction: column; gap: 7px; margin-bottom: 12px; }
-.works-light {
-  display: grid; grid-template-columns: 22px 56px minmax(0, 1fr); align-items: center; gap: 8px;
-  padding: 7px 11px; border-radius: 10px;
-  background: #fff; border: 1px solid var(--c-line);
-  font-size: 12.5px; color: var(--c-sub);
-  transition: background .2s ease, color .2s ease, border-color .2s ease, box-shadow .2s ease;
-}
-.works-light .wl-ico {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; border-radius: 6px;
-  background: var(--c-elev, #f2f2f2); color: var(--c-sub); transition: background .2s ease, color .2s ease;
-}
-.works-light .wl-name { font-weight: 800; color: var(--c-ink-2); white-space: nowrap; }
-.works-light .wl-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.5; }
-.works-light[data-color="brain"] { --wl-c: var(--c-brain); --wl-t: var(--brain-tint); --wl-i: var(--brain-ink); --wl-l: var(--brain-line); }
-.works-light[data-color="per"]  { --wl-c: var(--c-per);  --wl-t: var(--per-tint);  --wl-i: var(--per-ink);  --wl-l: var(--per-line); }
-.works-light[data-color="plan"] { --wl-c: var(--c-plan); --wl-t: var(--plan-tint); --wl-i: var(--plan-ink); --wl-l: var(--plan-line); }
-.works-light[data-color="mem"]  { --wl-c: var(--c-mem);  --wl-t: var(--mem-tint);  --wl-i: var(--mem-ink);  --wl-l: var(--mem-line); }
-.works-light[data-color="exe"]  { --wl-c: var(--c-exe);  --wl-t: var(--exe-tint);  --wl-i: var(--exe-ink);  --wl-l: var(--exe-line); }
-.works-light.on {
-  background: var(--wl-t, var(--works-tint));
-  border-color: var(--wl-l, var(--works-line));
-  box-shadow: 0 1px 8px rgba(0, 0, 0, .05);
-}
-.works-light.on .wl-ico { background: var(--wl-c, var(--c-works)); color: #fff; animation: works-pulse 1.1s ease-in-out infinite; }
-.works-light.on .wl-name, .works-light.on .wl-txt { color: var(--wl-i, var(--works-ink)); }
-.works-light.skip { opacity: .55; }
-.works-light.skip .wl-txt { text-decoration: line-through; }
-@keyframes works-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(14, 159, 135, .28); }
-  50% { box-shadow: 0 0 0 5px rgba(14, 159, 135, 0); }
-}
+/* 总装图：比智能体实验室那版小一号——等宽后右栏只有四百来像素，84px 的节点会顶到边。
+ * --side 也从 10% 收到 4%：①②两枚步骤标签是撑在两节点中间的空隙里的，
+ * 侧边内缩越多、这段空隙越窄，标签就会挤成竖排。 */
+#sec-works .pg-hub { --nw: 70px; --nh: 70px; --gapv: 26px; --side: 4%; margin: 8px 0 2px; }
+#sec-works .pg-hub-node svg { width: 19px; height: 19px; }
+#sec-works .pg-hub-node.n-brain svg { width: 21px; height: 21px; }
+#sec-works .pg-hub-ico { width: 32px; height: 32px; border-radius: 10px; }
+#sec-works .pg-hub-node .pg-hub-name { font-size: 9.5px; }
+#sec-works .pg-hub-tag { font-size: 9px; line-height: 1.2; }
 
-/* 本轮轨迹：把这一轮每一步真实干了什么按顺序摆出来（可滚动） */
-.works-trace-wrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.works-trace-head {
-  flex: 0 0 auto; display: flex; align-items: center; gap: 6px;
-  font-size: 12.5px; font-weight: 800; color: var(--c-ink); margin-bottom: 8px;
-}
-.works-trace-head .icon { color: var(--c-works); }
-.works-trace-n {
-  margin-left: auto; font-weight: 700; font-size: 11.5px; color: var(--works-ink);
-  background: var(--works-tint); border: 1px solid var(--works-line);
-  border-radius: 999px; padding: 1px 8px;
-}
-.works-trace {
-  flex: 1 1 auto; min-height: 130px; max-height: 340px; overflow-y: auto;
-  padding: 8px; border-radius: 10px; background: #fff; border: 1px solid var(--c-line);
-  display: flex; flex-direction: column; gap: 6px; scrollbar-width: thin;
-}
-.works-trace::-webkit-scrollbar { width: 6px; }
-.works-trace::-webkit-scrollbar-thumb { background: var(--works-line); border-radius: 999px; }
-.works-trace-empty { font-size: 12.5px; line-height: 1.7; color: var(--c-sub); padding: 8px 6px 10px; }
-.wt-row {
-  display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 8px;
-  padding: 7px 9px; border-radius: 8px;
-  background: var(--c-elev, #fafafa); border-left: 3px solid var(--wt-c, var(--c-line));
-  font-size: 12.3px; line-height: 1.6;
-}
-.wt-who { display: inline-flex; align-items: center; gap: 4px; font-weight: 800; color: var(--wt-i, var(--c-ink-2)); white-space: nowrap; }
-.wt-who .icon { flex: 0 0 auto; }
-.wt-txt { min-width: 0; color: var(--c-ink-2); word-break: break-word; }
-.wt-row.c-brain { --wt-c: var(--c-brain); --wt-i: var(--brain-ink); background: var(--brain-tint); }
-.wt-row.c-per  { --wt-c: var(--c-per);  --wt-i: var(--per-ink); }
-.wt-row.c-plan { --wt-c: var(--c-plan); --wt-i: var(--plan-ink); }
-.wt-row.c-mem  { --wt-c: var(--c-mem);  --wt-i: var(--mem-ink); }
-.wt-row.c-exe  { --wt-c: var(--c-exe);  --wt-i: var(--exe-ink); }
-.wt-row.c-tool { --wt-c: var(--c-exe);  --wt-i: var(--exe-ink);  background: var(--exe-tint); }
-.wt-row.c-stop { --wt-c: var(--c-works); --wt-i: var(--works-ink); background: var(--works-tint); }
-.wt-row.c-err  { --wt-c: #E2574C; --wt-i: #8A2B22; background: #FDECEA; }
+/* 轨迹行：字号跟着本页走（工作台那一节的字号是给 #sec-playground 单独调过的） */
+#sec-works .pipe-log-head { margin-top: 12px; padding-top: 10px; }
+#sec-works .pg-log-row { padding: 7px 9px; }
+#sec-works .pg-log-body { font-size: 12.5px; line-height: 1.6; }
+#sec-works .pg-log-ms { font-size: 11.5px; white-space: nowrap; }
+/* 「工具调用 / 收尾 / 出错」三类专用行色（四组件的 .c-* 是全站通用的，这两个只在本页用） */
+#sec-works .pg-log-row.c-stop { --node: var(--c-works); --node-ink: var(--works-ink); }
+#sec-works .pg-log-row.c-err  { --node: #E2574C;      --node-ink: #8A2B22; }
 
 .works-note {
   flex: 0 0 auto; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--c-line);
@@ -11082,16 +11211,24 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
 }
 .works-note b { color: var(--works-ink); }
 
-/* ---------- 22.7 收尾对比小结 ---------- */
+/* ---------- 22.8 收尾对比小结 ---------- */
 #sec-works .summary-core { border-left-color: var(--c-works); }
-.works-cmp-wrap { overflow-x: auto; margin-bottom: 16px; }
-.works-cmp { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 560px; }
-.works-cmp th, .works-cmp td { padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--c-line); vertical-align: top; line-height: 1.6; }
-.works-cmp thead th { font-size: 13.5px; font-weight: 800; color: #fff; background: linear-gradient(135deg, var(--c-works), var(--c-works-deep)); }
-.works-cmp thead th:first-child { border-top-left-radius: 10px; }
-.works-cmp thead th:last-child { border-top-right-radius: 10px; }
-.works-cmp tbody th { font-weight: 800; color: var(--c-ink); background: var(--c-elev, #fafafa); white-space: nowrap; }
+/* 对比表：整块包圆角边框；窄屏横向滚动时首列吸住（sticky），
+ * 否则左右滑动后"比一比"那一列会跑出屏外，学生不知道每行在比什么。 */
+.works-cmp-wrap {
+  overflow-x: auto; margin-bottom: 16px;
+  border: 1px solid var(--c-line); border-radius: var(--r-md, 12px);
+}
+.works-cmp { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; min-width: 560px; }
+.works-cmp th, .works-cmp td { padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--c-line); vertical-align: top; line-height: 1.65; }
+.works-cmp thead th { font-size: 13.5px; font-weight: 800; color: #fff; background: linear-gradient(135deg, var(--c-works), var(--c-works-deep)); border-bottom: 0; }
+.works-cmp tbody th {
+  position: sticky; left: 0; z-index: 1;
+  font-weight: 800; color: var(--c-ink); background: var(--c-elev, #fafafa); white-space: nowrap;
+}
+.works-cmp tbody tr:nth-child(even) td { background: #fcfdfd; }
 .works-cmp tbody tr:hover td { background: var(--works-tint); }
+.works-cmp tbody tr:last-child th, .works-cmp tbody tr:last-child td { border-bottom: 0; }
 .works-cmp td { color: var(--c-ink-2); }
 .works-formula {
   margin-top: 4px; padding: 16px 18px; border-radius: var(--r-md, 14px);
@@ -11108,26 +11245,34 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
 .wf-arrow { color: var(--c-works); font-style: normal; font-weight: 800; }
 .works-formula-note { margin-top: 12px; font-size: 12.8px; line-height: 1.7; color: var(--c-sub); }
 
-/* ---------- 22.8 响应式 ---------- */
+/* ---------- 22.9 响应式 ---------- */
 @media (max-width: 900px) {
   .works-demo { grid-template-columns: minmax(0, 1fr); align-items: start; }
-  .works-live { height: auto; }
-  .works-trace { max-height: 280px; }
+  .works-live { height: auto; overflow: visible; }
   .works-hero-tools { margin-left: 0; align-items: flex-start; width: 100%; }
   .works-tools-row { justify-content: flex-start; }
+  /* 六步改两列：行尾变成第 2、4、6 格，箭头跟着重算 */
+  .works-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .works-step:nth-child(3n)::after {
+    content: ""; position: absolute; right: -16px; top: 46px; width: 12px; height: 2px;
+    background: repeating-linear-gradient(to right, var(--works-line) 0 4px, transparent 4px 7px);
+  }
+  .works-step:nth-child(2n)::after { content: none; }
 }
 @media (max-width: 640px) {
   .works-hero { padding: 16px 18px; gap: 14px; }
   .works-hero-name { font-size: 20px; }
-  .works-step { flex-basis: 168px; }
+  /* 六步改单列：一列里不需要横向箭头 */
+  .works-steps { grid-template-columns: minmax(0, 1fr); row-gap: 24px; }
+  .works-step:nth-child(2n)::after, .works-step:nth-child(2n+1)::after { content: none; }
   .works-cmp { min-width: 480px; }
   .works-chat { height: clamp(500px, 80vh, 600px); }
-  .works-light { grid-template-columns: 20px 46px minmax(0, 1fr); font-size: 12px; padding: 6px 9px; }
-  .wt-row { grid-template-columns: 64px minmax(0, 1fr); font-size: 12px; }
+  #sec-works .pg-hub { --nw: 66px; --nh: 66px; --gapv: 24px; }
+  #sec-works .pg-hub-node .pg-hub-name { font-size: 9px; }
 }
 
-/* ---------- 22.9 减少动态效果：关掉动画，元素保持可见 ---------- */
+/* ---------- 22.10 减少动态效果：关掉动画，元素保持可见 ---------- */
 @media (prefers-reduced-motion: reduce) {
-  .works-light.on .wl-ico { animation: none; }
+  .pg-hub-edge.is-on { animation: none; }
   .works-step, .works-step:hover { transform: none; }
 }

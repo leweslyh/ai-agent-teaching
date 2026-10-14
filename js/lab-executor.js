@@ -69,6 +69,51 @@ AgentLab.LabExecutor = (function () {
     { q: "为什么 AI 写的代码要放进沙盒里跑？", opts: ["因为沙盒里跑得更快", "因为代码是“真的会动手”的：沙盒用隔离环境 + 默认断网 + 超时限制，把破坏范围关在小圈子里", "因为沙盒能自动改错", "因为沙盒可以省 Token"], ans: 1, why: "代码执行是执行力最强、也最危险的工具：能读文件、能联网、能删东西。沙盒不是“多装一个环境”，而是把执行关进隔离的圈子里（进程/容器/微型虚拟机），默认断网、限时、限量，出事也只影响沙盒。" }
   ];
 
+  /* ---------- MCP 连线对比图：5 个模型 × 5 个工具 ----------
+   * 每张图都由「列标题 + 连线 + 节点」三段拼成（节点最后画，压在连线之上）。
+   * 5 行节点的 y 坐标与两列 x 坐标固定在这里，连线端点从节点边缘起止。 */
+  var MCP_ROWS = [48, 80, 112, 144, 176];
+  var MCP_LABEL_L = ["A", "B", "C", "D", "E"];
+  var MCP_LABEL_R = ["1", "2", "3", "4", "5"];
+
+  function mcpCaptions() {
+    return '<text class="tx-cap" x="40" y="16">模型 / 应用</text>' +
+      '<text class="tx-cap" x="220" y="16">工具</text>';
+  }
+
+  /* 没有标准：左列每个节点连到右列每个节点 —— 5 × 5 = 25 条 */
+  function mcpMesh() {
+    var out = "";
+    MCP_ROWS.forEach(function (y1) {
+      MCP_ROWS.forEach(function (y2) {
+        out += '<line class="ln" x1="43" y1="' + y1 + '" x2="217" y2="' + y2 + '"/>';
+      });
+    });
+    return out;
+  }
+
+  /* 有 MCP：每一侧只跟中间协议条连一次 —— 5 + 5 = 10 条 */
+  function mcpFan() {
+    var out = "";
+    MCP_ROWS.forEach(function (y) {
+      out += '<line class="ln" x1="43" y1="' + y + '" x2="96" y2="112"/>' +
+        '<line class="ln" x1="164" y1="112" x2="217" y2="' + y + '"/>';
+    });
+    return out;
+  }
+
+  /* 两列节点（圆 + 标签） */
+  function mcpNodes() {
+    var out = "";
+    MCP_ROWS.forEach(function (y, i) {
+      out += '<circle class="nd" cx="30" cy="' + y + '" r="13"/>' +
+        '<text class="tx" x="30" y="' + (y + 4) + '">' + MCP_LABEL_L[i] + '</text>' +
+        '<circle class="nd" cx="230" cy="' + y + '" r="13"/>' +
+        '<text class="tx" x="230" y="' + (y + 4) + '">' + MCP_LABEL_R[i] + '</text>';
+    });
+    return out;
+  }
+
   /* ---------- 渲染 ---------- */
   function render() {
     var LP = AgentLab.LabPerception;
@@ -84,7 +129,7 @@ AgentLab.LabExecutor = (function () {
         color: "exe",
         groups: [
           { label: "认识与配齐", items: [
-            { t: "认识执行器", note: "AI 的手" },
+            { t: "认识执行器", el: "exe-intro", note: "AI 的手" },
             { t: "工具五分类", el: "exe-cat-map", note: "11 个工具" },
             { t: "工具百宝箱", el: "pg-toolbox", note: "开关 11 种工具" }
           ] },
@@ -104,12 +149,12 @@ AgentLab.LabExecutor = (function () {
           { label: "协作与协议", items: [
             { t: "多工具协作", el: "exe-mt-flow", note: "链式调用" },
             { t: "预测工具链", el: "exe-chain", note: "先猜后放" },
-            { t: "MCP 协议", note: "工具的 USB 接口" },
+            { t: "MCP 协议", el: "exe-mcp-card", note: "工具的 USB 接口" },
             { t: "该不该上 MCP", el: "exe-mcp", note: "场景判断" }
           ] },
           { label: "验收与进阶", items: [
             { t: "小测验", el: "exe-quiz", note: "15 题" },
-            { t: "进阶原理课堂", note: "13 个概念" }
+            { t: "进阶原理课堂", el: "exe-adv", note: "13 个概念" }
           ] }
         ]
       }) +
@@ -118,12 +163,12 @@ AgentLab.LabExecutor = (function () {
       '<div class="lesson-goal card-exe">' +
         '<h3>' + U.icon("target", 18) + ' 本课学习目标</h3>' +
         '<div class="goal-list">' +
-          '<div class="goal-item"><span class="goal-num">1</span>理解执行器是 AI 的“手”——大语言模型自己不会实时查、不会真操作，执行器通过调用外部能力把事真正办成；掌握“有工具 vs 没工具”的本质区别</div>' +
-          '<div class="goal-item"><span class="goal-num">2</span>了解 ai-agent-book 工具五分类（感知/执行/协作/事件触发/用户沟通），能判断天气、搜索、计算、提醒等工具分别属于哪类</div>' +
-          '<div class="goal-item"><span class="goal-num">3</span>理解 Function Calling 机制（模型输出 JSON 指令→程序执行工具→结果返回模型）和工具描述的作用；了解 MCP 协议（工具的 USB 接口）</div>' +
-          '<div class="goal-item"><span class="goal-num">4</span>建立工具安全与约束意识：知道工具幻觉风险（编造不存在的工具/参数/结果），了解生产系统的四道防线（白名单、参数强校验、等待回填、结果验证）与高危操作人工确认；理解多工具协作的链式调用模式</div>' +
+          '<div class="goal-item"><span class="goal-num">1</span>理解执行器是 AI 的“手”：大模型自己查不了、做不了，执行器通过调用外部能力把事办成；掌握“有工具 vs 没工具”的区别</div>' +
+          '<div class="goal-item"><span class="goal-num">2</span>了解工具五分类（感知/执行/协作/事件触发/用户沟通），能判断天气、搜索、计算、提醒等工具属于哪类</div>' +
+          '<div class="goal-item"><span class="goal-num">3</span>理解 Function Calling 机制（模型输出 JSON 指令 → 程序执行工具 → 结果返回）与工具描述的作用；了解 MCP 协议（工具的 USB 接口）</div>' +
+          '<div class="goal-item"><span class="goal-num">4</span>建立工具安全意识：认识工具幻觉风险（编造工具/参数/结果）与生产系统的四道防线（白名单、参数强校验、等待回填、结果验证），高危操作要人工确认</div>' +
           '<div class="goal-item"><span class="goal-num">5</span>知道工具必须“<b>保真</b>”：不许偷偷改参数、不许偷偷截断结果——静默失败比报错更危险</div>' +
-          '<div class="goal-item"><span class="goal-num">6</span>会判断“这一步能不能重试”：区分可重试与不可重试的动作，认识<b>幂等</b>与“先确认再执行”，并知道 AI 写的代码要关进<b>沙盒</b>里跑</div>' +
+          '<div class="goal-item"><span class="goal-num">6</span>会判断“这一步能不能重试”：区分可重试与不可重试，认识<b>幂等</b>与“先确认再执行”，知道 AI 写的代码要关进<b>沙盒</b></div>' +
         '</div>' +
       '</div>' +
 
@@ -136,27 +181,15 @@ AgentLab.LabExecutor = (function () {
           '<div class="tf-arrow">=</div>' +
           '<div class="tf-out">“查得到、算得出、搜得到、真办事”</div>' +
         '</div>' +
-        '<div class="tip">' + U.icon("spark", 16) + ' 关键本领：<b>工具调用</b>是智能体区别于普通聊天机器人的关键之一——没工具只能“纸上谈兵”，有工具才能“真刀真枪”。工具越多，能办的事越多；但也不是越多越好——工具太多容易挑花眼，按需要配齐最合适（进阶课堂「工具五分类」里有细讲）。</div>'
+        '<div class="tip">' + U.icon("spark", 16) + ' 关键本领：<b>工具调用</b>是智能体区别于普通聊天机器人的关键之一——没工具只能“纸上谈兵”，有工具才能“真刀真枪”。工具越多，能办的事越多；但也不是越多越好——工具太多容易挑花眼，按需要配齐最合适（进阶课堂「工具五分类」里有细讲）。</div>', { id: "exe-intro" }
       ) +
 
       /* 工具五分类 */
       LP.card("exe", "工具五分类（ai-agent-book chapter4:7）",
         "ai-agent-book 把工具分成五大类，每类有不同的职责。先看清五类的定义与例子，再点下面的工具，看它属于哪一类。",
-        /* 区 0：图示 —— 五宫格总览（先看全貌，再看下面逐类详解） */
-        '<div class="ta-duo">' +
-          '<div class="ta-image-wrap">' +
-            '<img src="images/exe-tool-taxonomy.svg" alt="工具五分类图：感知类、执行类、协作类、事件触发类、用户沟通类，每类附本系统里的真实例子" class="ta-image">' +
-            '<div class="ta-source">📐 本教学系统绘制 · 工具五分类（ai-agent-book chapter4:7）</div>' +
-          '</div>' +
-          '<div class="ta-explain">' +
-            '<div class="te-title">📖 分不清时，先问两个问题</div>' +
-            '<div class="pf-flow">' +
-              '<div class="pf-step"><span class="pf-step-tag">问题一</span>它是在把信息<b>读进来</b>（感知类），还是在把决定<b>做出去</b>（执行类）？</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">问题二</span>如果不是前两类，再看是不是<b>找人协作</b>、<b>等条件自己启动</b>，或者<b>把话说给人听</b>——这三类更“高级”，也更容易被忽略</div>' +
-            '</div>' +
-            '<div class="pf-note">' + U.icon("alert", 13) + ' 提醒：<b>工具不是越多越好</b>——超过 100 个，连强模型也会挑错。</div>' +
-          '</div>' +
-        '</div>' +
+        /* 原来的「区 0：图示 + 分不清时先问两个问题」左图右解整块已按需求删除，
+         * 直接进五类的定义与例子，再点下面的工具做归类练习；
+         * 配套图 images/exe-tool-taxonomy.svg 已一并删除。 */
         '<div class="tool-categories" id="exe-cat-cards">' +
           '<div class="tc-item tc-perception">' +
             '<div class="tc-head"><span class="tc-icon">' + U.icon("eye", 18) + '</span><b>感知工具</b><span class="tc-tag">获取信息</span></div>' +
@@ -236,21 +269,9 @@ AgentLab.LabExecutor = (function () {
       /* Function Calling 机制：原理（两个角色）→ 分步接力演示 */
       LP.card("exe", "Function Calling 机制：AI 怎么“调用”工具？",
         "真实系统里，AI 不是直接“动手”，而是输出一段结构化的 JSON 指令，由程序去执行真正的工具。先弄清<b>两个角色怎么分工</b>，再分步看一次完整接力。",
-        /* 区 0：图示 —— 四步流程：谁决策、谁执行（左图右解，与感知器原理图同一版式） */
-        '<div class="ta-duo">' +
-          '<div class="ta-image-wrap">' +
-            '<img src="images/exe-function-calling.svg" alt="Function Calling 四步流程图：用户提问 → 模型输出 JSON 指令 → 程序执行工具 → 结果回填模型" class="ta-image">' +
-            '<div class="ta-source">📐 本教学系统绘制 · Function Calling 四步</div>' +
-          '</div>' +
-          '<div class="ta-explain">' +
-            '<div class="te-title">📖 先把角色分清楚，再看下面的分步接力</div>' +
-            '<div class="pf-flow">' +
-              '<div class="pf-step"><span class="pf-step-tag">两个角色</span><b>决策方是模型，执行方是程序</b>——模型只负责“说要做什么”，真正动手的是程序</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">第 2 步最容易被忽略</span>模型交出的不是人话，是一段 <b>JSON 指令</b>——这样程序才读得懂</div>' +
-            '</div>' +
-            '<div class="pf-note">' + U.icon("info", 13) + ' 好处：比“用提示词求模型拼 JSON”<b>鲁棒得多</b>。</div>' +
-          '</div>' +
-        '</div>' +
+        /* 原来的「区 0：四步流程图 + 先把角色分清楚」左图右解整块已按需求删除，
+         * 直接进「原理：决策方 / 执行方」，再分步看一次完整接力；
+         * 配套图 images/exe-function-calling.svg 已一并删除。 */
         /* 区 1：原理 —— 决策方 / 执行方 */
         '<div class="pf-kit-head">' + U.icon("hand", 16) + ' 原理：AI 不“动手”，它只写“委托单”</div>' +
         '<div class="pf-demo-grid">' +
@@ -742,21 +763,10 @@ AgentLab.LabExecutor = (function () {
       /* MCP 协议：原理（N×M vs N+M）→ 连线对比 → 五要素 */
       LP.card("exe", "MCP 协议：工具的“USB 接口”（ai-agent-book chapter4:100）",
         "接 100 个工具就要写 100 套适配代码？MCP 是标准化的工具接入协议——相当于「<b>工具的 USB 接口</b>」。先看清<b>没有标准 vs 有标准</b>的差别，再看它带来什么。",
-        /* 区 0：图示 —— N×M 收敛成 N+M（左图右解，与感知器原理图同一版式） */
-        '<div class="ta-duo">' +
-          '<div class="ta-image-wrap">' +
-            '<img src="images/exe-mcp-nm.svg" alt="MCP 收敛示意图：改造前 3 个应用 × 4 个工具需要 12 条对接代码，改造后统一走 MCP 协议只需 7 条连线" class="ta-image">' +
-            '<div class="ta-source">📐 本教学系统绘制 · MCP 把 N×M 收敛为 N+M</div>' +
-          '</div>' +
-          '<div class="ta-explain">' +
-            '<div class="te-title">📖 这张图真正想说的是“接口标准”的价值</div>' +
-            '<div class="pf-flow">' +
-              '<div class="pf-step is-bad"><span class="pf-step-tag">上栏：一对一硬接</span>每接一个新工具，都要为它单独写一套对接代码——3 × 4 = 12 条，每加一个都得重算</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">下栏：统一走协议</span>都按同一套接口说话 → 3 + 4 = 7 条。<b>是加法不是乘法</b>——这才是“USB 接口”这个类比想说的</div>' +
-            '</div>' +
-            '<div class="pf-note">' + U.icon("alert", 13) + ' 代价也要一起记住：MCP 的工具定义同样吃 Token——<b>5 个服务器可达上万 Token</b>。</div>' +
-          '</div>' +
-        '</div>' +
+        /* 原「区 0：N×M 收敛图 + 这张图真正想说的是“接口标准”的价值」左图右解整块已删除
+         * ——它和下面「区 2：连线对比」讲的是同一件事（都画 N×M 与 N+M），重复；
+         * 配套图 images/exe-mcp-nm.svg 也一并删除。该块里的 Token 代价提示没有丢：
+         * 本卡末尾的「别忘了算 Token 账」写得更完整。 */
         /* 区 1：原理 —— 乘法 vs 加法 */
         '<div class="pf-kit-head">' + U.icon("link", 16) + ' 原理：没有标准会“适配爆炸”，有了标准才能“即插即用”</div>' +
         '<div class="pf-demo-grid">' +
@@ -765,7 +775,7 @@ AgentLab.LabExecutor = (function () {
               '<span class="pf-chan">N × M</span></div>' +
             '<div class="pf-flow">' +
               '<div class="pf-step"><span class="pf-step-tag">每个模型</span>都要为每个工具单独写一套适配代码</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">后果</span>3 个模型 × 3 个工具 = <b>9 套</b>；改一个工具，要动好几处</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">后果</span>5 个模型 × 5 个工具 = <b>25 套</b>；改一个工具，要动好几处</div>' +
             '</div>' +
             '<div class="pf-note">' + U.icon("info", 13) + ' 复杂度是<b>乘法</b>——工具和模型越多，适配代码爆炸式增长。</div>' +
           '</div>' +
@@ -779,48 +789,39 @@ AgentLab.LabExecutor = (function () {
             '<div class="pf-note">' + U.icon("info", 13) + ' 复杂度变成<b>加法</b>——这就是 MCP 被称为“USB 接口”的原因。</div>' +
           '</div>' +
         '</div>' +
-        /* 区 2：连线对比 —— 核心记忆点 */
-        '<div class="pf-kit-head">' + U.icon("target", 16) + ' 对比：接同样多的工具，连线差多少？</div>' +
+        /* 区 2：连线对比 —— 核心记忆点（5 个模型 + 5 个工具：25 条 vs 10 条）
+         * 两图同版式：列标题（模型 / 应用 ↔ 工具）+ 算式胶囊 + 等宽的图，可直接对着数连线。
+         * 取 5 而不取 3：3 × 3 = 9 对 3 + 3 = 6 只差 3 条，看不出“乘法爆炸”；
+         * 5 × 5 = 25 对 5 + 5 = 10 差 15 条，差距肉眼可见。 */
+        '<div class="pf-kit-head">' + U.icon("target", 16) + ' 对比：同样是 5 个模型、5 个工具，连线差多少？</div>' +
         '<div class="mcp-cmp">' +
           '<div class="mcp-pane is-bad">' +
-            '<div class="mcp-pane-head">' + U.icon("xmark", 15) + ' 没有统一标准：N × M</div>' +
-            '<svg class="mcp-svg" viewBox="0 0 240 148" role="img" aria-label="没有统一标准时，3 个模型与 3 个工具两两相连，共 9 条适配连线">' +
-              '<line class="ln" x1="42" y1="24" x2="198" y2="24"/>' +
-              '<line class="ln" x1="42" y1="24" x2="198" y2="74"/>' +
-              '<line class="ln" x1="42" y1="24" x2="198" y2="124"/>' +
-              '<line class="ln" x1="42" y1="74" x2="198" y2="24"/>' +
-              '<line class="ln" x1="42" y1="74" x2="198" y2="74"/>' +
-              '<line class="ln" x1="42" y1="74" x2="198" y2="124"/>' +
-              '<line class="ln" x1="42" y1="124" x2="198" y2="24"/>' +
-              '<line class="ln" x1="42" y1="124" x2="198" y2="74"/>' +
-              '<line class="ln" x1="42" y1="124" x2="198" y2="124"/>' +
-              '<circle class="nd" cx="30" cy="24" r="12"/><circle class="nd" cx="30" cy="74" r="12"/><circle class="nd" cx="30" cy="124" r="12"/>' +
-              '<circle class="nd" cx="210" cy="24" r="12"/><circle class="nd" cx="210" cy="74" r="12"/><circle class="nd" cx="210" cy="124" r="12"/>' +
-              '<text class="tx" x="30" y="28">A</text><text class="tx" x="30" y="78">B</text><text class="tx" x="30" y="128">C</text>' +
-              '<text class="tx" x="210" y="28">1</text><text class="tx" x="210" y="78">2</text><text class="tx" x="210" y="128">3</text>' +
+            '<div class="mcp-pane-head">' + U.icon("xmark", 15) + ' 没有统一标准' +
+              '<span class="mcp-chan">N × M</span></div>' +
+            '<svg class="mcp-svg" viewBox="0 0 260 196" role="img" aria-label="没有统一标准时，5 个模型与 5 个工具两两都要对接，共 25 条适配连线">' +
+              mcpCaptions() + mcpMesh() + mcpNodes() +
             '</svg>' +
-            '<div class="mcp-pane-foot"><span>3 个模型 × 3 个工具</span><b>= 9 套适配代码</b></div>' +
+            '<div class="mcp-pane-foot"><span>5 个模型 × 5 个工具，两两都要单独对接</span><b>= 25 条连线</b></div>' +
           '</div>' +
           '<div class="mcp-pane is-ok">' +
-            '<div class="mcp-pane-head">' + U.icon("check", 15) + ' 有 MCP：N + M</div>' +
-            '<svg class="mcp-svg" viewBox="0 0 240 148" role="img" aria-label="有 MCP 时，3 个模型与 3 个工具各自只连到中间一层协议，共 6 条连线">' +
-              '<line class="ln" x1="42" y1="24" x2="86" y2="74"/>' +
-              '<line class="ln" x1="42" y1="74" x2="86" y2="74"/>' +
-              '<line class="ln" x1="42" y1="124" x2="86" y2="74"/>' +
-              '<line class="ln" x1="154" y1="74" x2="198" y2="24"/>' +
-              '<line class="ln" x1="154" y1="74" x2="198" y2="74"/>' +
-              '<line class="ln" x1="154" y1="74" x2="198" y2="124"/>' +
-              '<rect class="bar" x="86" y="63" width="68" height="22" rx="7"/>' +
-              '<text class="tx-bar" x="120" y="78">MCP 协议</text>' +
-              '<circle class="nd" cx="30" cy="24" r="12"/><circle class="nd" cx="30" cy="74" r="12"/><circle class="nd" cx="30" cy="124" r="12"/>' +
-              '<circle class="nd" cx="210" cy="24" r="12"/><circle class="nd" cx="210" cy="74" r="12"/><circle class="nd" cx="210" cy="124" r="12"/>' +
-              '<text class="tx" x="30" y="28">A</text><text class="tx" x="30" y="78">B</text><text class="tx" x="30" y="128">C</text>' +
-              '<text class="tx" x="210" y="28">1</text><text class="tx" x="210" y="78">2</text><text class="tx" x="210" y="128">3</text>' +
+            '<div class="mcp-pane-head">' + U.icon("check", 15) + ' 有 MCP 统一协议' +
+              '<span class="mcp-chan">N + M</span></div>' +
+            '<svg class="mcp-svg" viewBox="0 0 260 196" role="img" aria-label="有 MCP 时，5 个模型与 5 个工具各自只对接中间一层协议，共 10 条连线">' +
+              mcpCaptions() + mcpFan() +
+              '<rect class="bar" x="96" y="100" width="68" height="24" rx="8"/>' +
+              '<text class="tx-bar" x="130" y="116">MCP 协议</text>' +
+              mcpNodes() +
             '</svg>' +
-            '<div class="mcp-pane-foot"><span>3 个模型 + 3 个工具</span><b>= 6 处接入</b></div>' +
+            '<div class="mcp-pane-foot"><span>5 个模型 + 5 个工具，各自只对接协议一次</span><b>= 10 条连线</b></div>' +
           '</div>' +
         '</div>' +
-        '<div class="tip tip-ok" style="margin-top:12px">' + U.icon("spark", 15) + ' <b>一句话记住：</b>MCP 把“乘法”变成了“加法”——工具实现一次、客户端接入一次，工具生态才能真正长起来。</div>' +
+        /* 结论条：把两张图压成一句能记住的话（原来这里的 tip-ok 一句话已并进来，不再重复） */
+        '<div class="mcp-concl">' +
+          '<span class="mc-tag is-mul">N × M</span>' +
+          '<span class="mc-to">→</span>' +
+          '<span class="mc-tag is-add">N + M</span>' +
+          '<span class="mc-txt"><b>新增一个工具时：</b>原来要给 5 个模型各写一套适配（5 × 5 = 25 条），现在只要在协议侧接 1 次（5 + 5 = 10 条）。工具实现一次、客户端接入一次——这就是 MCP 让工具生态真正长起来的原因。</span>' +
+        '</div>' +
         /* 区 3：五要素 */
         '<div class="pf-kit-head">' + U.icon("archive", 16) + ' MCP 的五个要素</div>' +
         '<div class="pf-kit">' +
@@ -839,7 +840,7 @@ AgentLab.LabExecutor = (function () {
         '</div>' +
         '<div class="tip tip-info" style="margin-top:12px">' + U.icon("book", 15) + ' <b>ai-agent-book chapter4:100：</b>MCP 让 Agent 通过统一协议连接各种工具——<b>本地工具、远程工具、SaaS 工具、数据库、浏览器</b>等，就像 USB 接口让各种设备都能即插即用。下面紧跟着「该不该上 MCP」实验，用两个真实场景判断一下。</div>' +
         '<div class="tip tip-warn" style="margin-top:8px">' + U.icon("calc", 16) + ' <b>别忘了算 Token 账：</b>接 MCP 服务器时，它的<b>全部工具说明会进到每一次会话</b>——只接 5 个服务器，就可能带来<b>上万 Token</b> 的工具定义，占掉 200K 窗口的近三分之一；社区还有案例：直接接一个 MCP 服务器，初始加载 <b>16000 Token</b>。<br>所以现在流行一层“<b>渐进式披露</b>”的做法：平时只挂一份很短的<b>目录</b>（每个技能约 <b>100 Token</b>，装 50 个也才约 5000），真正用到某个技能时，再把它<b>按需</b>加载进来——同一个案例里，初始开销从 16000 降到了 <b>500</b>。</div>' +
-        '<div class="tip" style="margin-top:8px">' + U.icon("shield", 16) + ' <b>MCP 也带来了新的安全风险（三类）：</b>① <b>工具描述投毒</b>——描述里夹带指令，每次会话都生效；② <b>恶意或被劫持的服务器</b>——' + U.term("供应链风险", 'MCP 服务器通常是别人写的、别人部署的。你只是“接进来用”，但它的代码、它依赖的库、它背后的服务，任何一环出问题都会传导到你这里——这条“上游 → 下游”的链条就是供应链。<br>像班里订外卖：你只点了自己那份，可商家用的食材、打包的人、跑腿的人，任何一环出问题都会落到你身上。所以工程上要<b>只接可信来源、锁定版本、审一遍权限声明</b>。') + '；③ <b>' + U.term("同名工具遮蔽", '你本来就有一个 <code>send_message</code> 工具，接进来的 MCP 服务器也提供了一个<b>同名</b>工具。如果发现与注册顺序没处理好，模型以为调的是“自己的那个”，实际执行的却是别人的——调用就被悄悄“劫持”到别处了。<br>防御很直接：<b>工具名全局唯一</b>（加前缀，如 <code>mcp_xxx.send_message</code>）、<b>注册冲突时报错而不是覆盖</b>、关键操作仍然人工确认。') + '——用同名工具把调用“劫持”到别处。<br>所以接 MCP 要和装 App 一样谨慎：<b>只接可信来源、看清权限声明、关键操作仍然人工确认</b>。</div>'
+        '<div class="tip" style="margin-top:8px">' + U.icon("shield", 16) + ' <b>MCP 也带来了新的安全风险（三类）：</b>① <b>工具描述投毒</b>——描述里夹带指令，每次会话都生效；② <b>恶意或被劫持的服务器</b>——' + U.term("供应链风险", 'MCP 服务器通常是别人写的、别人部署的。你只是“接进来用”，但它的代码、它依赖的库、它背后的服务，任何一环出问题都会传导到你这里——这条“上游 → 下游”的链条就是供应链。<br>像班里订外卖：你只点了自己那份，可商家用的食材、打包的人、跑腿的人，任何一环出问题都会落到你身上。所以工程上要<b>只接可信来源、锁定版本、审一遍权限声明</b>。') + '；③ <b>' + U.term("同名工具遮蔽", '你本来就有一个 <code>send_message</code> 工具，接进来的 MCP 服务器也提供了一个<b>同名</b>工具。如果发现与注册顺序没处理好，模型以为调的是“自己的那个”，实际执行的却是别人的——调用就被悄悄“劫持”到别处了。<br>防御很直接：<b>工具名全局唯一</b>（加前缀，如 <code>mcp_xxx.send_message</code>）、<b>注册冲突时报错而不是覆盖</b>、关键操作仍然人工确认。') + '</b>——用同名工具把调用“劫持”到别处。<br>所以接 MCP 要和装 App 一样谨慎：<b>只接可信来源、看清权限声明、关键操作仍然人工确认</b>。</div>'
       ) +
 
       /* 实验：该不该上 MCP（紧跟 MCP 协议） */
@@ -859,7 +860,7 @@ AgentLab.LabExecutor = (function () {
           '</div>' +
         '</div>' +
         /* 区 2：动手（组件自带标题） */
-        '<div id="exe-mcp"></div>') +
+        '<div id="exe-mcp"></div>', { id: "exe-mcp-card" }) +
 
       /* 小测验 */
       LP.card("exe", "小测验：你是工具小达人吗？", "共 " + QUIZ.length + " 题，覆盖执行器角色、工具五分类、Function Calling、工具描述、参数保真、重试与幂等、代码沙盒、MCP、工具幻觉、多工具协作与工具治理。答对一题加一颗星！",
@@ -870,7 +871,7 @@ AgentLab.LabExecutor = (function () {
       /* 进阶原理互动课堂 + 课堂小结 */
       LP.card("exe", "进阶原理互动课堂：执行器在真实 AI 系统里是什么？（ai-agent-book 第 4/5 章 + hello-agents 第 12 章）",
         "13 个真实工程概念（ai-agent-book + hello-agents）：<b>左边选概念，右边看讲解 + 动手实验</b>——每个都配「一句话 / 打个比方 / 真实系统 / 动手做 / 自检一问」。",
-        AgentLab.Adv.panelHTML({ key: "exe", concepts: exeConcepts() })) +
+        AgentLab.Adv.panelHTML({ key: "exe", concepts: exeConcepts() }), { id: "exe-adv" }) +
 
       '<div class="lesson-summary card-exe">' +
         '<h3>' + U.icon("check", 18) + ' 课堂小结（L11+L12）</h3>' +

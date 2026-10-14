@@ -1390,7 +1390,30 @@ AgentLab.Adv = (function () {
     if (typeof p.fmt === "function") return p.fmt(v);
     return String(v);
   }
-  function paramCtrlHTML(p) {
+  /* Token 数量怎么念给小学生听：8192 → “8K”，1024 → “1K”，256 → “256” */
+  function fmtTok(v) {
+    v = Number(v) || 0;
+    if (v <= 0) return "不限";
+    if (v % 1024 === 0) return (v / 1024) + "K";
+    if (v > 1024) return (v / 1024).toFixed(1).replace(/\.0$/, "") + "K";
+    return String(v);
+  }
+  /* 上限与档位可以写成函数 maxOf(d) / presetsOf(d)：
+   * 有些参数的上限会随模式变（同一个 max_tokens，开了思考模式能放宽一大截），
+   * 传 d 进去就能拿到当前所有开关的状态。 */
+  function paramMax(p, d) { return (typeof p.maxOf === "function") ? p.maxOf(d) : p.max; }
+  function paramPresets(p, d) { return (typeof p.presetsOf === "function") ? p.presetsOf(d) : p.presets; }
+  function togOn(d, k) {
+    var on = false;
+    (d && d.toggles || []).forEach(function (t) { if (t.k === k && t.on) on = true; });
+    return on;
+  }
+  function togByKey(d, k) {
+    var hit = null;
+    (d && d.toggles || []).forEach(function (t) { if (t.k === k) hit = t; });
+    return hit;
+  }
+  function paramCtrlHTML(p, d) {
     var t = p.type || "range";
     if (t === "select") {
       return '<select class="adv-param-select" data-a="pctrl">' +
@@ -1400,11 +1423,47 @@ AgentLab.Adv = (function () {
         }).join("") + "</select>";
     }
     if (t === "bool") return "";   /* 布尔参数：开关本身就是取值，不需要额外控件 */
-    return '<input class="adv-param-range" type="range" data-a="pctrl" min="' + p.min + '" max="' + p.max +
-      '" step="' + (p.step || 1) + '" value="' + p.value + '">';
+    if (t === "number") {
+      return '<input class="adv-param-num" type="number" inputmode="numeric" data-a="pctrl" ' +
+        'min="' + p.min + '" max="' + paramMax(p, d) + '" step="' + (p.step || 1) + '" value="' + p.value + '">';
+    }
+    if (t === "tokens") {
+      /* 档位 + 手动输入：档位一眼看出"0 到上限"的跨度，输入框兜底任意值。
+       * 「不限」= 0 = 请求体里干脆不写这个字段（不是"输出 0 个字"）。 */
+      var mx = paramMax(p, d);
+      return '<div class="adv-tok">' +
+        '<div class="adv-tok-presets">' +
+          (paramPresets(p, d) || []).map(function (v) {
+            return '<button class="adv-tok-p' + (Number(p.value) === Number(v) ? " on" : "") +
+              '" data-a="tokp" data-v="' + v + '" title="' +
+              (v ? "把上限设为 " + v + " tokens" : "不带这个字段，用服务端默认上限") + '">' +
+              fmtTok(v) + "</button>";
+          }).join("") +
+        "</div>" +
+        '<div class="adv-tok-row">' +
+          '<input class="adv-param-num" type="number" inputmode="numeric" data-a="pctrl" min="0" max="' +
+            mx + '" step="1" value="' + p.value + '">' +
+          '<span class="adv-tok-unit">tokens</span>' +
+          '<span class="adv-tok-cap">当前上限 ' + fmtTok(mx) + "</span>" +
+        "</div></div>";
+    }
+    return '<input class="adv-param-range" type="range" data-a="pctrl" min="' + p.min + '" max="' +
+      paramMax(p, d) + '" step="' + (p.step || 1) + '" value="' + p.value + '">';
   }
-  function paramHTML(p) {
-    return '<div class="adv-param' + (p.on ? " on" : "") + '" data-k="' + esc(p.k) + '">' +
+  function paramHTML(p, d) {
+    /* 两种情况都让卡片压暗 + 给一行说明，但性质不同：
+     *   mutedWhen：这个开关开着时，本参数被服务端<b>忽略</b>（写了也没用，例：思考模式下的 temperature）；
+     *   onlyWhen ：这个开关关着时，本参数<b>根本不该出现</b>（例：思考强度——连 thinking 对象都没有），
+     *              所以引擎会把它收回成"不写入"，并把参数区重画一遍。 */
+    var muted = null, notReady = null;
+    if (p.mutedWhen && togOn(d, p.mutedWhen)) {
+      muted = togByKey(d, p.mutedWhen) || { label: p.mutedWhen };
+    }
+    if (p.onlyWhen && !togOn(d, p.onlyWhen)) {
+      notReady = togByKey(d, p.onlyWhen) || { label: p.onlyWhen };
+    }
+    return '<div class="adv-param' + (p.on ? " on" : "") + ((muted || notReady) ? " is-muted" : "") +
+        '" data-k="' + esc(p.k) + '">' +
       '<div class="adv-param-head">' +
         '<span class="adv-param-ic">' + U.icon(p.icon || "cog", 13) + "</span>" +
         '<code class="adv-param-k">' + esc(paramLabel(p)) + "</code>" +
@@ -1413,16 +1472,24 @@ AgentLab.Adv = (function () {
           (p.on ? "点一下：这次不带这个参数（请求体里没有这个字段）" : "点一下：把参数写进请求体") + '">' +
           U.icon(p.on ? "check" : "xmark", 12) + (p.on ? " 已写入" : " 不写入") + "</button>" +
       "</div>" +
-      '<div class="adv-param-body">' + paramCtrlHTML(p) +
-        '<span class="adv-param-val" data-a="pval">' + esc(paramVal(p)) + "</span></div>" +
+      '<div class="adv-param-body">' + paramCtrlHTML(p, d) +
+        /* 手动输入框自己就显示着数字，再挂一个取值胶囊是重复的。
+         * tokens 也一样：它的档位里就有「不限」，0 不会被误解成"输出 0 个字"。 */
+        ((p.type === "number" || p.type === "tokens") ? "" :
+          '<span class="adv-param-val" data-a="pval">' + esc(paramVal(p)) + "</span>") +
+        "</div>" +
+      (muted ? '<div class="adv-param-muted">' + U.icon("alert", 12) + " " +
+        (p.mutedNote || ("「" + esc(muted.label) + "」开着时，这个参数不生效")) + "</div>" : "") +
+      (notReady ? '<div class="adv-param-muted">' + U.icon("alert", 12) + " " +
+        (p.onlyWhenNote || ("需先开启「" + esc(notReady.label) + "」：现在它不会写进请求体")) + "</div>" : "") +
       (p.hint ? '<div class="adv-param-hint">' + p.hint + "</div>" : "") +
     "</div>";
   }
   /* 参数按 group 分组摆放：同一类（随机性 / 长度……）放在一起，
    * 一行放不下就自动换行——不同屏宽都保持整齐，不会挤成一团。 */
-  function paramGroupsHTML(list) {
+  function paramGroupsHTML(d) {
     var order = [], map = {};
-    list.forEach(function (p) {
+    (d.params || []).forEach(function (p) {
       var g = p.group || "其它参数";
       if (!map[g]) { map[g] = { name: g, items: [] }; order.push(map[g]); }
       map[g].items.push(p);
@@ -1430,15 +1497,26 @@ AgentLab.Adv = (function () {
     return order.map(function (g) {
       return '<div class="adv-pgroup">' +
         '<div class="adv-pgroup-name">' + esc(g.name) + "</div>" +
-        '<div class="adv-pgrid">' + g.items.map(paramHTML).join("") + "</div></div>";
+        '<div class="adv-pgrid">' + g.items.map(function (p) { return paramHTML(p, d); }).join("") + "</div></div>";
     }).join("");
   }
+  /* 「其他参数」入口：故意做成和开关同一排的最后一个按钮——
+   * 它和开关是并列关系（都是"这次要带什么"），但不同类：默认折叠，点开才出现参数区。
+   * 折叠时钮上仍带一个小角标显示"已写入几项"，不展开也知道自己动过手。 */
+  function paramsToggleHTML() {
+    return '<button class="adv-chip adv-chip-more" data-a="ptoggle" aria-expanded="false" ' +
+        'title="展开/收起：多随机、多长、遇到什么停——不改变“有没有”，只改变“多少”">' +
+      U.icon("cog", 14) + " 其他参数" +
+      '<span class="adv-chip-badge" data-a="pbadge"></span>' +
+      '<span class="adv-chip-caret">' + U.icon("back", 13) + "</span></button>";
+  }
   function paramsHTML(d) {
-    return '<div class="adv-hr" data-a="phead">' + U.icon("cog", 14) +
+    return '<div class="adv-params-wrap" data-a="pwrap">' +
+      '<div class="adv-hr" data-a="phead">' + U.icon("cog", 14) +
         " 更多参数 —— 不改变“有没有”，只改变“多少”：拖一拖，请求体立刻跟着变" +
         '<span class="adv-pcount" data-a="pcount"></span>' +
         '<button class="adv-mini-btn" data-a="pdefault">' + U.icon("reset", 12) + " 恢复默认</button></div>" +
-      '<div class="adv-params" data-a="params">' + paramGroupsHTML(d.params) + "</div>";
+      '<div class="adv-params" data-a="params">' + paramGroupsHTML(d) + "</div></div>";
   }
 
   /* ============ 类型 16：apiCall —— 一次调用的「请求 ↔ 响应」对照（可独立开关的参数） ============
@@ -1456,9 +1534,17 @@ AgentLab.Adv = (function () {
    *            } ],
    *          params: [                      // 「更多参数」：非布尔的、可连续调的字段
    *            { k, label, cn?, icon?, group?, on:false,
-   *              type: "range" | "select" | "bool",   // 缺省 range
-   *              value, min, max, step,               // range 用
+   *              type: "range" | "number" | "select" | "bool" | "tokens",  // 缺省 range
+   *              value, min, max, step,               // range / number 用
+   *              presets: [0, 512, 4096],             // tokens 用：档位（0 = 不写这个字段）
    *              options: [{ v, t }],                 // select 用
+   *              zeroMeansOff: true,                  // 可选：值为 0 时当作"不写这个字段"（如 max_tokens=不限）
+   *              maxOf: function(d){ return 65536; }, // 可选：上限随开关状态变（例：思考模式放开到 64K）
+   *              presetsOf: function(d){ return [0, 8192]; },  // 可选：档位也跟着变
+   *              mutedWhen: "think",                  // 可选：这个开关开着时本参数被服务端忽略（卡片压暗）
+   *              mutedNote: "…不生效的原因",           // 可选：给"被忽略"一句更准的说明
+   *              onlyWhen: "think",                   // 可选：只有这个开关开着才用得上（关着 = 不写进请求体 + 卡片压暗）
+   *              onlyWhenNote: "…为什么要先开它",      // 可选：说明文案
    *              fmt:  function(v){ return "0.3"; },  // 取值怎么显示（右端小胶囊）
    *              apply: function(body, v){},          // 开启时把什么写进请求体
    *              sysAdd, note, offNote, hint, conflicts }
@@ -1502,8 +1588,10 @@ AgentLab.Adv = (function () {
           return '<button class="adv-chip ' + (t.on ? "on" : "off") + '" data-k="' + t.k + '">' +
             U.icon(t.on ? (t.onIcon || "check") : (t.offIcon || "xmark"), 14) + " " + t.label + "</button>";
         }).join("") +
+        /* ---- 「其他参数」是这一排的最后一个按钮：默认折叠（点开才出现参数区） ---- */
+        (d.params.length ? paramsToggleHTML() : "") +
         "</div>" +
-        /* ---- 更多参数：非布尔的、可连续调的字段（没有就不渲染这一块） ---- */
+        /* ---- 参数区（默认不显示，由上面那个按钮展开；没有参数就不渲染这一块） ---- */
         (d.params.length ? paramsHTML(d) : "") +
         /* ---- 视角一：人怎么提问、怎么读答案 ---- */
         '<div class="adv-hr">' + U.icon("users", 14) + " 视角一 · 人看到的：怎么提问、怎么读答案</div>" +
@@ -1567,8 +1655,12 @@ AgentLab.Adv = (function () {
       var paramsBox = host.querySelector('[data-a="params"]');
       var pCountBox = host.querySelector('[data-a="pcount"]');
       var pDefaultBtn = host.querySelector('[data-a="pdefault"]');
+      var pWrap = host.querySelector('[data-a="pwrap"]');
+      var pToggle = host.querySelector('[data-a="ptoggle"]');
+      var pBadge = host.querySelector('[data-a="pbadge"]');
       if (!modesBox || !reqBox || !respBox) return;
       var timer = null;
+      var sending = false;   /* 真实调用正在飞行：期间不放第二路请求 */
 
       function togOf(k) {
         for (var i = 0; i < d.toggles.length; i++) if (d.toggles[i].k === k) return d.toggles[i];
@@ -1630,8 +1722,11 @@ AgentLab.Adv = (function () {
           if (typeof t.apply === "function") t.apply(body);
           if (t.sysAdd) extra.push(t.sysAdd);
         });
-        /* 「更多参数」和开关走同一条流水线：带着值套进去，提示词约束一起算 */
+        /* 「更多参数」和开关走同一条流水线：带着值套进去，提示词约束一起算。
+         * 但 onlyWhen 没满足的参数一个字段都不写（例：思考模式没开，
+         * 就不该出现 thinking.effort——否则请求体里会多一个没头没脑的字段）。 */
         onParams().forEach(function (p) {
+          if (p.onlyWhen && !togOn(d, p.onlyWhen)) return;
           if (typeof p.apply === "function") p.apply(body, p.value);
           if (p.sysAdd) extra.push(p.sysAdd);
         });
@@ -1749,7 +1844,7 @@ AgentLab.Adv = (function () {
           b.innerHTML = U.icon(t.on ? (t.onIcon || "check") : (t.offIcon || "xmark"), 14) + " " + t.label;
         });
       }
-      /* 「更多参数」统一重画：卡片高亮、写入状态、右端取值、右上角计数 */
+      /* 「更多参数」统一重画：卡片高亮、写入状态、右端取值、档位选中、依赖提醒、右上角计数 */
       function drawParams() {
         if (!paramsBox) return;
         paramsBox.querySelectorAll(".adv-param").forEach(function (row) {
@@ -1764,14 +1859,25 @@ AgentLab.Adv = (function () {
             sw.innerHTML = U.icon(p.on ? "check" : "xmark", 12) + (p.on ? " 已写入" : " 不写入");
           }
           var ctrl = row.querySelector('[data-a="pctrl"]');
-          if (ctrl) ctrl.value = p.value;
+          /* 正在输入的框不要回写：否则学生刚敲到一半的数字会被"校正"掉 */
+          if (ctrl && ctrl !== document.activeElement) ctrl.value = p.value;
+          row.querySelectorAll('[data-a="tokp"]').forEach(function (b) {
+            b.classList.toggle("on", Number(b.getAttribute("data-v")) === Number(p.value));
+          });
           var val = row.querySelector('[data-a="pval"]');
           if (val) val.textContent = paramVal(p);
         });
+        var nOn = onParams().length;
         if (pCountBox) {
-          pCountBox.textContent = "已写入 " + onParams().length + " / " + d.params.length;
-          pCountBox.classList.toggle("is-none", onParams().length === 0);
+          pCountBox.textContent = "已写入 " + nOn + " / " + d.params.length;
+          pCountBox.classList.toggle("is-none", nOn === 0);
         }
+        /* 折叠着也要让人知道"自己动过手"：钮上的小角标显示已写入几项 */
+        if (pBadge) {
+          pBadge.textContent = nOn ? nOn + " / " + d.params.length : "";
+          pBadge.classList.toggle("is-on", nOn > 0);
+        }
+        if (pToggle) pToggle.classList.toggle("has-on", nOn > 0);
       }
       /* 参数动过之后：先说这个参数怎么改变了请求体（学生的结论区），
        * 再同步左右两栏——注意仍然不自动发送，发送必须由学生亲手按。 */
@@ -1783,10 +1889,18 @@ AgentLab.Adv = (function () {
             "服务端按自己的默认值处理" + (p.offNote ? "——" + p.offNote : "") + "）</span>";
         noteBox.innerHTML = head + conflictWarn() + thinkingToolNote();
       }
+      /* 参数改了但没重新发送：右边那次结果就"过期"了——
+       * 说清楚，免得学生把改动前的结果当成改动后的。 */
+      function markStale() {
+        if (metaBox && metaBox.textContent && metaBox.textContent.indexOf("未重新发送") < 0) {
+          metaBox.textContent += "　·　参数已改动，未重新发送";
+        }
+      }
       function paramTouch(p) {
         drawParams();
         renderReq(bodyOf());
         paramNote(p);
+        markStale();
       }
       /* 同时开了互斥的两项（开关或参数）时提醒一句：
        * 报错也是重要结论，不必拦着学生试——但要让他知道这不是"意外"。 */
@@ -1819,16 +1933,44 @@ AgentLab.Adv = (function () {
       }
       function idle() {
         if (timer) { clearTimeout(timer); timer = null; }
+        /* 真实请求还在流的时候，别把正在进来的结果擦掉——
+         * 学生这时候改开关，请求体照旧更新，但右边那一次结果还属于上一次发送。 */
+        if (sending) return;
         respBox.textContent = d.pendingText || "// 点「发送请求」，这里会出现模型回来的内容";
         if (metaBox) metaBox.textContent = "";
         if (noteBox) noteBox.innerHTML = (d.emptyText || "") + conflictWarn() + thinkingToolNote();
         if (humanBox) humanBox.innerHTML = humanHtml(null);
       }
+      /* ---------- 「跟踪最后一个字」：流式内容的自动滚动 ----------
+       * 两个框都可能是"内容比框高"的滚动容器：右边「用户最终读到的结果」、
+       * 左边逐帧到达的 SSE 原文。规则：学生没手动往上翻时，就贴住底部跟随；
+       * 他一旦往回看，就不要再把他拽下去。
+       * 「现在是不是在底部」必须在追加内容之前就记住——等新内容进去了再量高度，
+       * 量到的是"刚追加的那一段"，大块内容（比如一整段 JSON）会被误判成"翻上去了"。 */
+      var stickHuman = true, stickSse = true;
+      function watchStick(box, put) {
+        if (!box) return;
+        box.addEventListener("scroll", function () {
+          put(box.scrollHeight - box.clientHeight - box.scrollTop < 40);
+        });
+      }
+      watchStick(humanBox, function (v) { stickHuman = v; });
+      watchStick(respBox, function (v) { stickSse = v; });
+      function stickBottom(box, stick) {
+        if (box && stick) box.scrollTop = box.scrollHeight;
+      }
+
       function send() {
+        /* 上一次真实调用还没回来：再点一次也发不出去，
+         * 否则两路响应会交错着往同一个框里写，看起来像乱码。 */
+        if (sending) return;
         if (timer) { clearTimeout(timer); timer = null; }
         var body = bodyOf();
         var isStream = !!body.stream;
         var names = activeLabels();
+
+        /* 新的一次发送：重新从底部开始跟随（上一次可能被学生翻上去看过） */
+        stickHuman = true; stickSse = true;
 
         respBox.textContent = "// 请求已发出，等待模型返回……";
         if (metaBox) metaBox.textContent = "";
@@ -1865,15 +2007,45 @@ AgentLab.Adv = (function () {
         var firstFrame = true;
         var streamText = "";       // 正文增量
         var thinkText = "";        // 思考过程增量（思考模式 + 流式时才有）
+        var streamTools = [];      // 工具调用增量（按 index 合并成"委托单"）
+        var streamFinish = "";     // 最后一帧带回来的 finish_reason
 
-        /* 流式过程中「用户看到的」那一框：思考过程 + 正文，两块分开显示 */
+        /* 流式的 tool_calls 是"分片"推回来的：先给 id 和函数名，参数再一段段拼。
+         * 按 index 合并成完整的委托单——否则「流式 + 工具调用」时右边那一栏
+         * 永远接不到任何文字，会一直停在"等待模型输出……"。 */
+        function mergeToolDeltas(list) {
+          list.forEach(function (tc) {
+            var i = (tc.index == null) ? streamTools.length : tc.index;
+            if (!streamTools[i]) {
+              streamTools[i] = { id: "", type: "function", function: { name: "", arguments: "" } };
+            }
+            var dst = streamTools[i];
+            if (tc.id) dst.id = tc.id;
+            if (tc.type) dst.type = tc.type;
+            var fn = tc.function || {};
+            if (fn.name) dst.function.name += fn.name;
+            if (fn.arguments) dst.function.arguments += fn.arguments;
+          });
+        }
+
+        /* 流式过程中「用户看到的」那一框：思考过程 + 正文 +（可能）委托单，分开显示 */
         function drawStream() {
           var h = "";
           if (thinkText) h += bubble("is-think", "它先想了（reasoning_content）", thinkText);
           if (streamText) h += bubble("is-ai", "", streamText);
-          if (humanBox) humanBox.innerHTML = h || '<div class="adv-note-line">等待模型输出……</div>';
+          /* 这一轮可能一个字的正文都没有，只有 tool_calls：
+           * 那就先说清"它正在写委托单"，别让右栏空着。 */
+          if (!h && streamTools.length) {
+            h = '<div class="adv-note-line">模型正在写一张“工具调用单”……这一轮它<b>不给文字答案</b>。</div>';
+          }
+          if (humanBox) {
+            humanBox.innerHTML = h || '<div class="adv-note-line">等待模型输出……</div>';
+            /* 每来一帧就跟着最后一个字往下走（学生往上翻了就不打扰他） */
+            stickBottom(humanBox, stickHuman);
+          }
         }
 
+        sending = true;
         AgentLab.API.callRaw(
           { method: d.req.method, url: d.req.url, headers: d.req.headers, body: body },
           {
@@ -1883,28 +2055,42 @@ AgentLab.Adv = (function () {
             onRaw: isStream ? function (payload) {
               if (firstFrame) { respBox.textContent = ""; firstFrame = false; }
               respBox.textContent += "data: " + payload + "\n";
+              /* 左边这份 SSE 原文也是滚动容器：同样跟着最新那一帧走，
+               * 否则帧一多，正在到达的那一帧就被挡在下面看不见了。 */
+              stickBottom(respBox, stickSse);
               /* 顺便把这一帧的文字抽出来，填进"用户看到的"那个框——
                * 于是打字机效果在两个视角里是同步的：
                * 左边看得到一帧帧 SSE，右边看得到字一个个蹦出来。 */
               if (payload !== "[DONE]") {
                 try {
                   var o = JSON.parse(payload);
-                  var dl = (o.choices && o.choices[0] && o.choices[0].delta) || {};
+                  var ch1 = (o.choices && o.choices[0]) || {};
+                  var dl = ch1.delta || {};
                   /* 思考模式开启时，推理过程也是一帧帧推回来的（delta.reasoning_content），
                    * 必须单独接住，否则思考模式下开流式就只能看到正文、看不到"它在想什么"。 */
                   var got = false;
                   if (dl.reasoning_content) { thinkText += dl.reasoning_content; got = true; }
                   if (dl.content) { streamText += dl.content; got = true; }
+                  /* 工具调用同样要接住：它占的就是"本来该出现正文"的位置 */
+                  if (dl.tool_calls) { mergeToolDeltas(dl.tool_calls); got = true; }
+                  if (ch1.finish_reason) streamFinish = ch1.finish_reason;
                   if (got) drawStream();
                 } catch (e) { }
               }
             } : null,
             onDone: function () {
-              if (isStream && metaBox) metaBox.textContent = "stream: SSE · 以 data: [DONE] 收尾";
+              /* 学生在流式过程中改过参数的话，meta 上已经有"未重新发送"的标注，别覆盖掉 */
+              if (isStream && metaBox && metaBox.textContent.indexOf("未重新发送") < 0) {
+                metaBox.textContent = "stream: SSE · 以 data: [DONE] 收尾";
+              }
             }
           }
         ).then(function (data) {
-          if (!isStream && data) {
+          sending = false;
+          /* 流式一般拿不到完整对象（readSSE 结束时 data 是空的）；
+           * 万一真的拿到 JSON，说明这次没走 SSE——那就照 JSON 显示，别装作是流式。 */
+          var gotJson = !!(data && data.choices);
+          if (gotJson) {
             respBox.textContent = JSON.stringify(data, null, 2);
             if (metaBox) {
               var ch0 = (data.choices && data.choices[0]) || {};
@@ -1921,10 +2107,29 @@ AgentLab.Adv = (function () {
               (names.length ? "　这次带上：" + names.join("、") : "　全部开关关闭、参数都没写入，就是最基础的一次调用。") +
               conflictWarn() + thinkingToolNote();
           }
-          /* 流式时 data 为空（文字已经在 onRaw 里逐帧填好了），这里别覆盖它 */
-          if (humanBox && !isStream) humanBox.innerHTML = humanHtml(data);
+          /* 用户视角那一栏：非流式直接用返回的 data；流式的文字是逐帧填进去的，
+           * 但"回来的东西"里可能<b>根本没有文字</b>（工具调用就是这样）——
+           * 所以这里把逐帧累积的内容拼成一个和响应体同形的对象，
+           * 交给同一个渲染器，右栏才会和非流式显示得一模一样。 */
+          var view = gotJson ? data : (isStream ? {
+            choices: [{
+              finish_reason: streamFinish || (streamTools.length ? "tool_calls" : "stop"),
+              message: {
+                role: "assistant",
+                content: streamText || null,
+                reasoning_content: thinkText || undefined,
+                tool_calls: streamTools.length ? streamTools : undefined
+              }
+            }]
+          } : data);
+          if (humanBox) {
+            humanBox.innerHTML = humanHtml(view);
+            /* 流完之后停在最后一行；如果学生正翻着前面看，就保持他的位置 */
+            stickBottom(humanBox, stickHuman);
+          }
           fireOnDone(d, host);
         }).catch(function (err) {
+          sending = false;
           respBox.textContent = "// 真实调用出错：\n" + (err && err.message || err);
           if (humanBox) humanBox.innerHTML = '<div class="adv-note-line">调用失败，没有结果。</div>';
           if (noteBox) {
@@ -1945,6 +2150,10 @@ AgentLab.Adv = (function () {
             d.toggles.forEach(function (o) { if (o !== t) o.on = false; });
           }
           drawToggles();
+          /* 开关一动手，参数区整块重画：有的参数上限/档位跟着模式变
+           * （思考模式把 max_tokens 上限从 8K 放到 64K），
+           * 有的参数会被这个模式"忽略"（卡片随之压暗并给出说明）。 */
+          initParams();
           idle();
           renderReq(bodyOf());
           if (noteBox) {
@@ -1988,31 +2197,110 @@ AgentLab.Adv = (function () {
         });
       }
 
-      /* 参数区：滑条 / 下拉框 / 开关三种控件走同一套动作——
+      /* 折叠开关：点一下展开/收起参数区。
+       * 收起时参数值仍然保留在请求体里（折叠的是面板，不是参数本身），
+       * 所以收起之后照旧可以直接点「发送请求」。 */
+      if (pToggle && pWrap) {
+        pToggle.addEventListener("click", function () {
+          var open = !pWrap.classList.contains("open");
+          pWrap.classList.toggle("open", open);
+          pToggle.classList.toggle("is-open", open);
+          pToggle.setAttribute("aria-expanded", open ? "true" : "false");
+          if (open) drawParams();   /* 展开后重画一遍：状态钮/取值/角标都与当前一致 */
+        });
+      }
+      /* 参数区：滑条 / 下拉框 / 数字框 / 档位 四种控件走同一套动作——
        * 改值 → 请求体立刻刷新 → 右下方给结论。控件始终可操作，
-       * 没写入时一拖就自动写入（少点一次），想让它"不在请求体里"就按右上角那个状态钮。 */
-      if (paramsBox) {
+       * 没写入时一动手就自动写入（少点一次），想让它"不在请求体里"就按右上角那个状态钮。 */
+      function bindParams() {
+        if (!paramsBox) return;
         paramsBox.querySelectorAll(".adv-param").forEach(function (row) {
           var p = pOf(row.getAttribute("data-k"));
           if (!p) return;
           var sw = row.querySelector('[data-a="psw"]');
           var ctrl = row.querySelector('[data-a="pctrl"]');
-          if (sw) sw.addEventListener("click", function () { p.on = !p.on; paramTouch(p); });
+          if (sw) sw.addEventListener("click", function () {
+            /* 联动：这个参数只有配合某个开关才有意义（思考强度之于思考模式）。
+             * 学生点"写入"时，如果那个开关还关着，就顺手替他打开——
+             * 总比让界面停在"点了但没写进请求体"强。 */
+            if (p.onlyWhen && !togOn(d, p.onlyWhen)) {
+              var need = togByKey(d, p.onlyWhen);
+              if (need) {
+                need.on = true;
+                drawToggles();
+                initParams();
+                p.on = true;
+                paramTouch(p);
+                return;
+              }
+            }
+            p.on = !p.on;
+            paramTouch(p);
+          });
           if (ctrl) {
-            var isRange = ctrl.tagName === "INPUT";
-            ctrl.addEventListener(isRange ? "input" : "change", function () {
-              p.value = isRange ? (parseFloat(ctrl.value) || 0) : ctrl.value;
-              if (!p.on) p.on = true;      /* 一动手就等于"我要用这个参数" */
+            var tag = ctrl.tagName, typ = ctrl.type;
+            var evt = (tag === "SELECT") ? "change" : "input";
+            ctrl.addEventListener(evt, function () {
+              if (tag === "SELECT") {
+                p.value = ctrl.value;
+              } else if (typ === "number") {
+                var n = parseInt(ctrl.value, 10);
+                if (isNaN(n)) return;                  /* 正在删空重填：先别改值，等填完再说 */
+                var lo = (p.min === undefined ? 0 : p.min);
+                var hi = paramMax(p, d);
+                if (hi === undefined) hi = 999999;
+                if (n < lo) n = lo;
+                if (n > hi) n = hi;                    /* 超出当前上限就自动收到上限 */
+                p.value = n;
+                /* max_tokens 这类"数字 0"就是"不限"=不写这个字段 */
+                p.on = !(p.zeroMeansOff && n === 0);
+              } else {
+                p.value = parseFloat(ctrl.value) || 0;
+              }
+              if (typ !== "number" && !p.on) p.on = true;   /* 一动手就等于"我要用这个参数" */
               paramTouch(p);
             });
+            /* 失焦时把被夹住的值写回框里（比如输入 99999 会被收成上限） */
+            if (typ === "number") {
+              ctrl.addEventListener("change", function () {
+                if (!isNaN(parseInt(ctrl.value, 10))) ctrl.value = p.value;
+              });
+            }
           }
+          /* tokens 档位：点一下就用这个档位的值（「不限」= 0 = 不写这个字段） */
+          row.querySelectorAll('[data-a="tokp"]').forEach(function (b) {
+            b.addEventListener("click", function () {
+              p.value = parseInt(b.getAttribute("data-v"), 10) || 0;
+              p.on = !(p.zeroMeansOff && p.value === 0);
+              paramTouch(p);
+            });
+          });
         });
       }
+      /* 参数区整块重建：上限与档位可能跟着开关变（同一个 max_tokens，
+       * 思考模式一开上限就从 8K 放到 64K），所以开关一动就重画一遍，
+       * 并把超过新上限的值夹回来——否则请求体里会留一个服务端不接受的数字。 */
+      function initParams() {
+        if (!paramsBox) return;
+        d.params.forEach(function (p) {
+          var mx = paramMax(p, d);
+          if (typeof mx === "number" && typeof p.value === "number" && p.value > mx) p.value = mx;
+          /* onlyWhen：它依赖的开关关着时，把它收回成"不写入"——
+           * 界面上说"已写入"、请求体里却没有这个字段，才是最坑人的状态。
+           * （想再写入时点一下状态钮，会顺手把那个开关打开。） */
+          if (p.onlyWhen && !togOn(d, p.onlyWhen)) p.on = false;
+        });
+        paramsBox.innerHTML = paramGroupsHTML(d);
+        bindParams();
+        drawParams();
+      }
+      initParams();
       /* 恢复默认：参数回到进页面时的样子（开关不动——它有自己的语义） */
       if (pDefaultBtn) pDefaultBtn.addEventListener("click", function () {
         d.params.forEach(function (p) { p.on = !!p.__on; p.value = p.__val; });
         renderReq(bodyOf());
         drawParams();
+        markStale();
         if (noteBox) {
           noteBox.innerHTML = '<span class="ok">✓ 参数已恢复默认</span>——' +
             (onParams().length
@@ -2024,7 +2312,7 @@ AgentLab.Adv = (function () {
 
       if (sendBtn) sendBtn.addEventListener("click", function () { send(); });
       drawToggles();
-      drawParams();
+      initParams();
       markPreset();
       renderReq(bodyOf());
       idle();

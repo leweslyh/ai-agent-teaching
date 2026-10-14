@@ -252,8 +252,8 @@ AgentLab.LabPerception = (function () {
   var ROLE_RULE = "谁在说，就归谁：开发者 → system，用户 → user，AI → assistant，工具 → tool。工程口诀：规则写 system，任务写 user，数据放 tool。";
 
   /* ---------- 8b. 大模型调用 数据（请求 → 响应 → 出错） ----------
-   * ① LLM_IO：「请求 ↔ 响应」对照实验。五个开关互相独立、可任意组合
-   *    （思考模式 / JSON 格式 / 流式返回 / 工具调用，共 2⁴ 种组合），
+   * ① LLM_IO：「请求 ↔ 响应」对照实验。四个开关 + 一组可调参数互相独立、可任意组合
+   *    （系统提示词 / 思考模式 / 流式返回 / 工具调用，共 2⁴ 种组合），
    *    让学生亲眼看到"请求体里改哪一个字段，决定了响应回来的结构长什么样"。
    *    题目刻意用一道简短的五年级应用题——短到学生心算就有把握，
    *    于是"模型算得对不对"一眼就看得出，"要不要给它工具"也就被单独凸显出来了。
@@ -271,18 +271,28 @@ AgentLab.LabPerception = (function () {
     }
   };
 
+  /* 当前是不是开着「思考模式」：max_tokens 的上限与档位要看它
+   * （官方文档里同一个字段，非思考模式最多 8K、思考模式可到 64K）。 */
+  function llmThinkOn(d) {
+    var on = false;
+    ((d && d.toggles) || []).forEach(function (t) { if (t.k === "think" && t.on) on = true; });
+    return on;
+  }
+
   /* 没配 Key 时的示例响应：不是一段写死的 JSON，而是**按当前请求体算出来**的——
-   * 学生拖了 temperature / max_tokens / stop、开了 logprobs，
-   * 右下角「回来的」那一栏也跟着换结构，于是"改一个参数、回来一个样"的对照
-   * 在没有 Key 的机器上照样成立。（有 Key 的时候走真实接口，不看这里。） */
+   * 学生拖了 temperature / max_tokens / stop，右下角「回来的」那一栏也跟着换，
+   * 于是"改一个参数、回来一个样"的对照在没有 Key 的机器上照样成立。
+   * （有 Key 的时候走真实接口，不看这里。） */
   function llmDemoResp(body) {
     body = body || {};
     var note = [];
     var msg = { role: "assistant", content: "还剩 14 元。" };
     var finish = "stop";
+    var thinkOn = !!(body.thinking && body.thinking.type === "enabled");
+    var reasoningTokens = 42;   /* 思考强度越高，花在推理上的 Token 越多 */
 
     /* ---- 第一段：先用「参数」把这段回答本身捏出来（措辞 / 长度 / 结尾） ---- */
-    if (typeof body.temperature === "number" && body.temperature >= 1.2) {
+    if (typeof body.temperature === "number" && body.temperature >= 1.2 && !thinkOn) {
       msg.content = "3 支笔一共 36 元，50 减 36 等于 14，所以还剩 14 元哦～";
       note.push('<span class="ok">temperature 调高：</span>回来的<b>结构没变</b>，' +
         "但用词变活了——这类采样参数改的是“内容的样子”，不是“回来的结构”。");
@@ -307,10 +317,17 @@ AgentLab.LabPerception = (function () {
           "所以等于没生效——停止词要设成模型真会写到的内容。</span>");
       }
     }
-    if (body.frequency_penalty || body.presence_penalty) {
+    if (thinkOn && (typeof body.temperature === "number" || typeof body.top_p === "number" ||
+        body.frequency_penalty || body.presence_penalty)) {
+      /* 与卡片上"被忽略"的黄字联动：示例也照官方规则办事——这几个参数不产生任何影响 */
+      note.push('<span class="dim">注意：这次开着「思考模式」，请求体里那两个采样/惩罚参数会被官方接口' +
+        "<b>忽略</b>——回答的措辞不会因为 temperature 变活，也不会因为惩罚参数换词。" +
+        "这不是 bug，是参数表里写明的规则。</span>");
+    } else if (body.frequency_penalty || body.presence_penalty) {
       note.push('<span class="dim">两个惩罚参数：它们改的是"用词偏好"（同一个词别老重复 / 多说点新内容），' +
         "响应的<b>结构还是老样子</b>——想一眼看出区别，得对比两次回答的用词。</span>");
     }
+
 
     /* ---- 第二段：再用「开关」决定结构（结构优先于措辞，与真实接口一致） ---- */
     if (body.response_format && body.response_format.type === "json_object") {
@@ -332,14 +349,22 @@ AgentLab.LabPerception = (function () {
         "<code>content</code> 变成 null、<code>finish_reason</code> 变成 <code>tool_calls</code>。" +
         "程序要执行完、把结果回填后再调一次，用户才看得到文字。");
     }
-    if (body.thinking && body.thinking.type === "enabled") {
-      msg.reasoning_content = "50 元买 3 支笔：3 × 12 = 36 元；50 − 36 = 14 元。所以还剩 14 元。";
-      note.push('<span class="ok">思考模式：</span>响应体多出 <code>reasoning_content</code>——' +
-        "这段“草稿”不显示给用户，但会额外花掉不少 Token（<code>usage</code> 里看得见）。");
-    }
-    if (body.logprobs) {
-      note.push('<span class="ok">logprobs：</span>响应体多出 <code>logprobs</code> 字段，' +
-        "每个字当时还有哪些候选、各有多大概率，全在里面（用户看不到，调试才用）。");
+    if (thinkOn) {
+      /* 思考强度直接体现在"想了多久"上：推理越强，草稿越长、推理 Token 越多 */
+      var eff = body.thinking.effort || "medium";
+      var drafts = {
+        low: "3 × 12 = 36，50 − 36 = 14。",
+        medium: "50 元买 3 支笔：3 × 12 = 36 元；50 − 36 = 14 元。所以还剩 14 元。",
+        high: "① 每支 12 元，3 支就是 12 × 3 = 36 元。② 手里 50 元，减去花掉的 36 元：50 − 36 = 14 元。" +
+          "③ 验算一下：36 + 14 = 50，和原数对得上。④ 所以还剩 14 元。"
+      };
+      msg.reasoning_content = drafts[eff] || drafts.medium;
+      reasoningTokens = (eff === "low") ? 12 : (eff === "high" ? 156 : 42);
+      note.push('<span class="ok">思考模式（effort = ' + eff + "）：</span>响应体多出 " +
+        "<code>reasoning_content</code>——这段“草稿”不显示给用户，但要照付 Token：" +
+        "<code>usage.completion_tokens_details.reasoning_tokens</code> = <b>" + reasoningTokens + "</b>。<br>" +
+        '<span class="dim">换成 low 再发一次：草稿明显变短、推理 Token 变少（快而省）；换 high：' +
+        "草稿长得多（稳但贵）。同一个 <code>effort</code> 字段，就是“愿意想多久”的旋钮。</span>");
     }
 
     var txt = String(msg.content || "");
@@ -353,18 +378,13 @@ AgentLab.LabPerception = (function () {
         total_tokens: 48 + Math.max(3, Math.round(txt.length * 0.8))
       }
     };
-    if (msg.reasoning_content) json.usage.completion_tokens_details = { reasoning_tokens: 42 };
-    if (body.logprobs) {
-      json.choices[0].logprobs = {
-        content: [{ token: "还", logprob: -0.21, top_logprobs: [{ token: "还", logprob: -0.21 }, { token: "剩", logprob: -1.8 }] }]
-      };
-    }
+    if (msg.reasoning_content) json.usage.completion_tokens_details = { reasoning_tokens: reasoningTokens };
 
     var out = { json: json, text: null };
     out.meta = "示例耗时 1.1s　·　finish_reason: " + finish +
-      (msg.reasoning_content ? "　·　含 reasoning_content" : "") +
-      (msg.tool_calls ? "　·　含 tool_calls" : "") +
-      (body.logprobs ? "　·　含 logprobs" : "");
+      (msg.reasoning_content ? ("　·　含 reasoning_content（effort=" +
+        (body.thinking.effort || "medium") + "）") : "") +
+      (msg.tool_calls ? "　·　含 tool_calls" : "");
 
     /* 流式：同一段文字被切成几帧推回来——「回来的」那一栏显示真正的 SSE 原文，
      * 而右边「用户读到的结果」还是完整那一段：一眼看清 SSE 只是"分批到货"。 */
@@ -450,18 +470,14 @@ AgentLab.LabPerception = (function () {
         note: '<b>请求体多出 <code>"thinking": {"type":"enabled"}</code>：</b>模型会先在 ' +
           '<code>reasoning_content</code> 里把题算一遍，再写答案。响应体因此<b>多一个字段</b>，' +
           "耗时也明显变长——这段额外等待就是“推理延迟”。<br>" +
+          '<span class="no">它会改变别的参数：</span>官方接口在思考模式下<b>忽略 temperature、top_p、' +
+          "frequency_penalty、presence_penalty</b>——「其他参数」里那四张卡片会当场压暗、并给出说明；" +
+          "同时 <code>max_tokens</code> 的上限从 8K 放宽到 64K。<br>" +
+          '<span class="ok">它还带出一个新字段：</span>开了它，「其他参数」里的 <code>thinking.effort</code>' +
+          "（思考强度）才写得进去——它俩本来就是<b>同一个 thinking 对象</b>里的两个字段：" +
+          "<code>type</code> 决定想不想，<code>effort</code> 决定想多久。<br>" +
           '<span class="dim">对照写法：关掉它就是 <code>{"thinking":{"type":"disabled"}}</code>。' +
           "注意思考模式和工具调用是<b>两条独立能力</b>，关掉思考照样能调工具。</span>"
-      },
-      {
-        k: "json", label: "JSON 格式", on: false, conflicts: ["tool"],
-        apply: function (b) { b.response_format = { type: "json_object" }; },
-        sysAdd: '请用 JSON 格式输出，例如 {"answer": 14, "reason": "50-36=14"}。',
-        note: '<b>请求体多出 <code>"response_format": {"type":"json_object"}</code>：</b>回答不再是一段话，' +
-          "而是<b>结构化 JSON</b>，程序可以直接取字段，不用再从自然语言里猜数字。<br>" +
-          '<span class="no">留意开关打开时，<b>提示词里也补了“用 JSON 格式输出”</b>——' +
-          "因为接口要求<b>提示词中必须出现 json</b>；只改参数、不改提示词，接口会直接报错。" +
-          "这就是“<b>参数和提示词必须同步修改</b>”。</span>"
       },
       {
         k: "stream", label: "流式返回", on: false, onIcon: "send", offIcon: "xmark",
@@ -491,53 +507,73 @@ AgentLab.LabPerception = (function () {
           '会自动换成 <code>auto</code>——工具照样能被调用，只是这回由模型自己判断。</span>'
       }
     ],
-    /* ---- 更多参数：和上面五个开关分工不同 ----
-     * 开关回答「有没有」（要不要 system、要不要工具）；
-     * 参数回答「是多少」（多随机、多长、遇到什么停）。
-     * 每一项都带"拖到两端各会发生什么"，并且只在写入时才出现在请求体里——
-     * 于是学生能同时看到两种东西：请求体多了哪个字段、回来的东西变成什么样。 */
+    /* ---- 更多参数：整表以 DeepSeek V4.1 Flash 的官方参数表为准 ----
+     * 开关回答「有没有」（要不要 system、要不要工具、走不走思考模式、是不是流式）；
+     * 参数回答「是多少」（多随机、多长、什么格式、遇到什么停、思考多深）。
+     * 「JSON 格式」原本是上面那排的一个开关，现在按官方字段名 response_format 收进这里，
+     * 但控件不变（仍旧是"写不写"两态）：它要表达的就是"这次要不要 JSON"。
+     * 卡片之间按 group 排：一格里放两张卡，参数区就不会出现"一张卡占一整行"的空荡感。
+     * 每个字段都对得上官方接口文档：默认值、取值范围，以及"哪个模式下不生效"这类规则。
+     * ⚠ DeepSeek 官方接口不接受 top_k / seed / n / logit_bias（那是别的平台的字段），
+     *   所以这张卡里一个都不放——参数表不是到处都一样，这张卡以 DeepSeek 为准。 */
     params: [
       {
         k: "temperature", label: "temperature", cn: "随机性", icon: "dice",
-        group: "随机性 · 回答的“性格”", on: true, value: 0.3, min: 0, max: 2, step: 0.1,
+        group: "采样 · 随机性", on: true, value: 0.3, min: 0, max: 2, step: 0.1,
         fmt: function (v) { return v.toFixed(1); },
         apply: function (b, v) { b.temperature = v; },
-        hint: "越小越稳（几乎每次一样），越大越发散",
-        offNote: "请求体里没有它时，接口用自己的默认值（DeepSeek 是 1.0，比 0.3 更随机）",
-        note: '<b>它就在请求体里：</b>模型的每个字都是按概率挑出来的，这个值决定“挑得有多大胆”。<br>' +
+        mutedWhen: "think",
+        mutedNote: "思考模式下<b>不生效</b>：官方接口不接受这个参数（不会报错，但改了也不管用）",
+        hint: "越小越稳，越大越发散｜官方默认 1.0，范围 0 ~ 2",
+        offNote: "请求体里没有它时，服务端用官方默认值 1.0（比 0.3 更随机）",
+        note: '<b>它就在请求体里：</b>模型的每个字都是按概率挑出来的，这个值决定“挑得有多大胆”。' +
+          "官方默认 1.0，可填 0 ~ 2。<br>" +
           '<span class="ok">拖到 0：</span>每次只挑最稳的那个字——同一道题问十遍，答案几乎一模一样，' +
           "适合算数、写代码这类“只要一个正确答案”的活。<br>" +
           '<span class="no">拖到 1.5 以上：</span>开始挑“不那么稳”的字，措辞变活、也更容易跑题——' +
           "写作文、想创意时才需要它。<br>" +
-          '<span class="dim">注意：它改的是<b>内容的样子</b>，不是<b>回来的结构</b>。' +
-          "和思考模式一起开时，推理过程通常不受它影响——采样参数管的是最后那段话。</span>"
+          '<span class="dim">注意分界线：它改的是<b>内容的样子</b>，不是<b>回来的结构</b>。' +
+          "另外，一旦开了「思考模式」，这个参数会被官方接口忽略——卡片上那行黄字就是在说这件事。</span>"
       },
       {
         k: "top_p", label: "top_p", cn: "候选池大小", icon: "percent",
-        group: "随机性 · 回答的“性格”", on: false, value: 0.9, min: 0.1, max: 1, step: 0.05,
+        group: "采样 · 随机性", on: false, value: 0.9, min: 0.1, max: 1, step: 0.05,
         fmt: function (v) { return v.toFixed(2); },
         apply: function (b, v) { b.top_p = v; },
-        hint: "只在“最像的那几个字”里挑",
+        mutedWhen: "think",
+        mutedNote: "思考模式下<b>不生效</b>：官方接口不接受这个参数",
+        hint: "只在“最像的那几个字”里挑｜官方默认 1.00，范围 0 ~ 1",
         note: '<b>另一种控制随机的方式：</b>temperature 管“挑得多大胆”，top_p 管“从多少候选里挑”——' +
-          "先只留累计概率排在前 p 的那几个字，再在里面挑。<br>" +
+          "先只留累计概率排在前 p 的那几个字，再在里面挑。官方默认 1.00。<br>" +
           '<span class="ok">拖到 0.1：</span>候选池很窄，回答稳但容易变得干巴、翻来覆去；<br>' +
           '<span class="no">拖到 1.00：</span>整个词表都可能被选中，最“放飞”。<br>' +
-          '<span class="dim">官方建议：这两个一般<b>只调一个</b>——两个一起动，效果互相打架，' +
-          "出了问题也不知道该怪谁，实验也难复现。</span>"
+          '<span class="dim">官方建议：temperature 和 top_p <b>只调一个</b>——两个一起动，效果互相打架，' +
+          "出了问题也不知道该怪谁。（拖动范围从 0.1 起：文档允许填 0，但候选池为空并没有意义。）</span>"
       },
       {
         k: "max_tokens", label: "max_tokens", cn: "回答长度上限", icon: "ruler",
-        group: "长度与停止", on: false, value: 512, min: 16, max: 1024, step: 16,
-        fmt: function (v) { return v + " tokens"; },
-        apply: function (b, v) { b.max_tokens = v; },
-        hint: "故意拖到最小：看回答被“腰斩”",
-        note: '<b>请求体多出 <code>max_tokens</code>：</b>这是“回答最多能写多长”的硬上限' +
-          "（只算模型写的，不算你发过去的题）。<br>" +
-          '<span class="no">拖到最小（16）：</span>模型会被<b>当场打断</b>，回答只剩半句，' +
-          "<code>finish_reason</code> 从 <code>stop</code> 变成 <code>length</code>。<br>" +
-          '这个值不是“给模型看的”，是<b>给程序看的信号</b>：看到 length 就知道“话没说完”，' +
-          "该调大上限、或接着上一段继续写。<br>" +
-          '<span class="dim">真实工程里最怕的正是“被截断了，却被当成完整答案交出去”。</span>'
+        group: "长度与停止", on: false, type: "tokens", value: 4096, zeroMeansOff: true,
+        /* 上限与档位跟着「思考模式」变——这就是官方文档里的真实现象：
+         * 同一个字段，非思考模式最多 8K；走思考模式时上限放宽到 64K。
+         * （默认值分别是 4096 / 32768，由服务端自己决定。） */
+        maxOf: function (d) { return llmThinkOn(d) ? 65536 : 8192; },
+        presetsOf: function (d) {
+          return llmThinkOn(d) ? [0, 4096, 8192, 32768, 65536] : [0, 1024, 4096, 8192];
+        },
+        fmt: function (v) { return v > 0 ? v + " tokens" : "不限"; },
+        apply: function (b, v) { if (v > 0) b.max_tokens = v; },
+        hint: "档位点一下就换；开了思考模式上限会放到 64K",
+        offNote: "不带这个字段时，服务端用官方默认值（非思考模式 4096）",
+        note: '<b>它是“回答最多能写多长”的硬上限</b>（只算模型写的，不算你发过去的题）。' +
+          "官方文档里的数字：<b>默认 4096</b>；非思考模式最多 <b>8K</b>，走思考模式可放宽到 <b>64K</b>——" +
+          "所以开着「思考模式」时，上面的档位和上限会自己变大。<br>" +
+          '<span class="ok">「不限」（0）：</span>请求体里<b>干脆没有这个字段</b>——注意 0 不是“输出 0 个字”，' +
+          "而是“交给服务端用自己的默认值”（非思考模式 4096）。<br>" +
+          '<span class="no">手动填个极小的值（比如 8）：</span>模型被<b>当场打断</b>，回答只剩半句，' +
+          "<code>finish_reason</code> 从 <code>stop</code> 变成 <code>length</code>——" +
+          "这个值不是给模型看的，是<b>给程序看的信号</b>：看到 length 就知道“话没说完”，该调大或续写。<br>" +
+          '<span class="dim">填超上限会被接口直接拒绝，所以输入框会把数字收到当前上限。' +
+          "真实工程里最怕的也正是“被截断了，却被当成完整答案交出去”。</span>"
       },
       {
         k: "stop", label: "stop", cn: "遇到它就收工", icon: "clock",
@@ -554,15 +590,17 @@ AgentLab.LabPerception = (function () {
           '<span class="ok">选「元」：</span>答案是“还剩 14 元。”，模型写到“元”就停；而且要留意——' +
           '<b>停下来用的那个词不会出现在回答里</b>，所以这次回来的是被截到它前面的那一段。' +
           "（选「所以」看看：如果这句话里根本没有“所以”，它就不会生效。）<br>" +
-          '<span class="dim">它常用来卡格式：比如只想要一行 JSON，就把 stop 设成换行或 <code>}</code>，' +
-          "模型想说废话也说不出来。</span>"
+          '<span class="dim">官方允许最多写 16 个停止词（字符串或数组都行）。它最常用来卡格式：' +
+          "只想要一行 JSON，就把 stop 设成换行或 <code>}</code>，模型想说废话也说不出来。</span>"
       },
       {
         k: "frequency_penalty", label: "frequency_penalty", cn: "重复词惩罚", icon: "refresh",
         group: "重复与用词", on: false, value: 0, min: -2, max: 2, step: 0.1,
         fmt: function (v) { return (v > 0 ? "+" : "") + v.toFixed(1); },
         apply: function (b, v) { b.frequency_penalty = v; },
-        hint: "正数：同一个词别老重复",
+        mutedWhen: "think",
+        mutedNote: "思考模式下<b>不生效</b>：官方接口不接受这个参数",
+        hint: "正数：同一个词别老重复｜官方默认 0，范围 −2 ~ 2",
         note: '<b>看名字就知道它管什么：</b>一个词在这次的回答里出现过<b>越多次</b>，再说它就越“贵”。' +
           "正数在打压重复，负数在鼓励重复（一般没人用负数）。<br>" +
           '<span class="ok">调到 +1 左右：</span>模型开始换着说法讲同一件事，不容易出现“车轱辘话”；<br>' +
@@ -574,7 +612,9 @@ AgentLab.LabPerception = (function () {
         group: "重复与用词", on: false, value: 0, min: -2, max: 2, step: 0.1,
         fmt: function (v) { return (v > 0 ? "+" : "") + v.toFixed(1); },
         apply: function (b, v) { b.presence_penalty = v; },
-        hint: "正数：更愿意说“还没说过的”",
+        mutedWhen: "think",
+        mutedNote: "思考模式下<b>不生效</b>：官方接口不接受这个参数",
+        hint: "正数：更愿意说“还没说过的”｜官方默认 0，范围 −2 ~ 2",
         note: '和上一个很像，但管的方向不同：<b>frequency</b> 数“这个词出现过多少次”，' +
           "<b>presence</b> 只问“它出现过没有”——只要提过一次就压一下。<br>" +
           '<span class="ok">调到 +1：</span>模型更愿意开新话题、补新信息，写作文时内容更丰富；<br>' +
@@ -583,14 +623,50 @@ AgentLab.LabPerception = (function () {
           "<b>有些参数改的是结构，有些改的是内容。</b></span>"
       },
       {
-        k: "logprobs", label: "logprobs", cn: "把候选词也带回来", icon: "microscope",
-        group: "调试信息", on: false, type: "bool", value: true,
-        apply: function (b) { b.logprobs = true; b.top_logprobs = 5; },
-        hint: "调试用：顺便报出每个字当时的候选",
-        note: '<b>请求体多出 <code>logprobs: true</code> 和 <code>top_logprobs: 5</code>：</b>' +
-          "模型会顺便把每个字当时的<b>候选词和概率</b>一起交回来，响应体因此多一个 <code>logprobs</code> 字段。<br>" +
-          '它的用处不是给学生看，而是给工程师看：模型到底“有多确信”，一眼就查得到。<br>' +
-          '<span class="dim">用户永远看不到它，生产环境通常也不开——它会让响应体明显变大。</span>'
+        k: "response_format", label: "response_format", cn: "输出 JSON 格式", icon: "box",
+        group: "格式与思考", on: false, type: "bool", value: true,
+        conflicts: ["tool"],
+        apply: function (b) { b.response_format = { type: "json_object" }; },
+        /* 提示词必须跟着改：接口要求 json_object 时提示里必须出现 json，否则直接报错 */
+        sysAdd: '请用 JSON 格式输出，例如 {"answer": 14, "reason": "50-36=14"}。',
+        hint: "打开＝要结构化 JSON；关掉＝官方默认的 text",
+        offNote: "不带这个字段时就是官方默认的 text（普通一段话）",
+        note: '<b>请求体多出 <code>"response_format": {"type":"json_object"}</code>：</b>回答不再是一段话，' +
+          "而是<b>结构化 JSON</b>——程序可以直接取字段，不用再从自然语言里猜数字。<br>" +
+          '<span class="no">留意提示词：</span>打开它时，<b>system 里也补了一句“用 JSON 格式输出”</b>——' +
+          "接口要求<b>提示词中必须出现 json</b>，只改参数、不改提示词会直接报错。" +
+          "这就是“<b>参数和提示词必须同步修改</b>”。<br>" +
+          '<span class="dim">它和「工具调用」同时开多半不被支持，界面上会给出提醒。</span>'
+      },
+      {
+        k: "effort", label: "thinking.effort", cn: "思考强度", icon: "brain",
+        group: "格式与思考", on: false, type: "select", value: "medium",
+        /* 它和「思考模式」是同一个对象里的两个字段（type 与 effort），
+         * 所以开关一关，这个字段就没有容身之处——引擎会把它收回成"不写入"。 */
+        onlyWhen: "think",
+        onlyWhenNote: "先开「思考模式」：它写在同一个 <code>thinking</code> 对象里，" +
+          "没有 <code>type</code> 就没有它（现在点右边那个钮，会顺手把思考模式打开）",
+        options: [
+          { v: "low", t: "low —— 少想几步：快、省" },
+          { v: "medium", t: "medium —— 平衡（官方默认）" },
+          { v: "high", t: "high —— 多想几步：慢、贵、更稳" }
+        ],
+        fmt: function (v) { return v; },
+        apply: function (b, v) {
+          /* 和「思考模式」写入的是同一个对象：开关负责 type，这里补上强度 */
+          if (!b.thinking) b.thinking = { type: "enabled" };
+          b.thinking.effort = v;
+        },
+        hint: "写在 thinking 对象里：模型愿意花多少推理",
+        note: '<b>请求体里它长这样：</b><code>"thinking": {"type":"enabled","effort":"high"}</code>——' +
+          "强度是<b>同一个 thinking 对象里的第二个字段</b>，所以它只在开着「思考模式」时才存在。<br>" +
+          '<span class="ok">low：</span>少想几步——推理短、回得快、花钱少，够用的题不必多想；<br>' +
+          '<span class="no">high：</span>愿意花更多推理（<code>reasoning_content</code> 更长、' +
+          '<code>usage</code> 里的推理 Token 更多），难题更稳，但也更慢更贵。<br>' +
+          '<span class="dim">顺便记住：各家的“强度”字段名字都不一样——这里沿用 ' +
+          "<code>thinking.effort</code> 的写法，别的平台可能叫 <code>reasoning_effort</code>（low/medium/high），" +
+          "或者直接给 Token 预算（<code>thinking_budget</code>）。换模型之前先看那家的文档，" +
+          "这是“参数表不是到处都一样”的又一个例子。</span>"
       }
     ],
     /* 示例响应改成函数：没配 Key 时，回来的东西跟着参数一起变 */
@@ -1379,14 +1455,15 @@ AgentLab.LabPerception = (function () {
         '</div>'
       ) +
 
-      /* ⑧ 怎么调用大模型：一次调用的四件套 + 五步链路 + 五个开关 + 一组可调参数
+      /* ⑧ 怎么调用大模型：一次调用的四件套 + 五步链路 + 四个开关 + 一组可调参数
        * 位置：在「消息四角色」之后——messages 刚拼好，紧接着看它怎么发出去、拿回什么。
        *       调用卡引用的两个概念（messages、Token）在前两张卡里都已经铺好 */
       card("per", "怎么调用大模型：把上下文发出去，把答案传回来",
         "上一张卡拼好的 <b>messages</b>（里面每一段文字都已经切成了 Token），接下来要真的<b>发出去</b>。一次真实的大模型调用只有四样东西：" +
         "<b>发给谁</b>（接口地址）、<b>你是谁</b>（鉴权 Key）、<b>说什么</b>（请求体：模型名 + messages + 参数）、<b>拿回什么</b>（响应体：content 或 tool_calls）。" +
-        "先看完整链路，再亲手「发一次」，最后做两组对照：<b>五个开关</b>决定“有没有”（要不要 system、要不要工具），" +
-        "<b>一组可调参数</b>决定“是多少”（多随机、多长、遇到什么停）——改哪一处，回来的东西就换一种样子。",
+        "先看完整链路，再亲手「发一次」，最后做两组对照：<b>四个开关</b>决定“有没有”（要不要 system、要不要工具、" +
+        "走不走思考模式、是不是流式），<b>一组可调参数</b>决定“是多少”（多随机、多长、什么格式、遇到什么停）——" +
+        "改哪一处，回来的东西就换一种样子。",
         /* 区 1：原理 —— 四件套 + 五步链路 */
         '<div class="pf-kit-head">' + U.icon("send", 16) + ' 原理：一次调用要带齐四样东西</div>' +
         '<div class="pf-demo-grid">' +
@@ -1421,7 +1498,7 @@ AgentLab.LabPerception = (function () {
         '<div class="pf-kit-head">' + U.icon("target", 16) + ' 分步接力：一次调用要走完哪五步</div>' +
         '<div id="pc-llm-flow"></div>' +
         /* 区 3：对照 —— 请求 ↔ 响应 */
-        '<div class="pf-kit-head">' + U.icon("refresh", 16) + ' 对照：五个开关 × 一组可调参数，改哪一处就换哪种回来的结构</div>' +
+        '<div class="pf-kit-head">' + U.icon("refresh", 16) + ' 对照：四个开关 × 一组可调参数，改哪一处就换哪种回来的结构</div>' +
         '<div id="pc-llm-io"></div>' +
         '<div class="tip tip-info" style="margin-top:12px">' + U.icon("lock", 15) + ' <b>安全提醒（很重要）：</b>API Key 等于“钱包密码”。' +
           '真做产品时，Key <b>必须放在服务端</b>，由服务器代替浏览器去调用；本项目是课堂演示，才让你把 Key 填在自己的浏览器里、直接连官方接口——' +
@@ -1634,7 +1711,9 @@ AgentLab.LabPerception = (function () {
       sec.querySelectorAll(".card").forEach(function (c) {
         /* 只统计“带序号徽章”的卡片：聊天卡 / 管线卡等自绘卡片不参与编号，
          * 保证 7 个栏目的可见卡片都是从 ① 开始连续编号 */
-        var badge = c.querySelector("h2 > .card-no");
+        /* 用后代选择器而不是子选择器：万一某张卡的 h2 内被多余标签（如漏闭合的 <b>）
+         * 包了一层，徽章依然能被找到并补号——只在结构上容错，不掩盖标签本身的问题。 */
+        var badge = c.querySelector("h2 .card-no");
         if (!badge) return;
         /* 固定徽章（“准备”）只显示文字、不占课次编号——
          * 这样界面编号就与代码注释里的编号一致：① 认识感知器、② 三种模态、

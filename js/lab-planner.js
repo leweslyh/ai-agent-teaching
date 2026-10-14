@@ -182,12 +182,12 @@ AgentLab.LabPlanner = (function () {
       '<div class="lesson-goal card-plan">' +
         '<h3>' + U.icon("target", 18) + ' 本课学习目标</h3>' +
         '<div class="goal-list">' +
-          '<div class="goal-item"><span class="goal-num">1</span>理解规划器在 Agent 中的作用：它是"思考中枢"——理解意图、拆解任务、排序步骤、选择工具</div>' +
-          '<div class="goal-item"><span class="goal-num">2</span>学会<b>把任务说清楚</b>（四要素 + 两连对比实验），也学会<b>信息不足时先问</b>（意图澄清：缺关键信息要问、有歧义要确认、危险操作先请示）</div>' +
-          '<div class="goal-item"><span class="goal-num">3</span>掌握三大基本功：<b>拆解</b>（自己判断该拆哪些 + 看 AI 现场拆，含验收标准）、<b>排序</b>（依赖与并行）、<b>写成清单</b>（做什么 + 用什么工具 + 完成标准，程序才执行得下去）</div>' +
-          '<div class="goal-item"><span class="goal-num">4</span>学会<b>想清楚</b>（思维链 CoT）、<b>选对工具</b>（工具选择决策）、<b>跑起来</b>（ReAct：思考→行动→观察）、对比 Plan-and-Execute vs ReAct 两种范式</div>' +
-          '<div class="goal-item"><span class="goal-num">5</span>理解规划的质量控制与边界：<b>提议者-审核者</b>（防自欺）、<b>任务清单</b>（把计划放在一眼能看到的地方）、<b>失败归因</b>（先找第一个错，再反思）、<b>上下文轨迹 + 停止条件</b>（既要为反思提供依据，也要知道什么时候该停、别被三形态“假完成”骗了）</div>' +
-          '<div class="goal-item"><span class="goal-num">6</span>把整条链走一遍：在<b>综合演练</b>里完成一次 需求澄清 → 拆解 → 排序 → 执行 → 反思 的端到端任务</div>' +
+          '<div class="goal-item"><span class="goal-num">1</span>认识规划器：它是 Agent 的"思考中枢"，负责<b>理解意图 → 拆解任务 → 排序步骤 → 选择工具</b></div>' +
+          '<div class="goal-item"><span class="goal-num">2</span>会<b>把任务说清楚</b>（四要素），信息不足时先问（澄清三问）</div>' +
+          '<div class="goal-item"><span class="goal-num">3</span>掌握三大基本功：<b>拆解</b>、<b>排序</b>（依赖与并行）、<b>写成清单</b>（每步：做什么 + 用什么工具 + 完成标准）</div>' +
+          '<div class="goal-item"><span class="goal-num">4</span>会<b>想</b>（思维链 CoT）、会<b>选工具</b>、会<b>跑</b>（ReAct：思考→行动→观察），并分清 Plan-and-Execute 与 ReAct</div>' +
+          '<div class="goal-item"><span class="goal-num">5</span>懂规划的边界与质检：任务清单、停止条件、失败归因、提议者-审核者</div>' +
+          '<div class="goal-item"><span class="goal-num">6</span>在<b>综合演练</b>里走完一遍：澄清 → 拆解 → 排序 → 执行 → 反思</div>' +
         '</div>' +
       '</div>' +
 

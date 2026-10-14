@@ -603,8 +603,9 @@ AgentLab.UI = (function () {
 
     /* 这张地图与「本课学习目标」并列成一组可折叠卡（装配见 foldBrief）。
      * 表头恒定写「本课学习地图」，和「本课学习目标」配成一对；正文只放分组节点，
-     * 不挂说明文字——标题说明（opt.title）、规模小字（opt.hint）以及页脚
-     * 「点任意一格可直接跳到…」已按需求去掉，保持地图卡极简。 */
+     * 不挂任何说明文字——标题说明（opt.title）、规模小字（opt.hint）、页脚
+     * 「点任意一格可直接跳到…」以及每个节点里的灰色小字（it.note）都按需求去掉，
+     * 保持地图卡极简。 */
     return '<div class="sec-map" data-color="' + esc(opt.color || "per") + '">' +
       '<div class="sec-map-head">' + icon("map", 17) +
         '<b>' + esc(opt.head || "本课学习地图") + '</b>' +
@@ -614,8 +615,8 @@ AgentLab.UI = (function () {
           return '<div class="sec-map-group">' +
             '<span class="sec-map-glabel"><i>' + (gi + 1) + '</i>' + esc(g.label || "") + '</span>' +
             '<span class="sec-map-items">' + (g.items || []).map(function (it) {
-              var inner = '<span class="sec-map-t">' + esc(it.t || "") + '</span>' +
-                (it.note ? '<span class="sec-map-note">' + esc(it.note) + '</span>' : "");
+              /* 节点只留题目：不再输出说明小字（it.note 视为废弃字段，保留在数据里不参与渲染） */
+              var inner = '<span class="sec-map-t">' + esc(it.t || "") + '</span>';
               /* 带 el 的节点可点（跳转 + 高亮）；不带的只作展示，不误导学生去点 */
               return it.el
                 ? '<button type="button" class="sec-map-node" data-jump="' + esc(it.el) + '">' + inner + '</button>'

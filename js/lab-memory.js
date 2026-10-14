@@ -116,12 +116,12 @@ AgentLab.LabMemory = (function () {
       '<div class="lesson-goal card-mem">' +
         '<h3>' + U.icon("target", 18) + ' 本课学习目标</h3>' +
         '<div class="goal-list">' +
-          '<div class="goal-item"><span class="goal-num">1</span>读懂一张“记忆地图”：短期记忆（轨迹）与长期记忆（用户记忆）的区别；三个层次（轨迹/用户长期记忆/业务状态）；认知科学的三种记忆（情景/语义/程序 + 工作记忆）</div>' +
-          '<div class="goal-item"><span class="goal-num">2</span>会判断“这条信息该怎么处理”：该记的（稳定、可复用）、该更新的（说法变了）、该忘的（过期了）、该拒的（隐私或来源可疑）</div>' +
-          '<div class="goal-item"><span class="goal-num">3</span>掌握 RAG（检索增强生成）的基本流程：检索相关片段→注入上下文→模型基于片段生成答案；知道“知识库小的时候可以整段放进上下文，大到装不下才需要检索”</div>' +
-          '<div class="goal-item"><span class="goal-num">4</span>会算“记忆分数”：它凭什么想起这一条（相关性 × 时间衰减 × 重要性），并知道新旧信息该怎么排优先级</div>' +
-          '<div class="goal-item"><span class="goal-num">5</span>知道一条新知识怎么“上户口”：提议 → 核验来源 → 冲突检查 → 独立审核 → 入档（带版本与时间）→ 定期全量整理</div>' +
-          '<div class="goal-item"><span class="goal-num">6</span>会用“记忆三层次”和一份真实的成绩单评估小管家，并按四种存储格式（Simple/Enhanced/JSON/Advanced JSON Cards）做取舍；建立记忆安全与隐私边界意识（隐私不说、防投毒、按用户隔离）</div>' +
+          '<div class="goal-item"><span class="goal-num">1</span>读懂一张“记忆地图”：短期记忆（轨迹）与长期记忆（用户记忆），三个层次 + 三种记忆（情景/语义/程序）</div>' +
+          '<div class="goal-item"><span class="goal-num">2</span>会判断一条信息该怎么处理：该记的（稳定、可复用）、该更新的、该忘的、该拒的</div>' +
+          '<div class="goal-item"><span class="goal-num">3</span>掌握 RAG 基本流程：检索相关片段 → 注入上下文 → 生成答案；知识库小就直接整段放进上下文</div>' +
+          '<div class="goal-item"><span class="goal-num">4</span>会算“记忆分数”：相关性 × 时间衰减 × 重要性，并排好新旧信息的优先级</div>' +
+          '<div class="goal-item"><span class="goal-num">5</span>知道新知识怎么“上户口”：提议 → 核验来源 → 冲突检查 → 审核 → 入档（带版本）→ 定期整理</div>' +
+          '<div class="goal-item"><span class="goal-num">6</span>会用“记忆三层次”和一份成绩单评估小管家，按四种存储格式做取舍，并建立记忆安全与隐私边界意识（隐私不说、防投毒、按用户隔离）</div>' +
         '</div>' +
       '</div>' +
 
