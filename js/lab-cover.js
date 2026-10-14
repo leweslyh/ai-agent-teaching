@@ -2,7 +2,7 @@
  * lab-cover.js —— 封面页（Apple 官网极简风）
  * 结构只有两段：
  *   ① 主视觉：课程徽章 + 超大标题 + 一句话 + 主按钮 + 功能标签
- *   ② 导览区：七个实验室入口卡片（可点击直达）
+ *   ② 导览区：八个栏目入口卡片（可点击直达）
  * 原环形图、课程地图、四卡使用提示、公式过渡句与页脚提示已移除。
  * ============================================================ */
 
@@ -12,10 +12,10 @@ AgentLab.LabCover = (function () {
   var U = AgentLab.UI;
   var $ = U.$;
 
-  /* ---------- 实验室导览：7 个栏目（点击直达） ----------
+  /* ---------- 栏目导览：8 个栏目（点击直达） ----------
    * desc 一句话（≤22 字），讲清“这里玩什么”即可，细节留给各实验室首页。
-   * color/deep 只用于图标色块（卡片本身黑白，苹果式克制）；
-   * finale = 智能体实验室：收尾卡，与其他卡片同配色，单独居中一行。 */
+   * color/deep 只用于图标色块（卡片本身黑白，苹果式克制）。
+   * 顺序与顶栏导航一致：起源 → 架构 → 感知 → 规划 → 记忆 → 执行 → 智能体实验室 → 作品展示。 */
   var LABS = [
     { sec: "origin", name: "起源实验室", course: "L01 – L02", icon: "rocket",
       desc: "AI 发展史 · 图灵测试 · 大模型工作原理",
@@ -37,7 +37,10 @@ AgentLab.LabCover = (function () {
       color: "var(--c-exe)", deep: "var(--c-exe-deep)" },
     { sec: "playground", name: "智能体实验室", course: "综合实战", icon: "robot",
       desc: "和真正的智能体对话，实时看它的感知、规划、记忆与执行",
-      color: "#8a5cf6", deep: "#5a3de0", finale: true }
+      color: "var(--c-pg)", deep: "var(--c-pg-deep)" },
+    { sec: "works", name: "作品展示", course: "作品集", icon: "star",
+      desc: "两个用四组件搭出来的真实智能体：班级小助手 · 出行小管家",
+      color: "var(--c-works)", deep: "var(--c-works-deep)" }
   ];
 
   /* ---------- 渲染 ---------- */
@@ -61,7 +64,7 @@ AgentLab.LabCover = (function () {
 
       /* ---------- ② 导览区（浅灰分区） ---------- */
       '<div class="cv-nav">' +
-        '<h2 class="cv-h2">七个实验室，带你逐个拆开看</h2>' +
+        '<h2 class="cv-h2">八个栏目，从起源一路看到作品</h2>' +
         '<div class="cv-grid">' +
           LABS.map(function (l, i) {
             return '<button class="cv-card' + (l.finale ? ' is-finale' : '') + '" data-goto="' + l.sec + '" style="--i:' + i + '">' +

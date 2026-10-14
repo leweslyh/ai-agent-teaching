@@ -395,7 +395,7 @@ AgentLab.UI = (function () {
   }
 
   /* ---------- 页面切换 ---------- */
-  var sections = ["cover", "origin", "home", "perception", "planner", "memory", "executor", "playground"];
+  var sections = ["cover", "origin", "home", "perception", "planner", "memory", "executor", "playground", "works"];
 
   function showSection(id) {
     sections.forEach(function (s) {

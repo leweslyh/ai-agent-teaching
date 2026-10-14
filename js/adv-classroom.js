@@ -1377,6 +1377,70 @@ AgentLab.Adv = (function () {
     }
   };
 
+  /* ---------- apiCall 的「更多参数」小工具 ----------
+   * 开关（toggles）回答的是"有没有"：要不要 system、要不要工具；
+   * 参数（params）回答的是"是多少"：随机性多高、回答多长、什么时候停。
+   * 两种语义不同，所以用两套控件、分两块摆放，互不混淆——
+   * 参数做成一行一张的小卡片：左名字、右实时取值、中间可拖可点，
+   * 拖一下请求体立刻跟着变，但**不自动发送**（发送仍由学生亲手按）。 */
+  function paramLabel(p) { return p.label || p.k; }
+  function paramVal(p, v) {
+    if (p.type === "bool") return p.on ? "true" : "false";   /* 布尔参数：取值就是"写没写" */
+    v = (v === undefined) ? p.value : v;
+    if (typeof p.fmt === "function") return p.fmt(v);
+    return String(v);
+  }
+  function paramCtrlHTML(p) {
+    var t = p.type || "range";
+    if (t === "select") {
+      return '<select class="adv-param-select" data-a="pctrl">' +
+        (p.options || []).map(function (o) {
+          return '<option value="' + esc(o.v) + '"' + (String(p.value) === String(o.v) ? " selected" : "") +
+            ">" + esc(o.t) + "</option>";
+        }).join("") + "</select>";
+    }
+    if (t === "bool") return "";   /* 布尔参数：开关本身就是取值，不需要额外控件 */
+    return '<input class="adv-param-range" type="range" data-a="pctrl" min="' + p.min + '" max="' + p.max +
+      '" step="' + (p.step || 1) + '" value="' + p.value + '">';
+  }
+  function paramHTML(p) {
+    return '<div class="adv-param' + (p.on ? " on" : "") + '" data-k="' + esc(p.k) + '">' +
+      '<div class="adv-param-head">' +
+        '<span class="adv-param-ic">' + U.icon(p.icon || "cog", 13) + "</span>" +
+        '<code class="adv-param-k">' + esc(paramLabel(p)) + "</code>" +
+        (p.cn ? '<span class="adv-param-cn">' + esc(p.cn) + "</span>" : "") +
+        '<button class="adv-param-sw' + (p.on ? " on" : "") + '" data-a="psw" title="' +
+          (p.on ? "点一下：这次不带这个参数（请求体里没有这个字段）" : "点一下：把参数写进请求体") + '">' +
+          U.icon(p.on ? "check" : "xmark", 12) + (p.on ? " 已写入" : " 不写入") + "</button>" +
+      "</div>" +
+      '<div class="adv-param-body">' + paramCtrlHTML(p) +
+        '<span class="adv-param-val" data-a="pval">' + esc(paramVal(p)) + "</span></div>" +
+      (p.hint ? '<div class="adv-param-hint">' + p.hint + "</div>" : "") +
+    "</div>";
+  }
+  /* 参数按 group 分组摆放：同一类（随机性 / 长度……）放在一起，
+   * 一行放不下就自动换行——不同屏宽都保持整齐，不会挤成一团。 */
+  function paramGroupsHTML(list) {
+    var order = [], map = {};
+    list.forEach(function (p) {
+      var g = p.group || "其它参数";
+      if (!map[g]) { map[g] = { name: g, items: [] }; order.push(map[g]); }
+      map[g].items.push(p);
+    });
+    return order.map(function (g) {
+      return '<div class="adv-pgroup">' +
+        '<div class="adv-pgroup-name">' + esc(g.name) + "</div>" +
+        '<div class="adv-pgrid">' + g.items.map(paramHTML).join("") + "</div></div>";
+    }).join("");
+  }
+  function paramsHTML(d) {
+    return '<div class="adv-hr" data-a="phead">' + U.icon("cog", 14) +
+        " 更多参数 —— 不改变“有没有”，只改变“多少”：拖一拖，请求体立刻跟着变" +
+        '<span class="adv-pcount" data-a="pcount"></span>' +
+        '<button class="adv-mini-btn" data-a="pdefault">' + U.icon("reset", 12) + " 恢复默认</button></div>" +
+      '<div class="adv-params" data-a="params">' + paramGroupsHTML(d.params) + "</div>";
+  }
+
   /* ============ 类型 16：apiCall —— 一次调用的「请求 ↔ 响应」对照（可独立开关的参数） ============
    * 用途：把"怎么调用大模型"讲成两栏能看见的东西——左边是真正发出去的
    *       （请求行 / 请求头 / 请求体），右边是模型真实回来的（content / tool_calls / JSON / SSE）。
@@ -1390,11 +1454,20 @@ AgentLab.Adv = (function () {
    *              note:   "这个开关的结论（支持 HTML）"
    *              conflicts: ["别的开关的 k"] // 同时开启可能不被接口支持时，给出提醒
    *            } ],
-   *          fallback: { json|text, meta, note },   // 没配 Key 时的示例演示
+   *          params: [                      // 「更多参数」：非布尔的、可连续调的字段
+   *            { k, label, cn?, icon?, group?, on:false,
+   *              type: "range" | "select" | "bool",   // 缺省 range
+   *              value, min, max, step,               // range 用
+   *              options: [{ v, t }],                 // select 用
+   *              fmt:  function(v){ return "0.3"; },  // 取值怎么显示（右端小胶囊）
+   *              apply: function(body, v){},          // 开启时把什么写进请求体
+   *              sysAdd, note, offNote, hint, conflicts }
+   *          ],
+   *          fallback: { json|text, meta, note } | function(body){ ... },   // 没配 Key 时的示例演示
    *          apiDoc: "官方接口文档地址",             // 可选：显示在「发出去的」标题行右端
    *          sendLabel, pendingText, latency, emptyText }
    *
-   * 说明：点开关只改请求体、不自动发送；点「发送请求」才真的调用，
+   * 说明：点开关 / 拖参数都只改请求体、不自动发送；点「发送请求」才真的调用，
    *       让学生走完"改参数 → 看请求体 → 亲手验证"这一步。 */
   types.apiCall = {
     /* ---------- 旧配置兼容层 ----------
@@ -1416,6 +1489,7 @@ AgentLab.Adv = (function () {
         });
       }
       d.toggles = d.toggles || [];
+      d.params = d.params || [];
       return d;
     },
     demoHTML: function (d) {
@@ -1429,6 +1503,8 @@ AgentLab.Adv = (function () {
             U.icon(t.on ? (t.onIcon || "check") : (t.offIcon || "xmark"), 14) + " " + t.label + "</button>";
         }).join("") +
         "</div>" +
+        /* ---- 更多参数：非布尔的、可连续调的字段（没有就不渲染这一块） ---- */
+        (d.params.length ? paramsHTML(d) : "") +
         /* ---- 视角一：人怎么提问、怎么读答案 ---- */
         '<div class="adv-hr">' + U.icon("users", 14) + " 视角一 · 人看到的：怎么提问、怎么读答案</div>" +
         '<div class="adv-io">' +
@@ -1488,6 +1564,9 @@ AgentLab.Adv = (function () {
       var sysBlock = host.querySelector('[data-a="sysblock"]');
       var qInput = host.querySelector('[data-a="qinput"]');
       var presetsBox = host.querySelector('[data-a="presets"]');
+      var paramsBox = host.querySelector('[data-a="params"]');
+      var pCountBox = host.querySelector('[data-a="pcount"]');
+      var pDefaultBtn = host.querySelector('[data-a="pdefault"]');
       if (!modesBox || !reqBox || !respBox) return;
       var timer = null;
 
@@ -1498,9 +1577,23 @@ AgentLab.Adv = (function () {
       function onList() {
         return d.toggles.filter(function (t) { return t.on; });
       }
-      /* 示例响应：新配置直接给 fallback；旧配置（resp 按模式分）跟着当前开启的开关取，
+      function pOf(k) {
+        for (var i = 0; i < d.params.length; i++) if (d.params[i].k === k) return d.params[i];
+        return null;
+      }
+      function onParams() {
+        return d.params.filter(function (p) { return p.on; });
+      }
+      /* 记下默认值：进页面时是什么样，「恢复默认」就回到什么样 */
+      d.params.forEach(function (p) {
+        if (p.__on === undefined) p.__on = !!p.on;
+        if (p.__val === undefined) p.__val = p.value;
+      });
+      /* 示例响应：新配置直接给 fallback（也可以是一段函数——示例也会随参数变）；
+       * 旧配置（resp 按模式分）跟着当前开启的开关取，
        * 这样请求体改一处、回来的东西也跟着变的教学对照不会丢。 */
-      function fallbackOf() {
+      function fallbackOf(body) {
+        if (typeof d.fallback === "function") return d.fallback(body || bodyOf()) || {};
         if (d.fallback) return d.fallback;
         if (d.resp) {
           var on = onList();
@@ -1536,6 +1629,11 @@ AgentLab.Adv = (function () {
         onList().forEach(function (t) {
           if (typeof t.apply === "function") t.apply(body);
           if (t.sysAdd) extra.push(t.sysAdd);
+        });
+        /* 「更多参数」和开关走同一条流水线：带着值套进去，提示词约束一起算 */
+        onParams().forEach(function (p) {
+          if (typeof p.apply === "function") p.apply(body, p.value);
+          if (p.sysAdd) extra.push(p.sysAdd);
         });
         var useSystem = sysOn();
         var rule = extra.join(" ");
@@ -1651,20 +1749,65 @@ AgentLab.Adv = (function () {
           b.innerHTML = U.icon(t.on ? (t.onIcon || "check") : (t.offIcon || "xmark"), 14) + " " + t.label;
         });
       }
-      /* 同时开了互斥的两个开关时提醒一句：报错也是重要结论，不必拦着学生试 */
+      /* 「更多参数」统一重画：卡片高亮、写入状态、右端取值、右上角计数 */
+      function drawParams() {
+        if (!paramsBox) return;
+        paramsBox.querySelectorAll(".adv-param").forEach(function (row) {
+          var p = pOf(row.getAttribute("data-k"));
+          if (!p) return;
+          row.classList.toggle("on", !!p.on);
+          var sw = row.querySelector('[data-a="psw"]');
+          if (sw) {
+            sw.className = "adv-param-sw" + (p.on ? " on" : "");
+            sw.title = p.on ? "点一下：这次不带这个参数（请求体里没有这个字段）"
+              : "点一下：把参数写进请求体";
+            sw.innerHTML = U.icon(p.on ? "check" : "xmark", 12) + (p.on ? " 已写入" : " 不写入");
+          }
+          var ctrl = row.querySelector('[data-a="pctrl"]');
+          if (ctrl) ctrl.value = p.value;
+          var val = row.querySelector('[data-a="pval"]');
+          if (val) val.textContent = paramVal(p);
+        });
+        if (pCountBox) {
+          pCountBox.textContent = "已写入 " + onParams().length + " / " + d.params.length;
+          pCountBox.classList.toggle("is-none", onParams().length === 0);
+        }
+      }
+      /* 参数动过之后：先说这个参数怎么改变了请求体（学生的结论区），
+       * 再同步左右两栏——注意仍然不自动发送，发送必须由学生亲手按。 */
+      function paramNote(p) {
+        if (!noteBox) return;
+        var head = p.on
+          ? (p.note || "")
+          : '<span class="dim">（已关闭「' + esc(paramLabel(p)) + '」：请求体里没有这个字段，' +
+            "服务端按自己的默认值处理" + (p.offNote ? "——" + p.offNote : "") + "）</span>";
+        noteBox.innerHTML = head + conflictWarn() + thinkingToolNote();
+      }
+      function paramTouch(p) {
+        drawParams();
+        renderReq(bodyOf());
+        paramNote(p);
+      }
+      /* 同时开了互斥的两项（开关或参数）时提醒一句：
+       * 报错也是重要结论，不必拦着学生试——但要让他知道这不是"意外"。 */
       function conflictWarn() {
-        var on = onList();
+        var on = onList().concat(onParams());
         for (var i = 0; i < on.length; i++) {
           var cf = on[i].conflicts || [];
           for (var j = 0; j < cf.length; j++) {
-            var other = togOf(cf[j]);
+            var other = togOf(cf[j]) || pOf(cf[j]);
             if (other && other.on) {
-              return '<br><span class="no">⚠ ' + esc(on[i].label) + " 与 " + esc(other.label) +
+              return '<br><span class="no">⚠ ' + esc(paramLabel(on[i])) + " 与 " + esc(paramLabel(other)) +
                 " 同时开启：多数接口不支持这种组合，可能直接报错。可以真的发一次试试看。</span>";
             }
           }
         }
         return "";
+      }
+      /* 当前"改了什么"的清单：开关按名字、参数带上取值，方便学生回头对照 */
+      function activeLabels() {
+        return onList().map(function (t) { return esc(t.label); })
+          .concat(onParams().map(function (p) { return esc(paramLabel(p)) + "=" + esc(paramVal(p)); }));
       }
       /* 思考 + 工具同时开启时的补充说明：告诉学生 tool_choice 被换成 auto 了 */
       function thinkingToolNote() {
@@ -1685,7 +1828,7 @@ AgentLab.Adv = (function () {
         if (timer) { clearTimeout(timer); timer = null; }
         var body = bodyOf();
         var isStream = !!body.stream;
-        var names = onList().map(function (t) { return t.label; });
+        var names = activeLabels();
 
         respBox.textContent = "// 请求已发出，等待模型返回……";
         if (metaBox) metaBox.textContent = "";
@@ -1699,12 +1842,12 @@ AgentLab.Adv = (function () {
         if (!useReal) {
           timer = setTimeout(function () {
             timer = null;
-            var f = fallbackOf();
+            var f = fallbackOf(body);
             respBox.textContent = (typeof f.text === "string") ? f.text : JSON.stringify(f.json || {}, null, 2);
             if (humanBox) humanBox.innerHTML = humanHtml(f.json || null);
             if (metaBox) metaBox.textContent = f.meta || "";
             if (noteBox) {
-              noteBox.innerHTML = (f.note || "") +
+              noteBox.innerHTML = (f.note || "") + conflictWarn() +
                 '<br><span class="dim">（示例演示：点右上角「设置」填入 DeepSeek API Key 后，这里显示的就是真实调用结果。）</span>';
             }
             fireOnDone(d, host);
@@ -1775,7 +1918,7 @@ AgentLab.Adv = (function () {
           }
           if (noteBox) {
             noteBox.innerHTML = '<span class="ok">✓ 这是真实调用 DeepSeek 返回的原文。</span>' +
-              (names.length ? "　当前开启：" + esc(names.join("、")) : "　当前所有开关全部关闭，就是最基础的一次调用。") +
+              (names.length ? "　这次带上：" + names.join("、") : "　全部开关关闭、参数都没写入，就是最基础的一次调用。") +
               conflictWarn() + thinkingToolNote();
           }
           /* 流式时 data 为空（文字已经在 onRaw 里逐帧填好了），这里别覆盖它 */
@@ -1845,8 +1988,43 @@ AgentLab.Adv = (function () {
         });
       }
 
+      /* 参数区：滑条 / 下拉框 / 开关三种控件走同一套动作——
+       * 改值 → 请求体立刻刷新 → 右下方给结论。控件始终可操作，
+       * 没写入时一拖就自动写入（少点一次），想让它"不在请求体里"就按右上角那个状态钮。 */
+      if (paramsBox) {
+        paramsBox.querySelectorAll(".adv-param").forEach(function (row) {
+          var p = pOf(row.getAttribute("data-k"));
+          if (!p) return;
+          var sw = row.querySelector('[data-a="psw"]');
+          var ctrl = row.querySelector('[data-a="pctrl"]');
+          if (sw) sw.addEventListener("click", function () { p.on = !p.on; paramTouch(p); });
+          if (ctrl) {
+            var isRange = ctrl.tagName === "INPUT";
+            ctrl.addEventListener(isRange ? "input" : "change", function () {
+              p.value = isRange ? (parseFloat(ctrl.value) || 0) : ctrl.value;
+              if (!p.on) p.on = true;      /* 一动手就等于"我要用这个参数" */
+              paramTouch(p);
+            });
+          }
+        });
+      }
+      /* 恢复默认：参数回到进页面时的样子（开关不动——它有自己的语义） */
+      if (pDefaultBtn) pDefaultBtn.addEventListener("click", function () {
+        d.params.forEach(function (p) { p.on = !!p.__on; p.value = p.__val; });
+        renderReq(bodyOf());
+        drawParams();
+        if (noteBox) {
+          noteBox.innerHTML = '<span class="ok">✓ 参数已恢复默认</span>——' +
+            (onParams().length
+              ? "只有 " + esc(onParams().map(paramLabel).join("、")) + " 会写进请求体。"
+              : "所有可选参数都不写入请求体，看上去又回到最初的样子。") +
+            conflictWarn() + thinkingToolNote();
+        }
+      });
+
       if (sendBtn) sendBtn.addEventListener("click", function () { send(); });
       drawToggles();
+      drawParams();
       markPreset();
       renderReq(bodyOf());
       idle();

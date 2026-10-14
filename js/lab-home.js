@@ -21,8 +21,8 @@ AgentLab.LabHome = (function () {
       en: "Perception · 多模态输入", job: "把文字、语音、图像变成 AI 能理解的信息。" },
     { id: "memory", sec: "memory", area: "2 / 1", color: "mem", icon: "book", name: "记忆器", analogy: "像小本子",
       en: "Memory · 上下文与知识", job: "短期记对话历史，长期存知识库。" },
-    { id: "planner", sec: "planner", area: "3 / 2", color: "plan", icon: "gear", name: "规划器", analogy: "像思考的头脑",
-      en: "Planner · ReAct 循环", job: "把大任务拆成小步骤，并排好顺序。" },
+    { id: "planner", sec: "planner", area: "3 / 2", color: "plan", icon: "gear", name: "规划器", analogy: "像大脑的决策参谋",
+      en: "Planner · ReAct 循环", job: "把大任务拆成小步骤、排好顺序，并决定调哪个工具。" },
     { id: "executor", sec: "executor", area: "2 / 3", color: "exe", icon: "hand", name: "执行器", analogy: "像手",
       en: "Executor · Function Calling", job: "调用外部工具，真正把事情做出来。" }
   ];
@@ -574,7 +574,7 @@ AgentLab.LabHome = (function () {
             '<div class="ag-slot ag-slot-left" data-slot="left"><span class="ag-slot-label">左方 · 小本子</span></div>' +
             '<div class="ag-slot ag-slot-center" data-slot="center"><span class="ag-slot-label">中间 · 大脑</span></div>' +
             '<div class="ag-slot ag-slot-right" data-slot="right"><span class="ag-slot-label">右方 · 手</span></div>' +
-            '<div class="ag-slot ag-slot-bottom" data-slot="bottom"><span class="ag-slot-label">下方 · 思考</span></div>' +
+            '<div class="ag-slot ag-slot-bottom" data-slot="bottom"><span class="ag-slot-label">下方 · 决策参谋</span></div>' +
           '</div>' +
           '<div class="ag-pieces-wrap">' +
             '<div class="ag-pieces-title">' + U.icon("hand", 14) + ' 点击组件选中，再点击位置放置</div>' +
@@ -942,7 +942,7 @@ AgentLab.LabHome = (function () {
     var selectedPiece = null;
 
     var compNames = { perception: "感知器", memory: "记忆器", planner: "规划器", executor: "执行器", brain: "大语言模型" };
-    var slotNames = { top: "上方（像眼睛）", left: "左方（像小本子）", bottom: "下方（像思考的头脑）", right: "右方（像手）", center: "中间（大脑）" };
+    var slotNames = { top: "上方（像眼睛）", left: "左方（像小本子）", bottom: "下方（像大脑的决策参谋）", right: "右方（像手）", center: "中间（大脑）" };
 
     function clearSelection() {
       pieces.forEach(function (p) { p.classList.remove("selected"); });
@@ -1012,7 +1012,7 @@ AgentLab.LabHome = (function () {
           piecesBox.appendChild(p);
         }
         slot.classList.remove("correct", "wrong", "filled");
-        var slotLabel = { top: "上方 · 眼睛", left: "左方 · 小本子", center: "中间 · 大脑", right: "右方 · 手", bottom: "下方 · 思考" }[slot.getAttribute("data-slot")];
+        var slotLabel = { top: "上方 · 眼睛", left: "左方 · 小本子", center: "中间 · 大脑", right: "右方 · 手", bottom: "下方 · 决策参谋" }[slot.getAttribute("data-slot")];
         slot.innerHTML = '<span class="ag-slot-label">' + slotLabel + '</span>';
       });
       placed = 0;

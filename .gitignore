@@ -14,3 +14,6 @@ desktop.ini
 
 # 本地服务运行时标记（由 _server.ps1 / _start_bg.ps1 生成）
 _runtime.json
+
+# 打包产物
+*.zip

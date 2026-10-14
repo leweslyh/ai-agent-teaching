@@ -120,6 +120,7 @@ body {
 .nav-tab[data-sec="executor"].active { background: linear-gradient(135deg, var(--c-exe), var(--c-exe-deep)); }
 .nav-tab[data-sec="origin"].active { background: linear-gradient(135deg, var(--c-ori), var(--c-ori-deep)); }
 .nav-tab[data-sec="playground"].active { background: linear-gradient(135deg, #8a5cf6, #6b3fd1); }
+.nav-tab[data-sec="works"].active { background: linear-gradient(135deg, var(--c-works), var(--c-works-deep)); }
 
 .icon-btn {
   border: none; cursor: pointer; width: 40px; height: 40px; border-radius: 50%;
@@ -493,6 +494,10 @@ label.field small { font-weight: 400; color: var(--c-sub); display: block; }
 .msg.user { align-self: flex-end; background: linear-gradient(135deg, var(--c-per), var(--c-per-deep)); color: #fff; border-bottom-right-radius: 4px; }
 .msg.ai { align-self: flex-start; background: #fff; border: 2px solid var(--c-line); border-bottom-left-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,.05); }
 .msg .who { font-size: 11.5px; font-weight: 700; opacity: .65; margin-bottom: 3px; display: block; }
+/* .msg 本身是 white-space: pre-wrap（让用户打的多行原样换行）；
+   但 Markdown 渲染出的 HTML 自带块结构，pre-wrap 会把标签之间的换行也留成空隙，
+   所以 md-body 内部恢复普通折叠。 */
+.msg .md-body { white-space: normal; }
 .msg.tool-note {
   align-self: flex-start; background: #F4F1E8; border: 2px dashed #d9cfb8; color: #6b5b2e;
   font-size: 13.5px; font-family: Consolas, monospace;
@@ -3660,6 +3665,160 @@ kbd {
 .chat-head .btn-ghost:hover {
   background: rgba(255,255,255,.3);
 }
+
+/* ---- 运行模式：自动 / 规划 / 问答 ----
+ * 三个按钮 = 三种"自主程度"。选中态用该模式自己的强调色，
+ * 让"现在这一轮它有多大自主权"一眼可辨。 */
+.mode-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.18);
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+.mode-btn {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 6px 11px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255,255,255,.82);
+  cursor: pointer;
+  transition: background .18s, color .18s;
+}
+.mode-btn:hover { background: rgba(255,255,255,.22); color: #fff; }
+.mode-btn.is-on { background: #fff; color: #6b3fd1; box-shadow: 0 1px 4px rgba(0,0,0,.18); }
+.mode-btn.is-on[data-mode="plan"] { color: var(--c-plan-deep); }
+.mode-btn.is-on[data-mode="ask"] { color: var(--c-per-deep); }
+
+/* ---- 模式说明气泡（悬浮出现）----
+ * 以前是一条常驻的说明条（.mode-tip）：切模式时文字底色都跟着变，
+ * 好处是不会漏看，代价是永久占掉对话区上方一整行。
+ * 改成鼠标停在「自动/规划/问答」上、或键盘 Tab 聚焦时才浮出来，读完即走。
+ *
+ * 必须用 position: fixed + JS 定位：.chat-card 是 overflow: hidden，
+ * 挂在卡片内部做绝对定位的气泡会被裁掉。
+ * pointer-events: none 让气泡不吃鼠标事件——否则指针从按钮移向气泡的途中
+ * 会先触发按钮的 mouseleave，气泡刚出来就闪没了。 */
+.mode-pop {
+  position: fixed;
+  left: 0; top: 0;
+  z-index: calc(var(--z-modal) - 1);   /* 压在卡片之上、弹窗之下 */
+  max-width: 290px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: rgba(29, 29, 31, .95);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: #fff;
+  font-size: 12.5px;
+  line-height: 1.62;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .26);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-5px);
+  transition: opacity var(--t-base) var(--ease-out), transform var(--t-base) var(--ease-out), visibility var(--t-base);
+  pointer-events: none;
+}
+.mode-pop.is-on { opacity: 1; visibility: visible; transform: none; }
+/* 小三角：指向被悬浮的那颗按钮，和原生 tooltip 一样能看出"我讲的是它"。
+   left 用 --arrow-x：气泡会被视口边缘挤开（见 showModePop 的钳制），
+   写死 50% 时三角就指偏了，所以由 JS 按按钮中心算出偏移量。 */
+.mode-pop::before {
+  content: ""; position: absolute; top: -5px; left: var(--arrow-x, 50%); margin-left: -5px;
+  border: 5px solid transparent; border-top: 0; border-bottom-color: rgba(29, 29, 31, .95);
+}
+.mode-pop.is-above::before { top: auto; bottom: -5px; border-top: 5px solid rgba(29, 29, 31, .95); border-bottom: 0; }
+.mode-pop .mp-head { font-size: 13px; font-weight: 800; margin-bottom: 4px; }
+.mode-pop .mp-head i { font-style: normal; font-weight: 600; font-size: 11px; opacity: .68; margin-left: 6px; }
+.mode-pop b { color: #ffd9a0; font-weight: 800; }   /* 气泡里的关键词用暖色提一下 */
+.mode-pop .mp-foot {
+  margin-top: 6px; padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, .18);
+  font-size: 11.5px; opacity: .8;
+}
+
+/* ---- 规划模式的计划卡 ----
+ * 它不是"回答"，是"待确认的动作"，所以外观要明显区别于普通气泡：
+ * 规划器的橙色 + 虚线边 + 两颗按钮。
+ * 选择器写成 .msg.ai.plan-card：后面的 `.msg.ai` 与本规则权重相同、位置更靠后，
+ * 只用 .msg.plan-card 会被它把底色和边框盖掉。 */
+.msg.ai.plan-card {
+  max-width: 100%;
+  width: 100%;
+  background: #fffaf2;
+  border: 1.5px dashed var(--c-plan);
+  border-bottom-left-radius: 4px;
+}
+.msg.ai.plan-card .who {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--c-plan-deep);
+  opacity: 1;
+}
+.plan-lead { font-weight: 700; color: var(--c-plan-deep); margin-bottom: 8px; }
+.plan-steps {
+  margin: 0 0 8px;
+  padding-left: 0;
+  list-style: none;
+  counter-reset: pstep;
+}
+.plan-steps li {
+  counter-increment: pstep;
+  position: relative;
+  padding: 7px 10px 7px 32px;
+  margin-bottom: 6px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #f2dcbb;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.plan-steps li::before {
+  content: counter(pstep);
+  position: absolute;
+  left: 9px;
+  top: 8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--c-plan);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.plan-steps li b { color: var(--c-ink); }
+.plan-args { display: block; margin-top: 3px; color: #8a8172; font-size: 12px; word-break: break-all; }
+.plan-args i { font-style: normal; color: var(--c-plan-deep); font-weight: 700; }
+.plan-note {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #fff;
+  border-left: 3px solid var(--c-plan);
+  color: #6b6152;
+  font-size: 12.5px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.plan-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.plan-confirmed,
+.plan-dropped { font-size: 12.5px; color: #8a8172; display: inline-flex; align-items: center; gap: 5px; }
+.plan-confirmed { color: var(--c-mem-deep); font-weight: 700; }
+
+@media (max-width: 620px) {
+  .chat-head { flex-wrap: wrap; }
+  .mode-seg { margin-left: 0; order: 3; }
+}
 .chat-msgs {
   flex: 1;
   min-height: 0;
@@ -6685,6 +6844,82 @@ kbd {
 .adv-kv-v code { background: rgba(62, 155, 255, .10); border-radius: 5px; padding: 1px 6px; font-size: 12px; }
 .adv-note-line { margin-top: 9px; font-size: 12px; color: var(--c-sub); line-height: 1.65; }
 
+/* ---------- apiCall：「更多参数」可调参数区 ----------
+ * 开关是"有没有"，参数是"是多少"——两套控件分开摆，视觉上也分开：
+ * 参数区一行一张小卡片（名字 + 状态钮 + 滑条/下拉 + 实时取值），
+ * 写入请求体的那张卡片整张点亮，一眼看出"这次带了什么"。
+ * 宽屏自动两列、窄屏自动一列（auto-fit，不写死列数）。 */
+.adv-params { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
+.adv-pgroup-name {
+  display: inline-block; margin-bottom: 7px;
+  font-size: 11.5px; font-weight: 800; color: var(--per-ink);
+  background: var(--per-tint); border: 1px solid var(--per-line);
+  border-radius: var(--r-pill, 999px); padding: 1px 10px;
+}
+.adv-pgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(244px, 1fr)); gap: 10px; }
+.adv-param {
+  background: #fff; border: 2px solid var(--c-line); border-radius: 12px;
+  padding: 9px 11px 10px; transition: border-color .15s, background .15s, box-shadow .15s;
+}
+.adv-param.on { border-color: var(--per-line); background: var(--per-tint); }
+.adv-param:focus-within { box-shadow: 0 0 0 3px rgba(62, 155, 255, .14); }
+.adv-param-head { display: flex; align-items: center; gap: 6px; }
+.adv-param-ic { display: inline-flex; color: var(--c-dim); }
+.adv-param.on .adv-param-ic { color: var(--c-per); }
+/* 参数名是代码字段名，但这里按"名字"用，不要像正文里那样染成红色 */
+.adv-param-k {
+  background: none; padding: 0; border-radius: 0; font-size: 12.5px; font-weight: 800;
+  font-family: "JetBrains Mono", Consolas, "Courier New", monospace; color: var(--c-ink-2);
+}
+.adv-param.on .adv-param-k { color: var(--per-ink); }
+.adv-param-cn { font-size: 11.5px; color: var(--c-sub); }
+/* 写入状态钮：显示的是"当前状态"，点一下切换（不是"已启用/已禁用"那种开关感） */
+.adv-param-sw {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 3px;
+  border: 1.5px solid var(--c-line); background: #fff; color: var(--c-dim);
+  border-radius: var(--r-pill, 999px); padding: 2px 8px;
+  font-size: 11px; font-weight: 800; font-family: inherit; cursor: pointer;
+  white-space: nowrap; transition: all .15s;
+}
+.adv-param-sw:hover { border-color: var(--c-per); transform: translateY(-1px); }
+.adv-param-sw.on { border-color: var(--c-per); background: #fff; color: var(--c-per-deep); }
+.adv-param-body { display: flex; align-items: center; gap: 9px; margin-top: 8px; min-height: 26px; }
+.adv-param-range { flex: 1 1 auto; min-width: 0; accent-color: var(--c-per); height: 20px; }
+.adv-param-select {
+  flex: 1 1 auto; min-width: 0; font-family: inherit; font-size: 12.5px;
+  border: 1.5px solid var(--c-line); border-radius: 8px; padding: 3px 6px;
+  background: #fff; color: inherit; cursor: pointer;
+}
+.adv-param-select:focus-visible { outline: 2px solid var(--c-per); outline-offset: 1px; }
+.adv-param-val {
+  flex: 0 0 auto; font-family: "JetBrains Mono", Consolas, "Courier New", monospace;
+  font-size: 12px; font-weight: 800; color: var(--per-ink);
+  background: rgba(62, 155, 255, .10); border-radius: 6px; padding: 2px 8px;
+}
+.adv-param:not(.on) .adv-param-val { color: var(--c-dim); background: rgba(120, 120, 140, .10); }
+.adv-param:not(.on) .adv-param-range { opacity: .72; }
+.adv-param-hint { margin-top: 6px; font-size: 11.5px; line-height: 1.6; color: var(--c-sub); }
+/* 「已写入 n / m」计数 + 「恢复默认」：都挂在参数区标题行右端 */
+.adv-pcount {
+  margin-left: auto; font-size: 11.5px; font-weight: 800;
+  color: var(--per-ink); background: var(--per-tint);
+  border: 1px solid var(--per-line); border-radius: var(--r-pill, 999px); padding: 1px 9px;
+}
+.adv-pcount.is-none { color: var(--c-dim); background: var(--c-bg-alt); border-color: var(--c-line); }
+.adv-mini-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  border: 1.5px solid var(--c-line); background: #fff; color: var(--c-sub);
+  border-radius: var(--r-pill, 999px); padding: 2px 10px;
+  font-size: 11.5px; font-weight: 700; font-family: inherit; cursor: pointer; transition: all .15s;
+}
+.adv-mini-btn:hover { border-color: var(--c-per); color: var(--c-per-deep); transform: translateY(-1px); }
+.adv-mini-btn:focus-visible { outline: 2px solid var(--c-per); outline-offset: 2px; }
+@media (max-width: 780px) {
+  .adv-pgrid { grid-template-columns: 1fr; }
+  .adv-hr[data-a="phead"] { align-items: flex-start; flex-wrap: wrap; }
+  .adv-pcount { margin-left: 0; }
+}
+
 /* ---------- apiCall：可手改的「用户输入」区 ---------- */
 .adv-chat-form { display: flex; flex-direction: column; gap: 7px; }
 .adv-sysblock {
@@ -7046,6 +7281,7 @@ textarea:hover, select:hover, .opt:hover, .adv-chip:hover, .cmp-req-btn:hover { 
   --c-brain: #F6B93B;  --c-brain-deep: #C98A12;
   --c-ori: #8E44AD;    --c-ori-deep: #6C3483;
   --c-pg: #8A5CF6;     --c-pg-deep: #6B3FD1;   /* 智能体实验室（综合实战，与页头图标同紫） */
+  --c-works: #0E9F87;  --c-works-deep: #0B7A68; /* 作品展示（作品集，青绿——与七个实验室区分） */
 
   /* ---------- 语义色派生：淡染 / 描边 / 可读深字 ---------- */
   --per-tint: #EDF5FF;   --per-line: #B9D9FF;   --per-ink: #14629E;
@@ -7055,6 +7291,7 @@ textarea:hover, select:hover, .opt:hover, .adv-chip:hover, .cmp-req-btn:hover { 
   --brain-tint: #FFF6E0; --brain-line: #F5DCA0; --brain-ink: #8A5C00;
   --ori-tint: #F4EAFB;   --ori-line: #DCC0F0;   --ori-ink: #5B2C7A;
   --pg-tint: #F2ECFE;    --pg-line: #D6C5F8;    --pg-ink: #5B2FB8;
+  --works-tint: #E4F5F1; --works-line: #A6DDD1; --works-ink: #0A5C4F;
 
   /* ---------- 圆角阶梯 ---------- */
   --r-xs: 8px;
@@ -8040,6 +8277,8 @@ blockquote { background: var(--c-bg-alt); border-left: 3px solid var(--c-brain);
 /* 智能体实验室（L13 综合实战）：与封面第 7 张导览卡同紫。
  * 补上这一条之后，七个板块的页头都走同一套 labHead()，不再有内联样式硬编码。 */
 .lab-icon[data-color="pg"]    { background: linear-gradient(140deg, var(--c-pg),    var(--c-pg-deep)); }
+/* 作品展示（作品集）：青绿，与七个实验室的页头同走一套 labHead()。 */
+.lab-icon[data-color="works"] { background: linear-gradient(140deg, var(--c-works), var(--c-works-deep)); }
 
 /* ============================================================
  * 苹果风统一层 §9 —— 封面页（Apple 官网极简风 · 纯白作用域）
@@ -8154,7 +8393,9 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
   to   { opacity: 1; transform: none; }
 }
 
-/* 第 7 张「智能体实验室」：收尾卡，配色与其他卡片一致，单独一行居中 */
+/* 收尾卡（可选）：整行居中。
+ * 新增「作品展示」后导览共 8 张卡，正好 2×4 铺满；本规则保留给将来
+ * 需要单独居中的卡片使用，当前没有卡片用到 is-finale。 */
 .cv-card.is-finale { grid-column: 1 / -1; justify-self: center; width: calc(50% - 10px); }
 
 /* ---------- 9.4 页脚一行提示 ---------- */
@@ -9274,11 +9515,10 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
 
 /* ============================================================
  * 智能体实验室（L13）：工作台可视化 + 配套实验
- * 1) 工作台：三态（进行中 / 已完成 / 本轮未参与）+ 本轮轨迹 + 重放
- * 2) 回答下方的“本轮组件徽章”
- * 3) 实验①：管线阶段预测（预测图 → 逐条讲解 → 真实跑）
- * 4) 实验②：组件开关（与工作台开关双向联动）
- * 5) 进阶课堂：探索进度
+ * 1) 工作台：三态（run 进行中 / done 已完成 / skip 本轮未参与）+ 本轮轨迹 + 重放
+ * 2) 实验①：管线阶段预测（预测图 → 逐条讲解 → 真实跑）
+ * 3) 实验②：组件开关（与工作台开关双向联动）
+ * 4) 进阶课堂：探索进度
  * ============================================================ */
 
 /* --- 语义色小工具：给元素挂上所属模块的四色，其余样式用 --node* 取用 --- */
@@ -9310,8 +9550,9 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
 
 .pipe-legend { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-xs); color: var(--c-dim); }
 .pipe-legend .lg { width: 10px; height: 10px; border-radius: 3px; margin-left: 7px; display: inline-block; background: var(--c-line); }
-.pipe-legend .lg-run { background: var(--c-brain); }
-.pipe-legend .lg-done { background: var(--c-mem); }
+/* 两种状态都用「线型」区分，不用色块填充：
+   本轮参与 = 白底 + 实线描边（和图上节点的 done 态同形），本轮未参与 = 白底 + 虚线。 */
+.pipe-legend .lg-done { background: #fff; border: 1.5px solid var(--c-mem); }
 .pipe-legend .lg-skip { background: #fff; border: 1.5px dashed var(--c-line-strong); }
 
 /* ==========================================================================
@@ -9416,6 +9657,105 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
 .pg-msg.r-tool   { border-color: var(--exe-line);   background: var(--exe-tint);   color: var(--exe-ink); }
 .pg-msg.is-last { box-shadow: 0 0 0 2px var(--c-elev), 0 0 0 3.5px var(--c-brain); }
 
+/* --- 角色链上的“所属空间”小标签 ---
+   观察空间 = 信息进来（system / user / tool）；动作空间 = 决定要做的事（assistant）。
+   配色沿用全站的空间语义色：观察 = 蓝（感知器）、动作 = 红（执行器），和感知器实验室一致。 */
+.pg-sp {
+  font-style: normal; font-size: 9.5px; font-weight: 800; line-height: 1;
+  padding: 2px 5px; border-radius: 4px; margin-left: 5px;
+}
+.pg-sp.sp-observe { background: var(--per-tint); color: var(--per-ink); border: 1px solid var(--per-line); }
+.pg-sp.sp-act     { background: var(--exe-tint); color: var(--exe-ink); border: 1px solid var(--exe-line); }
+.pg-chainlabel .sp-obs-t { color: var(--per-ink); }
+.pg-chainlabel .sp-act-t { color: var(--exe-ink); }
+
+/* --- 引擎条新增两态：关掉规划器（有 Key，规则代劳）/ 离线演示（内置轨迹） --- */
+.pg-engine.is-plan-off { border-color: var(--plan-line); background: var(--plan-tint); }
+.pg-engine.is-plan-off > svg { color: var(--plan-ink); }
+.pg-engine.is-demo { border-color: var(--brain-line); background: var(--brain-tint); }
+.pg-engine.is-demo > svg { color: var(--brain-ink); }
+/* 问答模式：请求里没有工具，用蓝色和"降级/演示"的橙黄区分开，免得看混 */
+.pg-engine.is-ask { border-color: var(--per-line); background: var(--per-tint); }
+.pg-engine.is-ask > svg { color: var(--per-ink); }
+
+/* --- 思考模式：不是第五个组件，单独一块，用虚线框 + 蓝底和上面四组件区分开 --- */
+.pg-thinkbox {
+  margin-top: 9px; padding: 9px 11px;
+  border: 1px dashed var(--per-line); border-radius: var(--r-sm);
+  background: var(--per-tint);
+}
+.pg-think-tag {
+  font-size: 9.5px; font-weight: 800; margin-left: 6px; padding: 2px 6px;
+  border-radius: var(--r-pill);
+  background: var(--c-elev); color: var(--per-ink); border: 1px solid var(--per-line);
+}
+.pg-think-note { margin-top: 6px; font-size: 11.5px; line-height: 1.7; color: var(--c-sub); }
+.pg-think-note code {
+  background: var(--c-elev); color: var(--per-ink);
+  border-radius: 4px; padding: 0 4px; font-size: 11px;
+}
+.pg-think-note b { color: var(--c-ink); }
+
+/* --- 对话区那颗「多步」芯片：一眼能挑出来 --- */
+.pg-chips .chip-suggest.is-multi {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  border-color: var(--plan-line); background: var(--plan-tint); color: var(--plan-ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pg-chips .chip-suggest.is-multi:hover { background: var(--plan-tint); filter: brightness(.97); }
+.chip-tag {
+  flex: 0 0 auto; font-size: 9.5px; font-weight: 900; padding: 2px 6px;
+  border-radius: var(--r-pill); background: var(--c-plan); color: #fff;
+}
+
+/* ==========================================================================
+   实验：多步任务 —— 规划器是怎么拆步的
+   离线逐步演示：一步点亮一个组件 + 一条轨迹，学生跟着数“规划器出手了几次”。
+   ========================================================================== */
+.pg-multi-task {
+  display: flex; align-items: flex-start; gap: 7px;
+  padding: 10px 12px; border-radius: var(--r-md);
+  border: 1px solid var(--plan-line); background: var(--plan-tint);
+  color: var(--c-ink); font-size: var(--fs-sm); line-height: 1.75;
+}
+.pg-multi-task svg { flex: 0 0 auto; margin-top: 3px; color: var(--plan-ink); }
+.pg-multi-task b { color: var(--plan-ink); }
+
+.pg-multi-steps { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.pg-ms-empty {
+  display: flex; align-items: center; gap: 7px;
+  font-size: var(--fs-xs); color: var(--c-dim); line-height: 1.7;
+}
+.pg-ms {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 12px; border-radius: var(--r-md);
+  border: 1px solid var(--c-line); background: var(--c-elev);
+  animation: pgMsIn .28s ease both;
+}
+/* 当前这一步：橙描边 + 柔光外环，视线自然落上去 */
+.pg-ms.is-cur { border-color: var(--c-plan); box-shadow: 0 0 0 3px var(--plan-tint); }
+@keyframes pgMsIn { from { opacity: 0; transform: translateY(6px); } }
+
+.pg-ms-n {
+  flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 900; color: #fff;
+  background: var(--node, var(--c-dim));     /* --node 由同元素的 .c-* 提供 */
+}
+.pg-ms-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pg-ms-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pg-ms-who { font-size: var(--fs-xs); font-weight: 800; color: var(--node-ink, var(--c-sub)); }
+.pg-ms-role {
+  font-style: normal; font-size: 9.5px; font-weight: 700;
+  padding: 2px 6px; border-radius: var(--r-pill);
+  background: var(--c-bg-alt); color: var(--c-sub); border: 1px solid var(--c-line);
+}
+.pg-ms-t { font-size: var(--fs-sm); line-height: 1.7; color: var(--c-ink-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-ms { animation: none; }
+}
+
 /* ==========================================================================
    智能体内部工作台 · 总装图（大脑居中，四组件环绕）
    为什么不用竖排的「感知→规划→记忆→执行」链条：那条链的箭头只有向下一种方向，
@@ -9423,10 +9763,19 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
    放射状才画得出：每条边方向明确，亮起即“本轮走过这条边”。
    ========================================================================== */
 .pg-hub {
-  --nw: clamp(60px, 22%, 88px);    /* 节点宽（纯图标，比带文字时窄很多） */
-  --nh: 56px;                      /* 节点高 */
-  --gapv: 28px;                    /* 上/中 与 中/下 两行之间的纵向间距 */
-  --rowc: calc(var(--nh) + var(--gapv) + var(--nh) / 2);   /* 中间行的垂直中心 */
+  /* 节点是正方形（图标在上、名称在下）。
+   * 宽高必须写死成同一个 px 值，不能沿用 clamp(60px, 22%, 88px)：
+   * --nh 参与了 --rowc / --rowh 这些纵向计算，而百分比在 top/height 里是按
+   * 【容器高度】解析的——一旦 --nh 里带 %，整张图的纵向坐标就全错位。 */
+  --nw: 84px;                      /* 节点宽 */
+  --nh: 84px;                      /* 节点高 = 宽（正方形） */
+  --gapv: 34px;                    /* 三行之间的纵向间距；同时也是上下两条竖边的长度 */
+  --side: 10%;                     /* 左右两个节点距容器边缘的水平内缩（免得图形被拉得太扁） */
+  /* 中间行的垂直中心。三行分别是：感知器 / 记忆器·大脑·执行器 / 规划器，
+   * 所以中心 = 一行高 + 行距 + 半行高。
+   * 记忆器、执行器、大脑三者的 top 都锚在这一行上，横向连线才对得准——
+   * 之前记忆器/执行器用的是 --gapv，比大脑高了一整行，两条横线悬在方块下方连不上。 */
+  --rowc: calc(var(--nh) + var(--gapv) + var(--nh) / 2);
   position: relative;
   height: calc(3 * var(--nh) + 2 * var(--gapv));
   margin: 12px 0 4px;
@@ -9456,23 +9805,56 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
   background-size: 100% 11px;
 }
 
-/* 竖向：x 固定在正中，起点与长度都由节点尺寸算出 */
-.pg-hub-edge[data-edge="per-brain"] { left: 50%; top: calc(var(--nh) / 2); height: calc(var(--nh) + var(--gapv)); }
-.pg-hub-edge[data-edge="brain-plan"] { left: 50%; top: var(--rowc); height: calc(var(--nh) + var(--gapv)); }
+/* 竖向：x 固定在正中，起点与长度都由节点尺寸算出。
+   大脑 ⇄ 规划器是一对反向边，用 ±7px 错开（和横向那两组同理）。
+   ——规划器是独立组件：大脑把上下文交给它、它把决策交回大脑，
+     这一进一出【都只连大脑】，所以它没有通往执行器的线（决定 ≠ 执行）。 */
+.pg-hub-edge[data-edge="per-brain"]  { left: 50%; top: calc(var(--nh) / 2); height: calc(var(--nh) + var(--gapv)); }
+.pg-hub-edge[data-edge="brain-plan"] { left: calc(50% - 7px); top: var(--rowc); height: calc(var(--nh) + var(--gapv)); }
+.pg-hub-edge[data-edge="plan-brain"] { left: calc(50% + 7px); top: var(--rowc); height: calc(var(--nh) + var(--gapv)); }
 
-/* 横向：记忆器中心 → 大脑中心 / 大脑中心 → 执行器中心。
-   同一侧的两条反向线用 ±7px 错开，避免叠在一起看不清。 */
-.pg-hub-edge[data-edge="brain-mem-out"] { top: calc(var(--rowc) - 7px); left: calc(var(--nw) / 2); width: calc(50% - var(--nw) / 2); }
-.pg-hub-edge[data-edge="brain-mem-in"] { top: calc(var(--rowc) + 7px); left: calc(var(--nw) / 2); width: calc(50% - var(--nw) / 2); }
-.pg-hub-edge[data-edge="brain-exe-out"] { top: calc(var(--rowc) - 7px); left: 50%; width: calc(50% - var(--nw) / 2); }
-.pg-hub-edge[data-edge="brain-exe-in"] { top: calc(var(--rowc) + 7px); left: 50%; width: calc(50% - var(--nw) / 2); }
+/* 横向：记忆器中心 ⇄ 大脑中心 / 大脑中心 ⇄ 执行器中心。
+   起点 = 内缩量 + 半个节点宽（即侧边节点的中心），终点 = 50%（大脑中心）。
+   每一组的两条反向线用 ±7px 错开，避免叠在一起看不清：
+     左组（记忆器）上行 = 大脑 → 记忆器，下行 = 记忆器 → 大脑；
+     右组（执行器）上行 = 大脑 → 执行器（① 按接口写参数），
+                   下行 = 执行器 → 大脑（② 结果回传）。 */
+.pg-hub-edge[data-edge="brain-mem-out"] { top: calc(var(--rowc) - 7px); left: calc(var(--side) + var(--nw) / 2); width: calc(50% - var(--side) - var(--nw) / 2); }
+.pg-hub-edge[data-edge="brain-mem-in"]  { top: calc(var(--rowc) + 7px); left: calc(var(--side) + var(--nw) / 2); width: calc(50% - var(--side) - var(--nw) / 2); }
+.pg-hub-edge[data-edge="brain-exe-out"] { top: calc(var(--rowc) - 7px); left: 50%; width: calc(50% - var(--side) - var(--nw) / 2); }
+.pg-hub-edge[data-edge="brain-exe-in"]  { top: calc(var(--rowc) + 7px); left: 50%; width: calc(50% - var(--side) - var(--nw) / 2); }
+
+/* ① ② 两枚步骤标签：坐落在【大脑右边缘 → 执行器左边缘】这段空隙里。
+   宽度必须按“空隙”算，不能照抄连线的宽度——连线是中心对中心（两端被节点盖住，
+   所以能用 50% - side - nw/2），而标签必须完整落在空隙内，否则会压在执行器卡片上：
+     空隙 = 100% - side - nw（执行器左边缘） - (50% + nw/2)（大脑右边缘）
+          = 50% - side - 1.5 * nw
+   文字居中；上标挂在【上行线外侧】（线上方），下标挂在【下行线外侧】（线下方），
+   所以两枚标签永远不会和连线、箭头、节点打架。
+   translateY(±100%) 让标签贴着自己那条线，不用写死行数。 */
+.pg-hub-tag {
+  position: absolute; z-index: 2;
+  left: calc(50% + var(--nw) / 2);
+  width: calc(50% - var(--side) - var(--nw) * 1.5);
+  font-size: 9.5px; font-weight: 800; line-height: 1.25;
+  text-align: center; color: var(--exe-ink);
+  /* 默认压暗：这一步只是"这条边是什么意思"的说明。
+   * 本轮真的走过这条边时（.is-on）才提亮——否则会出现
+   *「执行器：本轮未参与」和亮着的「① 按接口写参数」同时挂在屏上的自相矛盾。 */
+  opacity: .42;
+  transition: opacity .22s ease;
+}
+.pg-hub-tag.is-on { opacity: 1; }
+.pg-hub-tag[data-tag="exe-out"] { top: calc(var(--rowc) - 13px); transform: translateY(-100%); }
+.pg-hub-tag[data-tag="exe-in"]  { top: calc(var(--rowc) + 13px); }
 
 .pg-hub-edge[data-edge="per-brain"] { --edge-c-on: var(--c-per); }
 .pg-hub-edge[data-edge="brain-mem-out"],
 .pg-hub-edge[data-edge="brain-mem-in"] { --edge-c-on: var(--c-mem); }
 .pg-hub-edge[data-edge="brain-exe-out"],
 .pg-hub-edge[data-edge="brain-exe-in"] { --edge-c-on: var(--c-exe); }
-.pg-hub-edge[data-edge="brain-plan"] { --edge-c-on: var(--c-brain); }
+.pg-hub-edge[data-edge="brain-plan"],
+.pg-hub-edge[data-edge="plan-brain"] { --edge-c-on: var(--c-plan); }
 .pg-hub-edge.is-on { --edge-c: var(--edge-c-on); }
 
 /* 箭头：border 三角，染哪一边就朝哪个方向；固定落在连线中点 */
@@ -9484,52 +9866,66 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
 .pg-hub-edge.to-left::after  { border-color: transparent transparent transparent var(--edge-c); }
 .pg-hub-edge.to-right::after { border-color: transparent var(--edge-c) transparent transparent; }
 .pg-hub-edge.to-down::after  { border-color: var(--edge-c) transparent transparent transparent; }
-
-/* 规划器那条是实线无箭头：它是大脑的一种工作模式，不是独立的一步 */
-.pg-hub-edge.is-static { background-image: none; background-color: var(--edge-c); opacity: .55; border-radius: 2px; }
-.pg-hub-edge.is-static::after { display: none; }
-.pg-hub-edge.is-static.is-on { opacity: 1; background-color: var(--edge-c-on); }
+.pg-hub-edge.to-up::after    { border-color: transparent transparent var(--edge-c) transparent; }
 
 .pg-hub-edge.is-on.h.to-right { animation: hubFlowR .9s linear infinite; }
 .pg-hub-edge.is-on.h.to-left  { animation: hubFlowL .9s linear infinite; }
 .pg-hub-edge.is-on.v.to-down  { animation: hubFlowD .9s linear infinite; }
+.pg-hub-edge.is-on.v.to-up    { animation: hubFlowU .9s linear infinite; }
 @keyframes hubFlowR { to { background-position: 11px 0; } }
 @keyframes hubFlowL { to { background-position: -11px 0; } }
 @keyframes hubFlowD { to { background-position: 0 11px; } }
+@keyframes hubFlowU { to { background-position: 0 -11px; } }
 
-/* --- 节点：纯图标，不放任何文字。
-   图形本身只负责「谁连着谁、信息往哪流」，名称由图例行和下方轨迹交代。 --- */
+/* --- 节点：正方形，图标在上、名称在下。
+   卡里放的是短名（STAGES.short），全称与配色仍由图例行给出对照。
+   竖排用 flex-direction: column；宽高由 --nw / --nh 给出同一个值，所以必然是正方形。 --- */
 .pg-hub-node {
   position: absolute; z-index: 1;      /* 高于连线，节点自然遮住线头，不用算精确端点 */
   width: var(--nw); height: var(--nh);
-  display: flex; align-items: center; justify-content: center;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 5px;                            /* 图标与名称之间的间距 */
+  padding: 6px 5px;
   border-radius: 14px;
   border: 1.5px solid var(--c-line);
-  background: var(--c-card);
-  opacity: .55; filter: saturate(.4);
-  transition: opacity .22s ease, filter .22s ease, transform .22s ease, border-color .22s ease, background .22s ease;
+  background: var(--c-card);           /* 必须不透明：卡片要挡住下面的连线 */
+  /* 未点亮只用「去饱和」表达，绝不用整体 opacity——
+     卡片一半透明，底下的虚线就会从卡面上穿过去，非常难看。 */
+  filter: saturate(.35);
+  box-shadow: 0 1px 2px rgba(43, 43, 51, .05);
+  transition: filter .22s ease, transform .22s ease, border-color .22s ease, background .22s ease, box-shadow .22s ease;
 }
-.pg-hub-node svg { width: 30px; height: 30px; }
-.pg-hub-node .pg-hub-name { display: none; }   /* 名称只留在图例与轨迹里 */
+.pg-hub-node svg { width: 22px; height: 22px; }
+/* 名称：正方形里空间有限，"大语言模型大脑"这种长名会换行——
+   所以给它两行 + 居中 + 稍紧的行高，不压缩字号到看不清。 */
+.pg-hub-node .pg-hub-name {
+  display: block; max-width: 100%;
+  font-size: 10px; font-weight: 800; line-height: 1.15;
+  text-align: center; letter-spacing: -.2px;
+  color: var(--c-sub);
+}
 /* 大脑是中心：默认就填色 + 深描边，不用改变尺寸也能立住 */
 .pg-hub-node.n-brain {
   border-width: 2px; border-color: var(--nc-line);
   background: var(--nc-tint); color: var(--nc-ink);
   box-shadow: 0 0 0 4px var(--nc-tint);
 }
-.pg-hub-node.n-brain svg { width: 34px; height: 34px; }
-/* 定位：大脑正中，感知器上、规划器下、记忆器左、执行器右。
-   顶部与左侧两行绝不能漏——漏掉的话节点会按 DOM 顺序自动流进网格，
-   变成「感知器左上、大脑右上」，和下面的连线完全对不上。 */
-/* 定位：大脑正中，感知器上、规划器下、记忆器左、执行器右。
+.pg-hub-node.n-brain svg { width: 24px; height: 24px; }
+/* 定位：三行三列的放射状 ——
+     第 1 行：感知器            （中列）
+     第 2 行：记忆器 · 大脑 · 执行器（左 / 中 / 右）
+     第 3 行：规划器            （中列）
+   第 2 行的三个节点必须共用同一个 top（= 一行高 + 行距），
+   否则横向连线会像以前那样悬在方块外面。
    顶部与左侧两行绝不能漏——漏掉的话节点会按 DOM 顺序自动流进网格，
    变成「感知器左上、大脑右上」，和下面的连线完全对不上。
    居中用 margin-left 而不是 transform：否则 .is-run 的 scale(1.05)
    会把 translateX(-50%) 整体顶掉，节点一点亮就横跳半个身位。 */
-.pg-hub-node.n-per   { left: 50%; top: 0;    margin-left: calc(var(--nw) / -2); }
-.pg-hub-node.n-mem   { left: 0;    top: var(--gapv); }
-.pg-hub-node.n-brain { left: 50%; top: calc(var(--gapv) + var(--nh)); margin-left: calc(var(--nw) / -2); }
-.pg-hub-node.n-exe   { right: 0;   top: var(--gapv); }
+.pg-hub-node.n-per   { left: 50%; top: 0; margin-left: calc(var(--nw) / -2); }
+.pg-hub-node.n-mem   { left: var(--side); top: var(--rowc); margin-top: calc(var(--nh) / -2); }
+.pg-hub-node.n-brain { left: 50%; top: var(--rowc); margin-left: calc(var(--nw) / -2); margin-top: calc(var(--nh) / -2); }
+.pg-hub-node.n-exe   { right: var(--side); top: var(--rowc); margin-top: calc(var(--nh) / -2); }
 .pg-hub-node.n-plan  { left: 50%; top: calc(2 * var(--gapv) + 2 * var(--nh)); margin-left: calc(var(--nw) / -2); }
 .pg-hub-node.n-per   { --nc: var(--c-per);   --nc-tint: var(--per-tint);   --nc-ink: var(--per-ink);   --nc-line: var(--per-line); }
 .pg-hub-node.n-plan  { --nc: var(--c-plan);  --nc-tint: var(--plan-tint);  --nc-ink: var(--plan-ink);  --nc-line: var(--plan-line); }
@@ -9537,17 +9933,13 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
 .pg-hub-node.n-exe   { --nc: var(--c-exe);   --nc-tint: var(--exe-tint);   --nc-ink: var(--exe-ink);   --nc-line: var(--exe-line); }
 .pg-hub-node.n-brain { --nc: var(--c-brain); --nc-tint: var(--brain-tint); --nc-ink: var(--brain-ink); --nc-line: var(--brain-line); }
 
+/* 节点里的图标底板。正方形卡片里要留出名称那一行的位置，
+   所以底板从 46px 收到 38px（22 + 5 + 11 ≈ 38 的视觉重量刚好压得住 84px 的方卡）。 */
 .pg-hub-ico {
-  width: 28px; height: 28px; border-radius: 8px; flex: 0 0 auto;
+  width: 38px; height: 38px; border-radius: 11px; flex: 0 0 auto;
   display: flex; align-items: center; justify-content: center;
   background: var(--nc-tint); color: var(--nc-ink);
 }
-.pg-hub-ico {
-  width: 46px; height: 46px; border-radius: 13px;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--nc-tint); color: var(--nc-ink);
-}
-.pg-hub-name { display: none; }   /* 图内不放文字，名称见图例行与轨迹 */
 .pg-hub-mark {
   position: absolute; top: 5px; left: 7px;
   font-size: 11px; font-weight: 900; line-height: 1; color: var(--nc-ink);
@@ -9559,37 +9951,16 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
   background: var(--nc-ink); color: #fff;
 }
 
-/* 三态：进行中放大发光 / 已完成描边 / 未参与虚线淡化 */
+/* 三态：进行中放大发光 / 已完成描边 / 未参与虚线+灰底。
+   三态一律不透明——淡化只靠饱和度与底色，避免连线透出卡面。 */
 .pg-hub-node.is-run {
-  opacity: 1; filter: none; transform: scale(1.08);
+  filter: none; transform: scale(1.08);
   border-color: var(--nc); background: var(--nc-tint);
   box-shadow: 0 4px 14px rgba(0, 0, 0, .14);
 }
-.pg-hub-node.is-done { opacity: 1; filter: none; border-color: var(--nc-line); }
-.pg-hub-node.is-skip { opacity: .42; border-style: dashed; background: var(--c-bg-alt); }
+.pg-hub-node.is-done { filter: none; border-color: var(--nc-line); }
+.pg-hub-node.is-skip { filter: saturate(.12); border-style: dashed; background: var(--c-bg-alt); }
 .pg-hub-node.is-skip .pg-hub-ico { background: var(--c-bg-alt); color: var(--c-dim); }
-
-/* 图例行：图标 → 名称的对照，放在图外，不占图内空间 */
-.pg-hub-legend {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
-  gap: 4px 12px; padding: 2px 2px 0; flex: 0 0 auto;
-}
-.pg-hub-legend .lg {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 11px; font-weight: 700; color: var(--c-sub);
-}
-.pg-hub-legend .lg svg { width: 13px; height: 13px; }
-.pg-hub-legend .lg-per   svg { color: var(--per-ink); }
-.pg-hub-legend .lg-plan  svg { color: var(--plan-ink); }
-.pg-hub-legend .lg-mem   svg { color: var(--mem-ink); }
-.pg-hub-legend .lg-exe   svg { color: var(--exe-ink); }
-.pg-hub-legend .lg-brain svg { color: var(--brain-ink); }
-
-.pg-hub-note {
-  display: flex; align-items: center; gap: 5px; flex-wrap: wrap; justify-content: center;
-  font-size: 11px; line-height: 1.65; color: var(--c-dim);
-  padding: 4px 2px 2px; flex: 0 0 auto;
-}
 
 /* --- 轨迹区：按轮次分组（总装图管拓扑，这里管顺序） --- */
 .pg-log-round { margin-bottom: 9px; }
@@ -9655,12 +10026,17 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
 }
 .pg-pick-v { flex: 1 1 auto; min-width: 0; color: var(--c-ink-2); word-break: break-word; }
 
-/* --- 窄屏：--nw 用 clamp 跟着栏宽收窄，这里只需压一点纵向间距与图标 --- */
+/* --- 窄屏：方卡与行距一起收 ---
+   节点尺寸不再是 clamp(百分比)，所以这里必须显式把 --nw / --nh 一起改小，
+   只压 --gapv 是不够的（方卡不会自己缩）。 --side 也要收：10% 在 300px 宽的容器里
+   会占掉 60px，三个方卡就挤不下了。 */
 @media (max-width: 430px) {
-  .pg-hub { --gapv: 20px; }
-  .pg-hub-ico { width: 38px; height: 38px; }
-  .pg-hub-node svg { width: 24px; height: 24px; }
-  .pg-hub-node.n-brain svg { width: 27px; height: 27px; }
+  .pg-hub { --nw: 68px; --nh: 68px; --gapv: 20px; --side: 6%; }
+  .pg-hub-node { gap: 4px; padding: 5px 4px; border-radius: 11px; }
+  .pg-hub-ico { width: 32px; height: 32px; border-radius: 9px; }
+  .pg-hub-node svg { width: 19px; height: 19px; }
+  .pg-hub-node.n-brain svg { width: 21px; height: 21px; }
+  .pg-hub-node .pg-hub-name { font-size: 9.5px; }
   .pg-hub-round { right: -2px; padding: 2px 4px; font-size: 9px; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -9707,19 +10083,6 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
 }
 .pg-log-skip b { margin-right: 8px; color: var(--c-sub); }
 .pg-log-skip b + b { margin-left: 10px; }
-
-/* --- 回答下方的“本轮组件徽章” --- */
-.turn-meta { margin-top: 10px; padding-top: 9px; border-top: 1px dashed var(--c-line); }
-.turn-plan { display: flex; align-items: flex-start; gap: 6px; font-size: var(--fs-xs); color: var(--c-ink-2); margin-bottom: 7px; }
-.turn-plan b { flex: 0 0 auto; color: var(--c-sub); }
-.turn-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.turn-chip {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 11.5px; font-weight: 700; padding: 3px 9px;
-  border-radius: var(--r-pill); background: var(--c-bg-alt); color: var(--c-dim); border: 1px solid var(--c-line);
-}
-.turn-chip.used { background: var(--node-tint); color: var(--node-ink); border-color: var(--node-line); }
-.turn-chip i { font-style: normal; font-weight: 600; opacity: .7; }
 
 /* --- 执行器工具消息：调用 / 结果 两段 --- */
 .tool-note { border-left: 3px solid var(--c-exe); }
@@ -9859,7 +10222,6 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
 #sec-playground .pg-log-ms { font-size: 13px; }
 #sec-playground .pipe-stage .ptitle { font-size: 16.5px; }
 #sec-playground .pipe-stage .pstatus { font-size: 13.5px; line-height: 1.5; }
-#sec-playground .turn-chip,
 #sec-playground .pg-map-tag,
 #sec-playground .pg-pick-stage { font-size: 12.5px; }
 #sec-playground .chat-msgs .msg { font-size: 15.5px; }
@@ -9876,9 +10238,22 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
  * 「内部工作台」现场点亮五步。配套的 .pg-intro / .pg-flow* / .pg-intro-foot
  * 样式（含 620px 断点）随之移除，这里不再占位。 */
 
-/* --- 3) 对话区“试试这样问”芯片（只用来一键填入，字号略小、不抢视觉） --- */
-.pg-chips { max-height: 66px; overflow-y: auto; }
-.pg-chips .chip-suggest { font-size: 12.5px; font-weight: 500; padding: 4px 11px; }
+/* --- 3) 对话区“试试这样问”芯片（一键填入：字号更小、前置用途标签，整齐且不抢视觉） --- */
+.pg-chips { gap: 6px; align-content: flex-start; }
+/* 窄屏才需要限高滚动；宽屏让 8 条芯片全部铺开，一眼看全、也不用滚动 */
+@media (max-width: 620px) { .pg-chips { max-height: 132px; overflow-y: auto; } }
+.pg-chips .chip-suggest {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; font-weight: 500; line-height: 1.5;
+  padding: 3px 9px 3px 4px;
+}
+/* 用途标签：一眼看出这句在考哪一环。
+ * 「多步」那条仍走高亮橙（见 .pg-chips .chip-suggest.is-multi），两者互不干扰。 */
+.pg-chips .chip-tag.is-ask {
+  flex: 0 0 auto; font-size: 9.5px; font-weight: 800; padding: 2px 6px;
+  border-radius: var(--r-pill); background: #fff; color: var(--c-ink-2);
+  border: 1px solid var(--c-line);
+}
 
 /* --- 4) 实验：上下文工程 --- */
 .pg-inspect-note { margin-bottom: 8px; font-size: var(--fs-sm); line-height: 1.75; color: var(--c-sub); }
@@ -10263,6 +10638,7 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
 .sec-map[data-color="brain"], .lab-brief[data-color="brain"] { --sm-c: var(--c-brain); --sm-t: var(--brain-tint); --sm-l: var(--brain-line); --sm-i: var(--brain-ink); }
 .sec-map[data-color="ori"],   .lab-brief[data-color="ori"]   { --sm-c: var(--c-ori);   --sm-t: var(--ori-tint);   --sm-l: var(--ori-line);   --sm-i: var(--ori-ink); }
 .sec-map[data-color="pg"],    .lab-brief[data-color="pg"]    { --sm-c: var(--c-pg);    --sm-t: var(--pg-tint);    --sm-l: var(--pg-line);    --sm-i: var(--pg-ink); }
+.sec-map[data-color="works"], .lab-brief[data-color="works"] { --sm-c: var(--c-works); --sm-t: var(--works-tint); --sm-l: var(--works-line); --sm-i: var(--works-ink); }
 
 /* ============================================================
  * 栏目导览组（本节地图 + 本课学习目标）
@@ -10403,8 +10779,355 @@ main:has(#sec-cover.active) { max-width: none; padding: 0; background: var(--c-b
 .predict-bar[data-color="brain"] { --sm-c: var(--c-brain); --sm-t: var(--brain-tint); --sm-l: var(--brain-line); --sm-i: var(--brain-ink); }
 .predict-bar[data-color="ori"]   { --sm-c: var(--c-ori);   --sm-t: var(--ori-tint);   --sm-l: var(--ori-line);   --sm-i: var(--ori-ink); }
 .predict-bar[data-color="pg"]    { --sm-c: var(--c-pg);    --sm-t: var(--pg-tint);    --sm-l: var(--pg-line);    --sm-i: var(--pg-ink); }
+.predict-bar[data-color="works"] { --sm-c: var(--c-works); --sm-t: var(--works-tint); --sm-l: var(--works-line); --sm-i: var(--works-ink); }
 
 @media (max-width: 734px) {
   .predict-bar { padding: 11px 13px 10px; }
   .predict-opt { width: 100%; }
+}
+
+/* ============================================================
+ * §22 作品展示（第 8 个栏目）—— 作品集
+ * 两个真实智能体作品：班级小助手 / 出行小管家。
+ * 设计语言：沿用全站苹果风卡片系统；语义色取青绿（--c-works），与七个实验室区分。
+ * 全部规则以 .works-* / #sec-works 限定，不影响其它栏目。
+ * 失败降级：纯 CSS 布局；JS 失效时只是对话不可用，页面照常可读、不白屏。
+ * ============================================================ */
+
+/* ---------- 22.1 学习目标卡：作品展示语义色 ---------- */
+.lesson-goal.card-works h3 { color: var(--works-ink); }
+.lesson-goal.card-works .goal-num {
+  background: var(--works-tint); color: var(--works-ink); border: 1px solid var(--works-line);
+}
+.btn-works { background: linear-gradient(135deg, var(--c-works), var(--c-works-deep)); }
+
+/* ---------- 22.2 作品头横幅（作品集仪式感，非编号卡） ---------- */
+.works-hero {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  margin: 28px 0 18px; padding: 20px 24px;
+  border-radius: var(--r-lg, 18px);
+  background: linear-gradient(135deg, var(--works-tint) 0%, #fff 65%);
+  border: 1.5px solid var(--works-line);
+  box-shadow: var(--shadow-1, 0 2px 10px rgba(0,0,0,.05));
+}
+#sec-works .works-hero:first-of-type { margin-top: 8px; }
+.works-hero-ico {
+  width: 56px; height: 56px; border-radius: 16px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; color: #fff;
+  background: linear-gradient(140deg, var(--c-works), var(--c-works-deep));
+  box-shadow: 0 8px 18px rgba(14, 159, 135, .26);
+}
+.works-hero-txt { min-width: 0; }
+.works-hero-badge {
+  display: inline-block; padding: 2px 10px; margin-bottom: 5px;
+  font-size: 11.5px; font-weight: 800; letter-spacing: 1px;
+  border-radius: var(--r-pill, 999px);
+  background: #fff; color: var(--works-ink); border: 1px solid var(--works-line);
+}
+.works-hero-name { margin: 0; font-size: 24px; font-weight: 800; color: var(--c-ink); line-height: 1.25; }
+.works-hero-tag { margin-top: 4px; font-size: 13.5px; color: var(--c-sub); }
+.works-hero-tools { margin-left: auto; display: flex; flex-direction: column; gap: 7px; align-items: flex-end; }
+.works-tools-label { font-size: 12px; font-weight: 700; color: var(--works-ink); display: inline-flex; align-items: center; gap: 5px; }
+.works-tools-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.works-tool {
+  font-size: 12px; font-weight: 700; padding: 4px 11px; border-radius: var(--r-pill, 999px);
+  background: #fff; color: var(--works-ink); border: 1px solid var(--works-line);
+}
+
+/* ---------- 22.3 简介卡 ---------- */
+.works-intro-lead { margin: 0 0 14px; font-size: 15px; line-height: 1.85; color: var(--c-ink-2); }
+.works-intro-for {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 12px 15px; border-radius: var(--r-md, 12px);
+  background: var(--works-tint); border: 1px solid var(--works-line);
+  font-size: 14px; line-height: 1.7; color: var(--works-ink);
+}
+.works-intro-for .wi-label { flex-shrink: 0; font-weight: 800; display: inline-flex; align-items: center; gap: 5px; }
+.works-can { margin-top: 16px; }
+.works-can-title { font-size: 14px; font-weight: 800; color: var(--c-ink); display: flex; align-items: center; gap: 6px; margin-bottom: 9px; }
+.works-can-title .icon { color: var(--c-works); }
+.works-can-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px; }
+.works-can-list li {
+  position: relative; padding: 9px 13px 9px 30px;
+  background: var(--c-elev, #fafafa); border: 1px solid var(--c-line); border-radius: 10px;
+  font-size: 13.5px; line-height: 1.6; color: var(--c-ink-2);
+}
+.works-can-list li::before {
+  content: ""; position: absolute; left: 13px; top: 15px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--c-works); box-shadow: 0 0 0 3px var(--works-tint);
+}
+
+/* ---------- 22.4 制作过程：分步骤图解（横向流程 + 可逐步点亮） ---------- */
+.works-steps-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.works-steps-hint { flex: 1 1 240px; font-size: 12.5px; line-height: 1.6; color: var(--c-sub); display: inline-flex; align-items: flex-start; gap: 6px; }
+.works-steps-hint .icon { flex-shrink: 0; margin-top: 3px; color: var(--c-works); }
+.works-steps {
+  list-style: none; margin: 0; padding: 4px 2px 12px;
+  display: flex; gap: 26px; overflow-x: auto;
+  scroll-snap-type: x proximity;
+}
+.works-step {
+  position: relative; flex: 0 0 196px; scroll-snap-align: start;
+  padding: 15px 14px 13px; border-radius: var(--r-md, 12px);
+  background: #fff; border: 1.5px solid var(--c-line);
+  transition: transform .18s var(--ease, ease), box-shadow .18s ease, border-color .18s ease, background .18s ease;
+}
+.works-step:not(:last-child)::after {
+  content: ""; position: absolute; right: -20px; top: 46px; width: 14px; height: 2px;
+  background: repeating-linear-gradient(to right, var(--works-line) 0 4px, transparent 4px 7px);
+}
+.works-step:hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(0,0,0,.07); }
+.works-step.lit {
+  border-color: var(--c-works);
+  background: linear-gradient(180deg, #fff 30%, var(--works-tint));
+  box-shadow: 0 10px 22px rgba(14, 159, 135, .16);
+}
+.ws-no {
+  position: absolute; top: -11px; left: 14px;
+  width: 24px; height: 24px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12.5px; font-weight: 800;
+  background: var(--works-tint); color: var(--works-ink); border: 1px solid var(--works-line);
+  transition: background .18s ease, color .18s ease;
+}
+.works-step.lit .ws-no { background: var(--c-works); color: #fff; border-color: var(--c-works); }
+.ws-ico {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 10px; margin: 6px 0 9px;
+  background: var(--works-tint); color: var(--works-ink);
+}
+.ws-title { font-size: 15px; font-weight: 800; color: var(--c-ink); margin-bottom: 5px; }
+.ws-text { font-size: 12.8px; line-height: 1.65; color: var(--c-sub); }
+
+/* ---------- 22.5 原理拆解：四大组件 ---------- */
+.works-prin { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 12px; }
+.works-prin-item {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 14px 15px; border-radius: var(--r-md, 12px);
+  background: var(--c-elev, #fafafa); border: 1px solid var(--c-line);
+  border-left-width: 4px; border-left-color: var(--wp-c, var(--c-works));
+}
+.works-prin-item[data-color="per"]  { --wp-c: var(--c-per);  --wp-t: var(--per-tint);  --wp-i: var(--per-ink); }
+.works-prin-item[data-color="plan"] { --wp-c: var(--c-plan); --wp-t: var(--plan-tint); --wp-i: var(--plan-ink); }
+.works-prin-item[data-color="mem"]  { --wp-c: var(--c-mem);  --wp-t: var(--mem-tint);  --wp-i: var(--mem-ink); }
+.works-prin-item[data-color="exe"]  { --wp-c: var(--c-exe);  --wp-t: var(--exe-tint);  --wp-i: var(--exe-ink); }
+.wp-ico {
+  flex-shrink: 0; width: 38px; height: 38px; border-radius: 11px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--wp-t, var(--works-tint)); color: var(--wp-i, var(--works-ink));
+}
+.wp-comp { font-size: 14.5px; font-weight: 800; color: var(--wp-i, var(--c-ink)); margin-bottom: 3px; }
+.wp-text { font-size: 13px; line-height: 1.65; color: var(--c-ink-2); }
+.works-prin-note {
+  margin-top: 16px; padding: 12px 15px; border-radius: var(--r-md, 12px);
+  background: var(--works-tint); border: 1px dashed var(--works-line);
+  font-size: 13px; line-height: 1.75; color: var(--works-ink);
+  display: flex; align-items: flex-start; gap: 7px;
+}
+.works-prin-note .icon { flex-shrink: 0; margin-top: 3px; }
+
+/* ---------- 22.6 可交互演示区 ---------- */
+/* 两列等高（stretch）：左边是对话，右边是「内部工作信息」。
+ * 右侧信息量要撑得起一整列（小灯行 + 本轮轨迹），所以让它和对话区齐平。 */
+.works-demo { display: grid; grid-template-columns: minmax(0, 1.32fr) minmax(0, 1fr); gap: 18px; align-items: stretch; }
+.works-chat {
+  display: flex; flex-direction: column;
+  height: clamp(560px, 72vh, 700px);
+  background: #fff; border: 1px solid var(--c-line); border-radius: var(--r-md, 14px);
+  overflow: hidden; box-shadow: var(--shadow-1, 0 2px 10px rgba(0,0,0,.05));
+}
+.works-chat .chat-head { padding: 14px 16px; flex: 0 0 auto; }
+.works-chat .chat-msgs { padding: 16px; flex: 1 1 auto; min-height: 200px; background: #fbfdfc; }
+.works-chat .chat-input { padding: 10px 12px; flex: 0 0 auto; }
+.works-chat-id { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.works-chat-id b { font-size: 15px; font-weight: 800; }
+.works-chat-id span { font-size: 11.5px; opacity: .82; }
+/* 演示区内的语义色改为作品青绿（覆盖全局的紫） */
+#sec-works .works-chat .chat-head { background: linear-gradient(135deg, var(--c-works), var(--c-works-deep)); }
+#sec-works .works-chat .msg.user { background: linear-gradient(135deg, var(--c-works), var(--c-works-deep)); }
+#sec-works .works-chat .chat-input input:focus { border-color: var(--c-works); box-shadow: 0 0 0 3px var(--works-tint); }
+#sec-works .works-chat .chat-msgs .msg { font-size: 15px; line-height: 1.72; }
+#sec-works .works-chat .chat-msgs .msg .who { font-size: 12.5px; }
+/* 示例问题：单行横向滚动 —— 把纵向空间全留给对话本身 */
+.works-chat .chip-row {
+  flex: 0 0 auto; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+  padding: 10px 16px 2px; gap: 8px; scrollbar-width: thin;
+}
+.works-chat .chip-row::-webkit-scrollbar { height: 6px; }
+.works-chat .chip-row::-webkit-scrollbar-thumb { background: var(--works-line); border-radius: 999px; }
+.works-chat .chip-suggest { font-size: 12.5px; padding: 7px 13px; white-space: nowrap; flex: 0 0 auto; }
+.works-chat .chip-suggest:hover { border-color: var(--c-works); background: var(--works-tint); color: var(--works-ink); }
+.works-chat .msg.tool-note {
+  align-self: flex-start; max-width: 92%;
+  background: var(--works-tint); border: 1px dashed var(--works-line);
+  color: var(--works-ink); font-size: 12.5px; padding: 7px 12px; border-radius: 10px;
+}
+.works-chat .msg.tool-note .icon { vertical-align: -2px; margin-right: 4px; }
+.works-keyhint {
+  margin: 10px 16px 0; padding: 10px 13px; border-radius: 10px; flex: 0 0 auto;
+  background: var(--plan-tint); border: 1px solid var(--plan-line);
+  color: var(--plan-ink); font-size: 12.5px; line-height: 1.6;
+  display: flex; align-items: flex-start; gap: 7px;
+}
+.works-keyhint .icon { flex-shrink: 0; margin-top: 2px; }
+
+/* ---- 右栏：它在想什么（内部工作信息） ----
+ * 结构与学生熟悉的「智能体实验室 · 内部工作台」一致：
+ *   ① 统计胶囊（轮次 / 工具 / 用时）② 组件小灯（每行带"这一步做了什么"）
+ *   ③ 本轮轨迹（按真实顺序记下每一步）④ 原理注解。 */
+.works-live {
+  display: flex; flex-direction: column; min-height: 0;
+  /* 与左侧对话区同高（同一套 clamp），两栏齐平才不显得"一高一矮" */
+  height: clamp(560px, 72vh, 700px);
+  padding: 16px 17px; border-radius: var(--r-md, 14px);
+  background: linear-gradient(180deg, #fbfdfc, var(--c-elev, #fafafa));
+  border: 1px solid var(--c-line);
+}
+.works-live-head {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.works-live-title { font-size: 14.5px; font-weight: 800; color: var(--c-ink); display: flex; align-items: center; gap: 6px; }
+.works-live-title .icon { color: var(--c-works); }
+.works-live-title .wl-sub {
+  font-size: 11.5px; font-weight: 600; color: var(--c-sub);
+  background: #fff; border: 1px solid var(--c-line); border-radius: 999px; padding: 2px 8px;
+}
+.works-live-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+.wl-meta {
+  display: inline-flex; align-items: baseline; gap: 5px;
+  padding: 4px 9px; border-radius: 999px;
+  background: #fff; border: 1px solid var(--c-line); font-size: 11.5px;
+}
+.wl-meta i { font-style: normal; color: var(--c-sub); }
+.wl-meta b { font-weight: 800; color: var(--works-ink); font-variant-numeric: tabular-nums; }
+
+/* 小灯：行式（组件名 + 这一轮它做了什么）——比圆点标签多给一条证据 */
+.works-stages { flex: 0 0 auto; display: flex; flex-direction: column; gap: 7px; margin-bottom: 12px; }
+.works-light {
+  display: grid; grid-template-columns: 22px 56px minmax(0, 1fr); align-items: center; gap: 8px;
+  padding: 7px 11px; border-radius: 10px;
+  background: #fff; border: 1px solid var(--c-line);
+  font-size: 12.5px; color: var(--c-sub);
+  transition: background .2s ease, color .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.works-light .wl-ico {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 6px;
+  background: var(--c-elev, #f2f2f2); color: var(--c-sub); transition: background .2s ease, color .2s ease;
+}
+.works-light .wl-name { font-weight: 800; color: var(--c-ink-2); white-space: nowrap; }
+.works-light .wl-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.5; }
+.works-light[data-color="brain"] { --wl-c: var(--c-brain); --wl-t: var(--brain-tint); --wl-i: var(--brain-ink); --wl-l: var(--brain-line); }
+.works-light[data-color="per"]  { --wl-c: var(--c-per);  --wl-t: var(--per-tint);  --wl-i: var(--per-ink);  --wl-l: var(--per-line); }
+.works-light[data-color="plan"] { --wl-c: var(--c-plan); --wl-t: var(--plan-tint); --wl-i: var(--plan-ink); --wl-l: var(--plan-line); }
+.works-light[data-color="mem"]  { --wl-c: var(--c-mem);  --wl-t: var(--mem-tint);  --wl-i: var(--mem-ink);  --wl-l: var(--mem-line); }
+.works-light[data-color="exe"]  { --wl-c: var(--c-exe);  --wl-t: var(--exe-tint);  --wl-i: var(--exe-ink);  --wl-l: var(--exe-line); }
+.works-light.on {
+  background: var(--wl-t, var(--works-tint));
+  border-color: var(--wl-l, var(--works-line));
+  box-shadow: 0 1px 8px rgba(0, 0, 0, .05);
+}
+.works-light.on .wl-ico { background: var(--wl-c, var(--c-works)); color: #fff; animation: works-pulse 1.1s ease-in-out infinite; }
+.works-light.on .wl-name, .works-light.on .wl-txt { color: var(--wl-i, var(--works-ink)); }
+.works-light.skip { opacity: .55; }
+.works-light.skip .wl-txt { text-decoration: line-through; }
+@keyframes works-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(14, 159, 135, .28); }
+  50% { box-shadow: 0 0 0 5px rgba(14, 159, 135, 0); }
+}
+
+/* 本轮轨迹：把这一轮每一步真实干了什么按顺序摆出来（可滚动） */
+.works-trace-wrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.works-trace-head {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 6px;
+  font-size: 12.5px; font-weight: 800; color: var(--c-ink); margin-bottom: 8px;
+}
+.works-trace-head .icon { color: var(--c-works); }
+.works-trace-n {
+  margin-left: auto; font-weight: 700; font-size: 11.5px; color: var(--works-ink);
+  background: var(--works-tint); border: 1px solid var(--works-line);
+  border-radius: 999px; padding: 1px 8px;
+}
+.works-trace {
+  flex: 1 1 auto; min-height: 130px; max-height: 340px; overflow-y: auto;
+  padding: 8px; border-radius: 10px; background: #fff; border: 1px solid var(--c-line);
+  display: flex; flex-direction: column; gap: 6px; scrollbar-width: thin;
+}
+.works-trace::-webkit-scrollbar { width: 6px; }
+.works-trace::-webkit-scrollbar-thumb { background: var(--works-line); border-radius: 999px; }
+.works-trace-empty { font-size: 12.5px; line-height: 1.7; color: var(--c-sub); padding: 8px 6px 10px; }
+.wt-row {
+  display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 8px;
+  padding: 7px 9px; border-radius: 8px;
+  background: var(--c-elev, #fafafa); border-left: 3px solid var(--wt-c, var(--c-line));
+  font-size: 12.3px; line-height: 1.6;
+}
+.wt-who { display: inline-flex; align-items: center; gap: 4px; font-weight: 800; color: var(--wt-i, var(--c-ink-2)); white-space: nowrap; }
+.wt-who .icon { flex: 0 0 auto; }
+.wt-txt { min-width: 0; color: var(--c-ink-2); word-break: break-word; }
+.wt-row.c-brain { --wt-c: var(--c-brain); --wt-i: var(--brain-ink); background: var(--brain-tint); }
+.wt-row.c-per  { --wt-c: var(--c-per);  --wt-i: var(--per-ink); }
+.wt-row.c-plan { --wt-c: var(--c-plan); --wt-i: var(--plan-ink); }
+.wt-row.c-mem  { --wt-c: var(--c-mem);  --wt-i: var(--mem-ink); }
+.wt-row.c-exe  { --wt-c: var(--c-exe);  --wt-i: var(--exe-ink); }
+.wt-row.c-tool { --wt-c: var(--c-exe);  --wt-i: var(--exe-ink);  background: var(--exe-tint); }
+.wt-row.c-stop { --wt-c: var(--c-works); --wt-i: var(--works-ink); background: var(--works-tint); }
+.wt-row.c-err  { --wt-c: #E2574C; --wt-i: #8A2B22; background: #FDECEA; }
+
+.works-note {
+  flex: 0 0 auto; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--c-line);
+  font-size: 12.6px; line-height: 1.7; color: var(--c-sub);
+}
+.works-note b { color: var(--works-ink); }
+
+/* ---------- 22.7 收尾对比小结 ---------- */
+#sec-works .summary-core { border-left-color: var(--c-works); }
+.works-cmp-wrap { overflow-x: auto; margin-bottom: 16px; }
+.works-cmp { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 560px; }
+.works-cmp th, .works-cmp td { padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--c-line); vertical-align: top; line-height: 1.6; }
+.works-cmp thead th { font-size: 13.5px; font-weight: 800; color: #fff; background: linear-gradient(135deg, var(--c-works), var(--c-works-deep)); }
+.works-cmp thead th:first-child { border-top-left-radius: 10px; }
+.works-cmp thead th:last-child { border-top-right-radius: 10px; }
+.works-cmp tbody th { font-weight: 800; color: var(--c-ink); background: var(--c-elev, #fafafa); white-space: nowrap; }
+.works-cmp tbody tr:hover td { background: var(--works-tint); }
+.works-cmp td { color: var(--c-ink-2); }
+.works-formula {
+  margin-top: 4px; padding: 16px 18px; border-radius: var(--r-md, 14px);
+  background: linear-gradient(135deg, var(--works-tint), #fff 78%);
+  border: 1.5px solid var(--works-line);
+}
+.works-formula-title { font-size: 14.5px; font-weight: 800; color: var(--works-ink); display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+.works-formula-steps { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.wf-step {
+  padding: 6px 13px; border-radius: var(--r-pill, 999px);
+  background: #fff; border: 1px solid var(--works-line);
+  font-size: 13px; font-weight: 700; color: var(--works-ink);
+}
+.wf-arrow { color: var(--c-works); font-style: normal; font-weight: 800; }
+.works-formula-note { margin-top: 12px; font-size: 12.8px; line-height: 1.7; color: var(--c-sub); }
+
+/* ---------- 22.8 响应式 ---------- */
+@media (max-width: 900px) {
+  .works-demo { grid-template-columns: minmax(0, 1fr); align-items: start; }
+  .works-live { height: auto; }
+  .works-trace { max-height: 280px; }
+  .works-hero-tools { margin-left: 0; align-items: flex-start; width: 100%; }
+  .works-tools-row { justify-content: flex-start; }
+}
+@media (max-width: 640px) {
+  .works-hero { padding: 16px 18px; gap: 14px; }
+  .works-hero-name { font-size: 20px; }
+  .works-step { flex-basis: 168px; }
+  .works-cmp { min-width: 480px; }
+  .works-chat { height: clamp(500px, 80vh, 600px); }
+  .works-light { grid-template-columns: 20px 46px minmax(0, 1fr); font-size: 12px; padding: 6px 9px; }
+  .wt-row { grid-template-columns: 64px minmax(0, 1fr); font-size: 12px; }
+}
+
+/* ---------- 22.9 减少动态效果：关掉动画，元素保持可见 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .works-light.on .wl-ico { animation: none; }
+  .works-step, .works-step:hover { transform: none; }
 }

@@ -3,6 +3,16 @@
  * 学生在这里和真正的智能体对话，同时看到：
  *   感知器 → 规划器 → 记忆器 → 执行器 → 大脑 五步管线点亮。
  * 还能现场关掉某个组件，看看智能体的本领怎么变小。
+ *
+ * 全站统一口径（与 lab-home / lab-perception / lab-planner / agent.js 保持一致）：
+ *   · 规划器 = 大脑的一项【决策职责】，是独立组件、每轮都参与，产出是“要调哪个工具、
+ *     参数是什么”这个【决定】。它【不直接调用工具】——真正读懂工具接口、把参数写成
+ *     tool_calls 交给执行器的是大脑。所以总装图里规划器的进线和出线都只接大脑，
+ *     执行器那两条边（进/出）也都只接大脑，两者之间没有连线。
+ *   · 思考模式 = 大模型的一项【能力开关】，只决定推理过程（reasoning_content）
+ *     可不可见，可开可关。关掉它，规划照常发生，只是“看不见规划”。
+ *   · 记忆不是第五种角色：长期记忆借 system 进来、短期对话按 user/assistant 回放、
+ *     工具结果走 tool、检索片段随 user —— 信息流按这个口径标注。
  * ============================================================ */
 
 window.AgentLab = window.AgentLab || {};
@@ -15,24 +25,38 @@ AgentLab.LabPlayground = (function () {
   var history = [];       // 本次对话（短期记忆）
   var busy = false;
 
+  /* short = 方卡里显示的短名（卡片是 84px 正方形，放不下「大语言模型大脑」这种长名）；
+   * name  = 全名，供轨迹区 / 步骤说明里引用。 */
   var STAGES = [
-    { id: "perception", name: "感知器", icon: "eye", color: "per", en: "观察 · 编码（多模态输入）" },
-    { id: "planner", name: "规划器", icon: "gear", color: "plan", en: "推理 · 拆解（ReAct 循环）" },
-    { id: "memory", name: "记忆器", icon: "book", color: "mem", en: "上下文 · 检索（短期 + 长期 / RAG）" },
-    { id: "executor", name: "执行器", icon: "hand", color: "exe", en: "工具调用（Function Calling）" },
-    { id: "brain", name: "大语言模型大脑", icon: "brain", color: "brain", en: "生成回答（LLM）" }
+    { id: "perception", name: "感知器", short: "感知器", icon: "eye", color: "per", en: "观察 · 编码（多模态输入）" },
+    /* 口径：规划器是「决策职责」，不是「思考模式」。
+     * 关键词用“决策 · 拆解”，避免学生把这一步理解成“模型在思考”。 */
+    { id: "planner", name: "规划器", short: "规划器", icon: "gear", color: "plan", en: "决策 · 拆解（ReAct 循环）" },
+    { id: "memory", name: "记忆器", short: "记忆器", icon: "book", color: "mem", en: "上下文 · 检索（短期 + 长期 / RAG）" },
+    { id: "executor", name: "执行器", short: "执行器", icon: "hand", color: "exe", en: "工具调用（Function Calling）" },
+    { id: "brain", name: "大语言模型大脑", short: "大模型大脑", icon: "brain", color: "brain", en: "生成回答（LLM）" }
   ];
 
-  /* 对话区的“试试这样问”芯片：覆盖五步管线的各种情况，方便课堂上一点就发 */
+  /* 对话区的“试试这样问”芯片：覆盖五步管线的各种情况，方便课堂上一点就发。
+   * 每条都挂一枚「用途标签」，学生一眼就知道这句在考哪一环——针对性更强。
+   * 前 7 条都是「单意图、单工具、一轮结束」——正好当对照组：
+   * 它们不需要拆步，所以关掉规划器也照样做得成。 */
   var SUGGESTIONS = [
-    "你好，我叫小明",
-    "今天下午有什么课？",
-    "明天会下雨吗？",
-    "帮我算 25×4+10",
-    "搜一下：长颈鹿的脖子为什么那么长",
-    "提醒我明天带美术工具",
-    "10分后提醒我去喝水"
+    { tag: "记住我", q: "你好，我叫小明" },
+    { tag: "查课表", q: "今天下午有什么课？" },
+    { tag: "查天气", q: "明天会下雨吗？" },
+    { tag: "算一算", q: "帮我算 25×4+10" },
+    { tag: "搜一搜", q: "搜一下：长颈鹿的脖子为什么那么长" },
+    { tag: "设提醒", q: "提醒我明天带美术工具" },
+    { tag: "计时提醒", q: "10分后提醒我去喝水" }
   ];
+
+  /* ---------- 多步任务示例（用来体现「规划器到底在干什么」） ----------
+   * 这一句里装了 3 个子任务，而且有依赖和条件分支：
+   *   ① 查明天天气 → ② 【依赖①的结果】下雨才设提醒 → ③ 另算一笔总价（可并行）
+   * 关掉规划器，它就只会被规则拽去调一个工具，任务必然残缺——
+   * 这正好和上面 7 条「单步就能完成」的问题形成对照。 */
+  var PG_COMPLEX_TASK = "我们班明天要去杭州春游：先看看明天会不会下雨，要是下雨就提醒我带伞，再帮我算一下 3 瓶 12 元的果汁和 2 包 8 元的面包一共多少钱";
 
   /* ---------- 渲染 ---------- */
   function render() {
@@ -49,11 +73,12 @@ AgentLab.LabPlayground = (function () {
        * 每个节点可点 → 跳到对应卡片并高亮闪烁，兼作页内导航。 */
       U.sectionMap({
         title: "先跑一遍，再动手改，最后验收",
-        hint: "共 10 张卡片 · 点任意一格可直接跳过去",
+        hint: "共 11 张卡片 · 点任意一格可直接跳过去",
         color: "pg",
         groups: [
           { label: "先跑一遍", items: [
             { t: "实时对话区", el: "pg-input", note: "随便问一句" },
+            { t: "运行模式", el: "pg-mode", note: "自动/规划/问答" },
             { t: "内部工作台", el: "pg-pipe", note: "看信息怎么流" }
           ] },
           { label: "看它怎么想", items: [
@@ -62,7 +87,8 @@ AgentLab.LabPlayground = (function () {
           ] },
           { label: "动手改它", items: [
             { t: "关掉一个组件", el: "pg-switch", note: "现场开关" },
-            { t: "全班对照实验", el: "pg-ab", note: "A组/B组" }
+            { t: "全班对照实验", el: "pg-ab", note: "A组/B组" },
+            { t: "多步任务示例", el: "pg-multi-steps", note: "看规划器拆步" }
           ] },
           { label: "验收它", items: [
             { t: "给智能体体检", el: "pg-eval", note: "固定题集 + 指标" },
@@ -99,13 +125,28 @@ AgentLab.LabPlayground = (function () {
           '<div class="chat-head">' +
             '<div class="chat-avatar">' + U.icon("robot", 24) + "</div>" +
             '<div style="font-weight:800">智能体小管家</div>' +
+            /* 运行模式：同一套组件、同一个大脑，只改"这一轮它有多大自主权"。
+             * 放在标题旁而不是设置里——它是课堂上要随手切的动作，藏起来就没人用了。
+             * 三颗按钮的说明不再常驻成一条说明条，改成悬浮气泡（见 .mode-pop 与 bindModePop）：
+             * 说明是"需要时再看"的内容，常驻反而把对话区挤矮。
+             * 因此每颗按钮再补一个 aria-label，读屏用户不靠悬浮也能拿到同样的信息。 */
+            '<div class="mode-seg" id="pg-mode" role="group" aria-label="运行模式（鼠标停在各按钮上可看说明）">' +
+              '<button type="button" class="mode-btn" data-mode="auto" aria-label="自动模式：模型自己决定要不要调工具、调哪个">自动</button>' +
+              '<button type="button" class="mode-btn" data-mode="plan" aria-label="规划模式：只出计划不执行工具，等学生确认">规划</button>' +
+              '<button type="button" class="mode-btn" data-mode="ask" aria-label="问答模式：请求里不发工具说明书，只能凭已有知识回答">问答</button>' +
+            "</div>" +
             '<button class="btn btn-ghost btn-sm" id="pg-clear" style="margin-left:auto">' + U.icon("reset", 15) + " 新对话</button>" +
           "</div>" +
           '<div class="chat-msgs" id="pg-msgs"></div>' +
           '<div class="chip-row pg-chips" id="pg-chips">' +
             SUGGESTIONS.map(function (s) {
-              return '<button type="button" class="chip-suggest">' + U.esc(s) + "</button>";
+              return '<button type="button" class="chip-suggest" data-q="' + U.esc(s.q) + '">' +
+                '<span class="chip-tag is-ask">' + U.esc(s.tag) + "</span>" + U.esc(s.q) + "</button>";
             }).join("") +
+            /* 多步任务单独一条，前面挂个「多步」标签——学生一眼就能挑出来试规划器。
+             * 标签文字不能混进提问里，所以真正的题目单独放在 data-q 上。 */
+            '<button type="button" class="chip-suggest is-multi" data-q="' + U.esc(PG_COMPLEX_TASK) + '">' +
+              '<span class="chip-tag">多步</span>' + U.esc(PG_COMPLEX_TASK) + "</button>" +
           "</div>" +
           '<div class="chat-input">' +
             '<input type="text" id="pg-input" placeholder="输入你的问题，按回车发送……">' +
@@ -115,7 +156,7 @@ AgentLab.LabPlayground = (function () {
 
         /* 右：管线面板 */
         '<div class="card pipe-card">' +
-          '<h2 style="font-size:18px">' + U.icon("spark", 20) + ' 智能体内部工作台<span style="font-size:12px;color:var(--c-sub);font-weight:400">（大脑居中，四组件环绕）</span></h2>' +
+          '<h2 style="font-size:18px">' + U.icon("spark", 20) + ' 智能体内部工作台</h2>' +
 
           /* ---------- 总装图：整张卡的主角，放在最上面 ----------
            * 为什么不用竖排的「感知→规划→记忆→执行」链条：那条链的箭头只有向下一种方向，
@@ -131,31 +172,40 @@ AgentLab.LabPlayground = (function () {
             '<i class="pg-hub-edge v to-down" data-edge="per-brain"></i>' +
             '<i class="pg-hub-edge h to-left" data-edge="brain-mem-out"></i>' +
             '<i class="pg-hub-edge h to-right" data-edge="brain-mem-in"></i>' +
+            /* 工具调用是【大脑 → 执行器 → 大脑】的一条往返，规划器不在这条线上：
+             *   brain-exe-out（右行 ①）：大脑按工具接口的要求，把函数名和参数写成
+             *                            结构化输入（tool_calls）交给执行器；
+             *   brain-exe-in （左行 ②）：执行器把工具返回值原样送回大脑。
+             * 这里以前画的是「规划器 → 执行器」斜线，那是错的：规划器只产出
+             * “要调哪个工具、参数是什么”这个【决定】，它自己不碰工具——
+             * 真正发起调用、真正需要读懂工具接口的是大脑。所以执行器只跟大脑相连。
+             * 两条并行横线用 ±7px 错开，和左边记忆器那一组一个道理。 */
             '<i class="pg-hub-edge h to-right" data-edge="brain-exe-out"></i>' +
             '<i class="pg-hub-edge h to-left" data-edge="brain-exe-in"></i>' +
-            /* 规划器是实线无箭头：它是大脑的一种工作模式，不是独立的一步 */
-            '<i class="pg-hub-edge v is-static" data-edge="brain-plan"></i>' +
+            /* 规划器是独立组件（不是“大脑的 thinking 模式”），但它的一进一出都只接大脑：
+             *   brain-plan（下行）：大脑把当前上下文交给规划器去决策；
+             *   plan-brain（上行）：规划器把「要不要调工具、调哪个、参数是什么」交回大脑。
+             * 所以规划器身上没有任何一条线通往执行器——决定和执行是两件事。 */
+            '<i class="pg-hub-edge v to-down" data-edge="brain-plan"></i>' +
+            '<i class="pg-hub-edge v to-up" data-edge="plan-brain"></i>' +
+            /* ① ② 两枚步骤标签：贴在右边那条往返的两侧（上标在外、下标在内），
+             * 让“模型写参数 → 工具执行 → 结果回模型”这两步一眼可见。
+             * 位置由 CSS 变量算，和连线共用同一套坐标，不用 JS 现算。 */
+            '<span class="pg-hub-tag" data-tag="exe-out">① 按接口写参数</span>' +
+            '<span class="pg-hub-tag" data-tag="exe-in">② 结果回传</span>' +
             STAGES.map(function (s) {
               return '<div class="pg-hub-node n-' + s.color + '" data-stage="' + s.id + '" title="' + s.en + '">' +
                 '<span class="pg-hub-mark"></span>' +
                 '<span class="pg-hub-ico">' + U.icon(s.icon, 19) + "</span>" +
-                '<span class="pg-hub-name">' + s.name + "</span>" +
+                '<span class="pg-hub-name">' + s.short + "</span>" +
                 '<span class="pg-hub-round"></span>' +
               "</div>";
             }).join("") +
           "</div>" +
-          /* 图例行：图内只放图标，名称在这里对照——这样图形本身保持干净 */
-          '<div class="pg-hub-legend">' +
-            STAGES.map(function (s) {
-              return '<span class="lg lg-' + s.color + '">' + U.icon(s.icon, 13) + s.name + "</span>";
-            }).join("") +
-          "</div>" +
-          '<div class="pg-hub-note">' + U.icon("info", 12) +
-            "虚线流动方向＝信息流向，亮起＝本轮走过这条边　·　<b>规划器就是大脑的 thinking 模式</b>，不是独立的一步</div>" +
 
           '<div class="pipe-bar">' +
             '<span class="pipe-state" id="pg-state">待机</span>' +
-            '<span class="pipe-legend"><i class="lg lg-run"></i>进行中<i class="lg lg-done"></i>已完成<i class="lg lg-skip"></i>本轮未参与</span>' +
+            '<span class="pipe-legend"><i class="lg lg-done"></i>本轮参与<i class="lg lg-skip"></i>本轮未参与</span>' +
             '<button class="btn btn-ghost btn-sm" id="pg-replay">' + U.icon("refresh", 14) + " 重放本轮</button>" +
           "</div>" +
 
@@ -168,7 +218,9 @@ AgentLab.LabPlayground = (function () {
             '<div class="pg-rounds" id="pg-rounds"></div>' +
             '<div class="pg-chainwrap">' +
               '<div class="pg-chainlabel">' + U.icon("txt", 13) +
-                '发给大脑的<b>上下文</b>　<span class="dim">每一块都要<b>借一个角色</b>才能进去——长期记忆借的是 system，工具结果借的是 tool</span></div>' +
+                '发给大脑的<b>上下文</b>　<span class="dim">每一块都要<b>借一个角色</b>才能进去：长期记忆借 <b>system</b>、' +
+                '短期对话按 <b>user / assistant</b> 原样回放、工具结果走 <b>tool</b>。<br>' +
+                '<b class="sp-obs-t">观察空间</b>＝能接收到的信息（信息进来）；<b class="sp-act-t">动作空间</b>＝被允许执行的操作（决定要做的事）</span></div>' +
               '<div class="pg-chain" id="pg-chain"><span class="pg-chain-empty">还没发请求——先在上面提一个问题</span></div>' +
             "</div>" +
           "</div>" +
@@ -184,16 +236,24 @@ AgentLab.LabPlayground = (function () {
           '<div style="color:var(--c-sub);font-size:13px;margin-bottom:8px">关掉一个组件再提问，看看智能体的本领会怎么变化——这就是给 Agent 加“约束”。（下面的实验会跟着一起变）</div>' +
           '<div id="pg-flags">' +
             [
-              { id: "perception", label: "感知器（观察）" },
-              { id: "planner", label: "规划器（推理）" },
-              { id: "memory", label: "记忆器（上下文）" },
-              { id: "executor", label: "执行器" }
+              { id: "perception", label: "感知器（观察）", icon: "eye" },
+              { id: "planner", label: "规划器（决策）", icon: "gear" },
+              { id: "memory", label: "记忆器（上下文）", icon: "book" },
+              { id: "executor", label: "执行器（调工具）", icon: "hand" }
             ].map(function (f) {
-              return '<div class="toggle-row"><span class="t-label">' + U.icon(
-                f.id === "perception" ? "eye" : f.id === "planner" ? "gear" : f.id === "memory" ? "book" : "hand", 18
-              ) + " " + f.label + "</span>" +
-              '<label class="switch"><input type="checkbox" checked data-flag="' + f.id + '"><span class="slider"></span></label></div>';
+              return '<div class="toggle-row"><span class="t-label">' + U.icon(f.icon, 18) + " " + f.label + "</span>" +
+                '<label class="switch"><input type="checkbox" checked data-flag="' + f.id + '"><span class="slider"></span></label></div>';
             }).join("") +
+          "</div>" +
+          /* 思考模式不是“第五个组件”——它是大模型的一项能力开关。
+           * 单独拎出来放在下面、并用蓝底说明条区分，免得学生把它数进四组件里。
+           * 它与「规划器」是两回事：关掉它，规划照常发生，只是看不见推理过程。 */
+          '<div class="pg-thinkbox">' +
+            '<div class="toggle-row"><span class="t-label">' + U.icon("spark", 18) + " 思考模式" +
+              '<span class="pg-think-tag">模型能力开关 · 不是组件</span></span>' +
+              '<label class="switch"><input type="checkbox" data-flag="thinking" id="pg-flag-thinking"><span class="slider"></span></label></div>' +
+            '<div class="pg-think-note">开：模型先把推理过程写出来（<code>reasoning_content</code>），要多等一会儿；关：直接决策，更快。' +
+            '<b>两种情况规划器都在工作</b>——区别只是“看不看得见推理过程”，别和上面的“关掉规划器”混为一谈。</div>' +
           "</div>" +
           '<div class="pg-flag-try">' +
             '<button class="btn btn-brain btn-sm" id="pg-flag-run">' + U.icon("send", 14) + " 用当前这套开关，真实跑一句</button>" +
@@ -246,6 +306,22 @@ AgentLab.LabPlayground = (function () {
         }) +
         '<div id="pg-ab"></div>') +
 
+      /* 多步任务示例：专门用来体现「规划器」到底在干什么。
+       * 两条路都留着：离线逐步演示（内置轨迹，教室环境不依赖 API Key）+ 一键真实跑同一句话。
+       * 前面 7 条建议都是单意图单工具 —— 正好当对照组：那种题关掉规划器也做得成。 */
+      LP.card("plan", "实验：一句话里三件事——规划器是怎么拆的？",
+        "前面那几条示例都是「一句话、一个工具、一轮结束」，看不出规划器在忙什么。换一句真正的<b>多步任务</b>：它要<b>拆成 3 个子任务</b>、排出先后顺序，还要<b>看着中间结果决定下一步</b>。先点「逐步演示（离线）」一步步看清规划器怎么指挥（<b>不用 API Key</b>），再点「真实跑一遍这句话」让它自己跑给你看。",
+        '<div class="pg-multi-task">' + U.icon("txt", 13) +
+          "<span><b>任务：</b>" + U.esc(PG_COMPLEX_TASK) + "</span></div>" +
+        '<div class="pg-try">' +
+          '<button class="btn btn-plan btn-sm" id="pg-multi-demo">' + U.icon("spark", 14) + ' 逐步演示（离线）</button>' +
+          '<button class="btn btn-ghost btn-sm" id="pg-multi-step">' + U.icon("target", 14) + ' 走一步</button>' +
+          '<button class="btn btn-ghost btn-sm" id="pg-multi-reset">' + U.icon("reset", 14) + ' 重来</button>' +
+          '<button class="btn btn-brain btn-sm" id="pg-multi-run">' + U.icon("send", 14) + ' 真实跑一遍这句话</button>' +
+          '<span class="pg-try-tip" id="pg-multi-count"></span>' +
+        "</div>" +
+        '<div class="pg-multi-steps" id="pg-multi-steps"></div>') +
+
       AgentLab.LabPerception.card("brain", "实验：给智能体做一次“体检”（评估——固定题集 + 指标 + 前后对比）",
         "老师改了一版小管家，怎么知道它到底<b>变好了还是变坏了</b>？靠“感觉”不算——用同一份<b>固定题集</b>跑两个版本，把结果填进同一张<b>指标表</b>里对比。",
         '<div id="pg-eval"></div>') +
@@ -271,7 +347,7 @@ AgentLab.LabPlayground = (function () {
        * 现在改成裸块，并换上智能体实验室的专属紫 card-pg，标题也从"核心结论"改成课次名。 */
       '<div class="lesson-summary card-pg">' +
         '<h3>' + U.icon("check", 18) + " 课堂小结（L13 综合实战）</h3>" +
-        '<div class="summary-core"><b>智能体 = LLM + 上下文 + 工具</b>，由 <b>Harness</b> 把它编排成一个能自我循环的系统：观察 → 推理 → 行动 → 再观察。四个组件各管一段：感知器把世界变成上下文，规划器决定怎么做，记忆器决定记住什么，执行器把决定变成真实动作。判断它好不好，不能靠“感觉”，要靠<b>固定题集 + 明确指标 + 前后对比</b>；出了错，要靠<b>轨迹</b>倒推是哪一环的问题。</div>' +
+        '<div class="summary-core"><b>智能体 = LLM + 上下文 + 工具</b>，由 <b>Harness</b> 把它编排成一个能自我循环的系统：观察 → 推理 → 行动 → 再观察。四个组件各管一段：感知器把世界变成上下文，规划器决定怎么做，记忆器决定记住什么，执行器把决定变成真实动作。判断它好不好，不能靠“感觉”，要靠<b>固定题集 + 明确指标 + 前后对比</b>；出了错，要靠<b>轨迹</b>倒推是哪一环的问题。<br><b>最后再钉一遍口径：</b>“规划器”是<b>决策职责</b>（每轮都参与，产出是动作）；“思考模式”是<b>模型的能力开关</b>（只决定推理过程可不可见）。关掉思考模式≠关掉规划器——前者只是“看不见规划”，后者才是“不由模型规划”。</div>' +
         '<div class="summary-points">' +
           '<div class="sp-item"><span class="sp-icon" style="background:var(--c-pg)">' + U.icon("refresh", 14) + '</span><div><b>循环是关键：</b>能不能“看结果再决策”，是智能体与聊天机器人的分界线</div></div>' +
           '<div class="sp-item"><span class="sp-icon" style="background:var(--c-pg)">' + U.icon("link", 14) + '</span><div><b>组件是串联的：</b>A 组关记忆、B 组关规划，两组都做不成——但<b>断点不同</b>：记忆断在“认不出对象”，规划断在“变不成步骤”。缺一段 = 断整条链</div></div>' +
@@ -291,6 +367,7 @@ AgentLab.LabPlayground = (function () {
     bindPgCtx();
     bindPgSwitch();
     bindPgAb();      /* 全班对照实验：A 组关记忆 / B 组关规划 */
+    bindPgMulti();   /* 多步任务示例：离线逐步演示 + 真机实跑 */
     bindPgEval();
     bindPgTrace();
     bindPgQuiz();
@@ -298,17 +375,28 @@ AgentLab.LabPlayground = (function () {
   }
 
   /* ---------- 对话区 ---------- */
+  /* 气泡正文的渲染口径：
+   *   用户自己打的字 = 纯文本（转义后只还原换行）——学生输入的是题目，不是文档；
+   *   AI 的回答     = Markdown（U.md 先整体转义 HTML 再解析语法，天然防注入）。
+   * 所以气泡统一支持 Markdown：标题、粗体、列表、表格、代码块、公式都能正确显示。 */
+  function msgBodyHTML(role, text) {
+    if (text == null || text === "") return "";
+    if (role === "user") return U.esc(text).replace(/\n/g, "<br>");
+    return '<div class="md-body">' + U.md(text) + "</div>";
+  }
+
   function addMsg(role, text, extraClass) {
     var box = $("pg-msgs");
     var d = document.createElement("div");
     d.className = "msg " + (role === "user" ? "user" : "ai") + (extraClass ? " " + extraClass : "");
-    d.innerHTML = '<span class="who">' + (role === "user" ? "我" : "智能体小管家") + "</span>" + U.esc(text);
+    d.innerHTML = '<span class="who">' + (role === "user" ? "我" : "智能体小管家") + "</span>" +
+      msgBodyHTML(role, text);
     box.appendChild(d);
     box.scrollTop = box.scrollHeight;
     return d;
   }
 
-  /* ---------- 内部工作台：三态（进行中 / 已完成 / 本轮未参与）+ 本轮轨迹 ----------
+  /* ---------- 内部工作台：三态（run 进行中 / done 已完成 / skip 本轮未参与）+ 本轮轨迹 ----------
    * 设计意图：一轮结束后工作台要“留下证据”——哪些环节真的参与了、各花了多久、
    * 每一步具体做了什么。学生一眼就能看出“这一轮执行器没被用上”。 */
   var stageState = {};      // id → { status, text, ms, t0, round }
@@ -318,15 +406,17 @@ AgentLab.LabPlayground = (function () {
   var runStartAt = 0;
   var replayTimer = null;
 
-  /* 每个 stage 触发时应该点亮哪几条边——这是「信息流」的映射表 */
+  /* 每个 stage 触发时应该点亮哪几条边——这是「信息流」的映射表。
+   * 注意执行器这一行：进线是 brain-exe-out（大脑把参数写好后交给它），
+   * 出线是 brain-exe-in（工具结果回流给大脑）——两条都连大脑，没有一条来自规划器。 */
   var STAGE_EDGES = {
     perception: ["per-brain"],
     memory: ["brain-mem-out", "brain-mem-in"],
     executor: ["brain-exe-out", "brain-exe-in"],
-    /* 规划器的产出就是"要调哪个工具"，所以它既连着大脑（在大脑里想），
-     * 也牵着执行器（想完就去调）——两条边一起亮，关系才看得出来。 */
-    planner: ["brain-plan", "brain-exe-out"],
-    brain: ["per-brain", "brain-mem-out", "brain-mem-in", "brain-exe-out", "brain-exe-in", "brain-plan"]
+    /* 规划器是独立组件：大脑把上下文交给它（下行）、它把决策交回大脑（上行）。
+     * 它只产出「要调哪个工具、参数是什么」这个决定，不碰工具，所以没有通往执行器的边。 */
+    planner: ["brain-plan", "plan-brain"],
+    brain: ["per-brain", "brain-mem-out", "brain-mem-in", "brain-exe-out", "brain-exe-in", "brain-plan", "plan-brain"]
   };
 
   /* ReAct 三步的呈现口径：与规划器实验室「核心演示：ReAct 循环」那张卡完全一致
@@ -373,17 +463,35 @@ AgentLab.LabPlayground = (function () {
     paintEdges();
   }
 
-  /* 连线高亮：某个组件参与过，它牵出的那几条边就亮（大脑参与＝所有边） */
+  /* 连线高亮：某个组件参与过，它牵出的那几条边就亮（大脑参与＝所有边）。
+   *
+   * 但"大脑参与＝所有边"会带出一个矛盾：大脑一亮就把执行器那两条边也点亮了，
+   * 于是「执行器：本轮未参与」和「① 按接口写参数 / ② 结果回传正亮着」同时出现在屏幕上，
+   * 看上去像信息真的流过去了。所以最后统一收一次尾：
+   * 【本轮状态是 skip 的环节，它名下的边一律不亮】。
+   * 两个条件互斥（skip 与 run/done 不会同时成立），所以某个环节后面轮次真的参与了，
+   * 状态一变回 run/done，它的边就照常亮起来——不会把"后面用上了"误伤成不亮。 */
   function paintEdges() {
-    var on = {};
+    var on = {}, off = {};
     STAGES.forEach(function (s) {
       var st = stageState[s.id] || {};
+      if (st.status === "skip") {
+        (STAGE_EDGES[s.id] || []).forEach(function (e) { off[e] = true; });
+      }
       if (st.status === "run" || st.status === "done") {
         (STAGE_EDGES[s.id] || []).forEach(function (e) { on[e] = true; });
       }
     });
     document.querySelectorAll(".pg-hub-edge").forEach(function (el) {
-      el.classList.toggle("is-on", !!on[el.getAttribute("data-edge")]);
+      var id = el.getAttribute("data-edge");
+      el.classList.toggle("is-on", !!on[id] && !off[id]);
+    });
+    /* ① ② 两枚标签跟着自己那条边一起亮/暗：
+     * 标签讲的是"这条边在干什么"，边没走过就不该显得那么肯定。 */
+    var TAG_EDGE = { "exe-out": "brain-exe-out", "exe-in": "brain-exe-in" };
+    document.querySelectorAll(".pg-hub-tag").forEach(function (el) {
+      var eid = TAG_EDGE[el.getAttribute("data-tag")];
+      el.classList.toggle("is-on", !!on[eid] && !off[eid]);
     });
   }
 
@@ -400,13 +508,16 @@ AgentLab.LabPlayground = (function () {
 
   /* ---------- 信息流动图：引擎 + 轮次 + 上下文角色链 ---------- */
 
-  var engineMode = "";        // "llm" | "rules"
+  var engineMode = "";        // "llm" | "rules" | "ask"
+  var engineInfo = null;      // { plannerOff, noKey } —— 引擎条要说清"这一轮到底谁在决策"
   var roundLog = [];          // [{ n, notes: [], ctx }]
   var chainMsgs = [];         // 当前上下文的角色序列
   var lastRun = { rounds: 0, tools: 0, engine: "" };
 
   function shortNote(t) {
-    var s = String(t || "").replace(/^第\d+轮[:：]?\s*/, "").replace(/【降级】/, "");
+    var s = String(t || "")
+      .replace(/^第\d+轮[:：]?\s*/, "")
+      .replace(/【降级】|【规划器已关闭】/g, "");
     return s.length > 46 ? s.slice(0, 46) + "…" : s;
   }
 
@@ -414,17 +525,42 @@ AgentLab.LabPlayground = (function () {
     var el = $("pg-engine");
     if (!el) return;
     if (!engineMode) { el.innerHTML = '<span class="dim">引擎检测中…</span>'; return; }
+    /* 离线演示：下面是内置轨迹在放，没有真的发请求，必须说清楚 */
+    if (engineInfo && engineInfo.demo) {
+      el.className = "pg-engine is-demo";
+      el.innerHTML = U.icon("spark", 14) +
+        ' <b>离线演示 · 内置轨迹回放</b><br>' +
+        '<span class="dim">这条轨迹是<b>预先写好</b>的，用来逐步看清规划器怎么拆步、排序、按结果决定下一步，<b>不需要 API Key</b>。' +
+        '想看真实运行，点卡片里的「真实跑一遍这句话」。</span>';
+      return;
+    }
     var llm = engineMode === "llm";
-    el.className = "pg-engine " + (llm ? "is-llm" : "is-rules");
-    el.innerHTML = U.icon(llm ? "brain" : "wrench", 14) +
-      (llm
-        ? ' <b>真实模式 · LLM 驱动 Function Calling</b><br>' +
-        '<span class="dim">工具的说明书随请求一起发给大脑，<b>“调哪个工具、传什么参数”是大脑自己决定的</b>；' +
-        '它只要工具时<b>不回答</b>，只回一条 tool_calls。程序执行完，把结果作为 tool 角色拼回上下文，' +
-        '<b>大脑再规划第 2 轮</b>——这就是回路。</span>'
-        : ' <b>降级模式 · 未配置 API Key</b><br>' +
+    var isAsk = engineMode === "ask";
+    var plannerOff = !!(engineInfo && engineInfo.plannerOff);
+    var cls = isAsk ? "is-ask" : (llm ? "is-llm" : (plannerOff ? "is-plan-off" : "is-rules"));
+    el.className = "pg-engine " + cls;
+    if (isAsk) {
+      el.innerHTML = U.icon("robot", 14) +
+        ' <b>问答模式 · 请求里没有工具</b><br>' +
+        '<span class="dim">发给大脑的请求里<b>根本没有 tools 字段</b>——它不知道有什么工具可用，' +
+        '“能做什么”这一项等于被拿掉了：只能凭自己学过的知识回答，' +
+        '也就进不了“调工具 → 看结果 → 再决策”的回路（连第 1 轮都不用循环）。' +
+        '把同一个问题切到「自动」模式再问一遍，差别一眼可见。</span>';
+    } else if (llm) {
+      el.innerHTML = U.icon("brain", 14) +
+        ' <b>真实模式 · LLM 驱动 Function Calling</b>';
+    } else if (plannerOff) {
+      el.innerHTML = U.icon("gear", 14) +
+        ' <b>规划器已关闭 · 规则代劳决策</b><br>' +
+        '<span class="dim">你把「规划器」关了，所以<b>这次不由模型决定要不要调工具、调哪个</b>——' +
+        '改由本地规则做<b>单步</b>判定，模型只负责把工具结果组织成一句人话。' +
+        '它会漏掉需要拆步、需要先后依赖的任务（这正是“关掉规划器”的样子）。</span>';
+    } else {
+      el.innerHTML = U.icon("wrench", 14) +
+        ' <b>降级模式 · 未配置 API Key</b><br>' +
         '<span class="dim">大模型调不动，<b>规划改由本地规则代劳，不是大脑自己决定的</b>。' +
-        '回路结构照常演示，便于看清流程。要切到真实模式，点右上角「设置」填一个 Key。</span>');
+        '回路结构照常演示，便于看清流程。要切到真实模式，点右上角「设置」填一个 Key。</span>';
+    }
   }
 
 /* ReAct 步骤 → 该点亮的组件。
@@ -511,6 +647,17 @@ AgentLab.LabPlayground = (function () {
     return m.role;
   }
 
+  /* 每块上下文属于哪个“空间”？口径取自感知器实验室：
+   *   观察空间 = AI 能接收到的信息 —— system / user / tool 都算“信息进来”；
+   *   动作空间 = AI 被允许执行的操作 —— assistant 决定要调工具、或对外作答，都是“动作”。
+   * 把这枚标签挂在角色链上，学生一眼就能看出：规划器的产出落在动作空间。 */
+  function msgSpace(m) { return m.role === "assistant" ? "act" : "observe"; }
+  var SPACE_TXT = { observe: "观察", act: "动作" };
+  var SPACE_TIP = {
+    observe: "观察空间：AI 能接收到的信息（你的输入、记忆、工具返回）",
+    act: "动作空间：AI 被允许执行的操作（调工具、对外作答）"
+  };
+
   function paintChain() {
     var box = $("pg-chain");
     if (!box) return;
@@ -520,16 +667,139 @@ AgentLab.LabPlayground = (function () {
     }
     box.innerHTML = chainMsgs.map(function (m, i) {
       var cls = "r-" + m.role + (m.tool_calls ? " r-call" : "");
+      var sp = msgSpace(m);
       var tip = String(m.content == null ? "" : m.content).replace(/\s+/g, " ").slice(0, 140);
       return '<span class="pg-msg ' + cls + (i === chainMsgs.length - 1 ? " is-last" : "") +
-        '" title="' + U.esc(tip) + '">' + U.esc(msgLabel(m)) + "</span>";
+        '" title="' + U.esc(tip) + '">' + U.esc(msgLabel(m)) +
+        '<i class="pg-sp sp-' + sp + '" title="' + U.esc(SPACE_TIP[sp]) + '">' + SPACE_TXT[sp] + "</i>" +
+        "</span>";
     }).join('<span class="pg-chain-arrow">→</span>');
   }
 
   function resetFlow() {
-    engineMode = ""; roundLog = []; chainMsgs = [];
+    engineMode = ""; engineInfo = null; roundLog = []; chainMsgs = [];
     lastRun = { rounds: 0, tools: 0, engine: "" };
     paintEngine(); paintRounds(); paintChain();
+  }
+
+  /* 这里原来有一个 layoutHubDiag()：给「规划器 → 执行器」那条斜边按节点实际位置
+   * 现算长度与角度，还要挂一个 ResizeObserver 在窄屏重排时重算。
+   * 那条斜边已经从图上删掉了（规划器不直接调用工具，执行器只跟大脑相连），
+   * 现在所有连线都是纯横/竖的，位置能由 --nw / --nh / --rowc / --side 这些
+   * CSS 变量直接算出来，不需要 JS 参与，所以整套函数和观察器一并删除。 */
+
+  /* 顶部的四组件语义色，多步示例卡片里也用同一套，保证全站配色一致 */
+  var PG_COLOR_VAR = { perception: "per", planner: "plan", memory: "mem", executor: "exe", brain: "brain" };
+
+  /* ---------- 多步任务的离线轨迹 ----------
+   * 这是「逐步演示」用的内置数据，不调用任何接口，所以课堂上一定跑得出来。
+   * 每一步都标清四件事：谁在做（stage）、内容落在哪个空间（space）、
+   * 这一步往上下文里塞的是什么角色（role）、具体发生了什么（t）。
+   * 顺着看一遍，规划器“拆 → 排 → 调 → 看结果 → 再决定”就一目了然了。 */
+  var PG_COMPLEX_DEMO = [
+    { stage: "perception", react: "", space: "observe", role: "user", round: 0,
+      t: "把同学的请求接进来，整理成一条 user 消息——这是观察空间的入口。" },
+    { stage: "memory", react: "", space: "observe", role: "system", round: 0,
+      t: "长期记忆借 system 角色一起给：班级知识库、你住在杭州、出游要带伞这些偏好。" },
+    { stage: "planner", react: "think", space: "act", role: "assistant", round: 1,
+      t: "规划器拆成 3 个子任务并排序：①查明天天气 → ②【要看①的结果】下雨才设提醒 → ③另外算一笔总价（可以和①一起做）。" },
+    { stage: "planner", react: "act", space: "act", role: "assistant", round: 1,
+      t: "第 1 轮动作：调用 weather_query(city=杭州, dateKey=明天)——先做最要紧、后面还要依赖它的那一步。" },
+    { stage: "executor", react: "observe", space: "observe", role: "tool", round: 1,
+      t: "执行器真正去调天气工具，结果以 tool 角色回流到上下文：杭州 · 明天 · 小雨。" },
+    { stage: "planner", react: "think", space: "act", role: "assistant", round: 2,
+      t: "大脑带着 tool 结果重新规划第 2 轮：①的结果是“下雨”，所以②的提醒必须设；③的总价可以一起算——这一步就是“按结果决定下一步”。" },
+    { stage: "planner", react: "act", space: "act", role: "assistant", round: 2,
+      t: "第 2 轮动作：一次发出两条 tool_calls——reminder_set(带雨伞) 和 calculator(3×12+2×8)。" },
+    { stage: "executor", react: "observe", space: "observe", role: "tool", round: 2,
+      t: "两个工具的结果都作为 tool 角色回流到上下文（52 元）。" },
+    { stage: "brain", react: "deliver", space: "act", role: "assistant", round: 2,
+      t: "大脑把 3 个子任务的结果汇总成一句人话：明天下雨记得带伞；果汁 36 元、面包 16 元，一共 52 元。全程 2 轮、3 次工具调用、1 次条件分支。" }
+  ];
+
+  var multiIdx = 0;
+  var multiTimer = null;
+
+  /* 把已经走到第几步，同步成「上下文里现在有哪些角色」——
+   * 和真实跑一轮时 pg-chain 的呈现口径完全一致（system 常驻、每轮一对 assistant/tool）。 */
+  function multiSyncChain() {
+    var acts = 0, obs = 0;
+    for (var i = 0; i < multiIdx; i++) {
+      var r = PG_COMPLEX_DEMO[i].react;
+      if (r === "act") acts++;
+      if (r === "observe") obs++;
+    }
+    var msgs = [
+      { role: "system", content: "规则 + 班级长期记忆（借 system 角色进来）" },
+      { role: "user", content: PG_COMPLEX_TASK }
+    ];
+    var rounds = Math.max(acts, obs);
+    for (var k = 1; k <= rounds; k++) {
+      if (k <= acts) msgs.push({ role: "assistant", tool_calls: [{ id: "call_" + k }], content: "第 " + k + " 轮动作：发出 tool_calls" });
+      if (k <= obs) msgs.push({ role: "tool", content: "第 " + k + " 轮的工具结果回流" });
+    }
+    if (multiIdx >= PG_COMPLEX_DEMO.length) msgs.push({ role: "assistant", content: "最终回答（汇总 3 个子任务）" });
+    setChain(msgs);
+  }
+
+  function multiRender() {
+    var box = $("pg-multi-steps");
+    if (!box) return;
+    if (!multiIdx) {
+      box.innerHTML = '<div class="pg-ms-empty">' + U.icon("target", 14) +
+        " 点「逐步演示（离线）」，看规划器怎么把这一句话拆成 3 个子任务；也可以自己点「走一步」。</div>";
+    } else {
+      box.innerHTML = PG_COMPLEX_DEMO.slice(0, multiIdx).map(function (s, i) {
+        var sp = s.space === "act" ? "act" : "observe";
+        var col = PG_COLOR_VAR[s.stage] || "brain";
+        var isLast = i === multiIdx - 1;
+        return '<div class="pg-ms ' + (isLast ? "is-cur" : "is-on") + '">' +
+          '<span class="pg-ms-n c-' + col + '">' + (i + 1) + "</span>" +
+          '<span class="pg-ms-body">' +
+            '<span class="pg-ms-head">' +
+              '<b class="pg-ms-who c-' + col + '">' + U.esc(STAGE_BY_ID[s.stage].name) + "</b>" +
+              '<i class="pg-sp sp-' + sp + '">' + SPACE_TXT[sp] + "</i>" +
+              '<i class="pg-ms-role">借 ' + U.esc(s.role) + " 角色</i>" +
+            "</span>" +
+            '<span class="pg-ms-t">' + U.esc(s.t) + "</span>" +
+          "</span></div>";
+      }).join("");
+    }
+    var cnt = $("pg-multi-count");
+    if (cnt) cnt.textContent = multiIdx ? "第 " + multiIdx + " / " + PG_COMPLEX_DEMO.length + " 步" : "";
+  }
+
+  function multiReset() {
+    if (multiTimer) { clearTimeout(multiTimer); multiTimer = null; }
+    multiIdx = 0;
+    resetStages();
+    resetFlow();
+    multiRender();
+  }
+
+  function multiStep() {
+    if (multiIdx >= PG_COMPLEX_DEMO.length) { U.toast("这条轨迹已经走完啦，点「重来」可以再看一遍"); return; }
+    var s = PG_COMPLEX_DEMO[multiIdx];
+    multiIdx++;
+    /* 离线演示：先把引擎条切成“内置轨迹回放”，免得学生以为后台真的在跑 */
+    engineMode = "llm"; engineInfo = { demo: true }; paintEngine();
+    /* 和真实跑一轮走同一套接口：ReAct 步骤进轨迹、组件点亮、角色链同步 */
+    if (s.react) pushReact(s.react, s.round, s.t);
+    else setStage(s.stage, s.t, null, s.round);
+    multiSyncChain();
+    multiRender();
+    if (multiIdx >= PG_COMPLEX_DEMO.length) endRun();
+  }
+
+  function multiPlay() {
+    if (busy) { U.toast("正在真实运行，等它跑完再演示～"); return; }
+    multiReset();
+    var tick = function () {
+      if (multiIdx >= PG_COMPLEX_DEMO.length) { multiTimer = null; return; }
+      multiStep();
+      multiTimer = setTimeout(tick, 1200);
+    };
+    tick();
   }
 
   /* 轨迹区：按「第几轮 → 这一轮做了什么」分组。
@@ -718,28 +988,6 @@ AgentLab.LabPlayground = (function () {
     })();
   }
 
-  /* 每条回答下面的“本轮组件徽章”：把聊天和工作台连起来看 */
-  function turnBadgesHTML() {
-    var chips = STAGES.map(function (s) {
-      var st = stageState[s.id] || {};
-      var used = st.status === "done" || st.status === "run";
-      return '<span class="turn-chip c-' + s.color + (used ? " used" : "") + '">' +
-        U.icon(s.icon, 13) + s.name + (used ? (st.round ? "<i>第" + st.round + "轮</i>" : "") : "<i>未参与</i>") + "</span>";
-    }).join("");
-    var plan = stageState.planner ? String(stageState.planner.text || "").replace(/^【降级】/, "").replace(/^制定计划：/, "") : "";
-    var rounds = roundLog.length;
-    return '<div class="turn-meta">' +
-      '<div class="turn-plan">' + U.icon("refresh", 13) +
-        "<b>本轮 " + (rounds || 1) + " 轮</b>" +
-        (rounds > 1 ? "（工具结果拼回上下文，大脑重新规划了 " + (rounds - 1) + " 次）" : "（大脑一次就说完了）") +
-        " · " + lastRun.tools + " 次工具调用" +
-        (lastRun.engine === "rules" ? ' · <span style="color:var(--c-exe-deep)">降级：规划由规则代劳</span>' : "") +
-        (plan ? "<br>" + U.esc(plan) : "") +
-      "</div>" +
-      '<div class="turn-chips">' + chips + "</div>" +
-      "</div>";
-  }
-
   /* ---------- 倒计时（计时器工具的 UI 部分） ----------
    * 支持同时开多个计时器（例如"25 分钟番茄钟 + 10 分钟后提醒喝水"）：
    * 每个计时器各持自己的 interval，取消/到点时只结束自己那一个。 */
@@ -837,6 +1085,311 @@ AgentLab.LabPlayground = (function () {
     return d;
   }
 
+  /* ============================================================
+   * 运行模式：自动 / 规划 / 问答
+   * 同一套组件、同一个大脑，三种模式只改"这一轮它有多大自主权"——
+   * 这正是 Harness 在管的事（组件开没开由上面的 flags 管，两者是两回事）：
+   *   自动 = 它自己决定、自己动手；规划 = 它只出计划、人点头了才动手；问答 = 它手里没有工具，只能聊天。
+   * ============================================================ */
+  var MODE_UI = {
+    auto: {
+      name: "自动",
+      head: "它自己决定、自己动手",
+      tip: "模型自己决定要不要调工具、调哪个、调几次，调完直接把答案组织好给你。" +
+        "最省事，代价是<b>它在替你拍板</b>。",
+      use: "适合：让它一口气把一件事办完。",
+      ph: "输入你的问题，按回车发送……",
+      toast: "自动模式：它自己决定、自己动手"
+    },
+    plan: {
+      name: "规划",
+      head: "只出计划，你点头了才执行",
+      tip: "先<b>只做规划</b>——把「分几步、每步调什么工具、参数是什么」摆给你看，" +
+        "<b>工具一个都不执行</b>；你点了「按这个计划执行」，它才真正动手。",
+      use: "适合：动手前先过目。这就是<b>人在回路</b>的确认闸门。",
+      ph: "输入你的问题，它先给你一份计划……",
+      toast: "规划模式：它只出计划，你点头了才执行"
+    },
+    ask: {
+      name: "问答",
+      head: "手里没有工具，只能聊天",
+      tip: "请求里<b>根本不发工具说明书</b>，它只能凭学过的知识回答——查天气、算课表、算题" +
+        "这类活儿它就干不了了。",
+      use: "适合：和自动模式问同一句话，对照看<b>工具（手脚）</b>有多关键。",
+      ph: "随便问一句，它只会用已有知识回答……",
+      toast: "问答模式：不发工具说明书，它只能凭已有知识答"
+    }
+  };
+
+  var pendingPlan = null;   // 待确认的计划：{ plan, question }
+
+  /* ---------- 模式说明气泡 ----------
+   * 鼠标停到「自动/规划/问答」上、或键盘聚焦时浮出一小块说明；移开就收。
+   * 为什么不用 CSS 的纯 hover 元素挂在按钮里：
+   *   ① 气泡要写 <b> 关键词，::after 的 content 放不了标签；
+   *   ② .chat-card 是 overflow: hidden，挂在卡片内的绝对定位气泡会被裁掉
+   *      （模式栏正好贴着卡片顶边，气泡只能往下长）。
+   * 所以统一挂到 body 上、position: fixed 由 JS 摆位。
+   * 气泡本身 pointer-events: none，不会把鼠标从按钮上"抢走"而让气泡闪断。 */
+  var modePop = null;
+
+  function modePopEl() {
+    if (modePop && document.body.contains(modePop)) return modePop;
+    modePop = document.createElement("div");
+    modePop.className = "mode-pop";
+    modePop.id = "pg-mode-pop";
+    modePop.setAttribute("role", "tooltip");
+    document.body.appendChild(modePop);
+    return modePop;
+  }
+
+  function showModePop(btn) {
+    var ui = MODE_UI[btn.getAttribute("data-mode")];
+    if (!ui) return;
+    var el = modePopEl();
+    el.innerHTML = '<div class="mp-head">' + U.esc(ui.name) + "模式<i>" + U.esc(ui.head) + "</i></div>" +
+      "<div>" + ui.tip + "</div>" +
+      '<div class="mp-foot">' + ui.use + "</div>";
+    el.classList.add("is-on");
+    /* 先让它显示出来再量尺寸——隐藏状态下量到的宽高是 0，摆位会算错。 */
+    var b = btn.getBoundingClientRect();
+    var eb = el.getBoundingClientRect();
+    var left = b.left + b.width / 2 - eb.width / 2;
+    left = Math.max(8, Math.min(left, window.innerWidth - eb.width - 8));
+    var top = b.bottom + 9;
+    /* 卡片贴底时往下展不开，就翻到按钮上方，并让三角转到下面。 */
+    var above = top + eb.height > window.innerHeight - 8;
+    if (above) top = b.top - eb.height - 9;
+    el.classList.toggle("is-above", above);
+    /* 三角要指着按钮的中心，而不是气泡的中心：气泡被视口边缘挤开后就对不上了。
+     * 偏移量 = 按钮中心 - 气泡左边界，再留出 12px 免得三角跑到圆角外面。 */
+    var arrow = Math.round(b.left + b.width / 2 - left);
+    arrow = Math.max(12, Math.min(arrow, eb.width - 12));
+    el.style.setProperty("--arrow-x", arrow + "px");
+    el.style.left = Math.round(left) + "px";
+    el.style.top = Math.round(top) + "px";
+  }
+
+  function hideModePop() {
+    if (modePop) modePop.classList.remove("is-on");
+  }
+
+  /* 切模式：只改"这一轮它有多大自主权"，组件开关（flags）一律不动。 */
+  function applyMode(m, silent) {
+    var next = Agent.setMode(m);
+    var ui = MODE_UI[next] || MODE_UI.auto;
+    document.querySelectorAll("#pg-mode .mode-btn").forEach(function (b) {
+      b.classList.toggle("is-on", b.getAttribute("data-mode") === next);
+    });
+    var ip = $("pg-input");
+    if (ip) ip.placeholder = ui.ph;
+    /* 模式栏不再有常驻说明条，切换后的反馈由「按钮高亮 + toast」两处承担。 */
+    if (!silent) U.toast("已切到「" + ui.name + "」模式：" + ui.toast);
+  }
+
+  /* ---------- 规划模式的产出：一张待确认的计划卡 ----------
+   * 卡上的每一步都直接来自模型这一轮真实返回的 tool_calls（或它写的步骤），不做任何加工润色，
+   * 更不会"顺手执行掉"——只有学生点了「按这个计划执行」，回路才继续往下走。 */
+  function planArgsHTML(raw) {
+    var txt = String(raw || "").trim();
+    if (!txt) return "";
+    var obj = null;
+    try { obj = JSON.parse(txt); } catch (e) { obj = null; }
+    if (!obj || typeof obj !== "object") return U.esc(txt);
+    return Object.keys(obj).map(function (k) {
+      var v = obj[k];
+      if (v && typeof v === "object") v = JSON.stringify(v);
+      return "<i>" + U.esc(k) + "</i>：" + U.esc(String(v));
+    }).join("　");
+  }
+
+  function renderPlanCard(plan, question) {
+    plan = plan || {};
+    var box = $("pg-msgs");
+    var d = document.createElement("div");
+    d.className = "msg ai plan-card";
+
+    var steps = plan.steps || [];
+    var body = '<span class="who">' + U.icon("gear", 14) + " 规划模式 · 计划（还没执行）</span>";
+
+    if (plan.byRules) {
+      body += '<div class="plan-lead">没有模型参与规划（' + U.esc(plan.why || "降级") + '），这份计划由本地规则写出来：</div>';
+    } else if (steps.length) {
+      body += '<div class="plan-lead">我打算这么做，先把计划给你看——你确认了我再动手：</div>';
+    } else {
+      body += '<div class="plan-lead">我判断这一句不需要工具，直接回答就行：</div>';
+    }
+
+    if (steps.length) {
+      body += '<ol class="plan-steps">' + steps.map(function (s) {
+        /* 两种步骤：模型给的（工具名 + 参数）与规则给的（一句话）。分开渲染，别混。 */
+        if (s.text) return "<li>" + U.esc(s.text) + "</li>";
+        var args = planArgsHTML(s.argsRaw);
+        return "<li><b>" + U.esc(s.label) + "</b><span class=\"plan-args\">" +
+          (args || "（没有参数）") + "</span></li>";
+      }).join("") + "</ol>";
+    }
+
+    if (plan.note) {
+      body += '<div class="plan-note">' + U.esc(plan.note) + "</div>";
+    }
+    if (plan.byRules) {
+      body += '<div class="plan-note">注意：这一轮模型没有参与决策，规则也不会拆步——' +
+        "把需要排先后顺序的任务交给它，就能看到计划残缺成什么样。</div>";
+    }
+
+    body += '<div class="plan-actions">' +
+      '<button type="button" class="btn btn-per btn-sm plan-run">' + U.icon("send", 14) + " 按这个计划执行</button>" +
+      '<button type="button" class="btn btn-ghost btn-sm plan-drop">先不执行</button>' +
+      "</div>";
+
+    d.innerHTML = body;
+    box.appendChild(d);
+    box.scrollTop = box.scrollHeight;
+
+    pendingPlan = { plan: plan, question: question };
+
+    d.querySelector(".plan-run").addEventListener("click", function () {
+      if (busy) { U.toast("上一轮还没跑完，稍等一下～"); return; }
+      runPendingPlan(d);
+    });
+    d.querySelector(".plan-drop").addEventListener("click", function () {
+      d.querySelector(".plan-actions").innerHTML =
+        '<span class="plan-dropped">已取消：工具一个都没执行。</span>';
+      pendingPlan = null;
+    });
+  }
+
+  /* 学生点了「按这个计划执行」：回路从这里继续。
+   * 不重新贴一遍问题气泡——这只是同一轮的后半段；工作台则重置后重新点亮，
+   * 因为"执行"本身就是新的一段真实流程。 */
+  async function runPendingPlan(cardEl) {
+    var p = pendingPlan;
+    if (!p) return;
+    pendingPlan = null;
+
+    var actions = cardEl.querySelector(".plan-actions");
+    if (actions) {
+      actions.innerHTML = '<span class="plan-confirmed">' + U.icon("check", 14) + " 已确认，开始执行计划…</span>";
+    }
+
+    busy = true;
+    $("pg-send").disabled = true;
+    resetStages();
+    resetFlow();
+    setStatePill("running");
+
+    try {
+      await Agent.executePlan(p.plan.calls, p.question, history, makeHooks(p.question));
+    } catch (e) {
+      /* onError 已经提示过学生了，这里吞掉异常，避免控制台出现"未处理的 Promise 拒绝"噪音。 */
+    } finally {
+      endRun();
+      busy = false;
+      $("pg-send").disabled = false;
+      $("pg-input").focus();
+    }
+  }
+
+  /* 一轮运行的全部回调。send 与「按这个计划执行」共用同一套——
+   * 否则两条路径上的工作台、气泡、徽章很容易长成两个样子。 */
+  function makeHooks(question) {
+    return {
+      onEngine: function (mode, info) {
+        engineMode = mode; engineInfo = info || null;
+        lastRun.engine = mode; lastRun.plannerOff = !!(info && info.plannerOff);
+        paintEngine();
+      },
+      onStage: function (id, text, flag, round) { setStage(id, text, flag, round); },
+      /* ReAct 三步：思考 / 行动 / 观察。
+       * 注意：这里展示的是【思考模式】（推理过程可不可见），不是"规划器有没有工作"——
+       * 规划器每一轮都参与，只是关掉思考后，它的推理过程看不见而已。 */
+      onThink: function (d) {
+        var txt = (d.text || "").trim();
+        pushReact("think", d.round, txt
+          ? txt
+          : (d.askMode
+            ? "问答模式：这一轮根本没有工具可选，所以没有“要不要调工具”的决策；下面是它凭已有知识给出的回答。"
+            : (d.thinkingOn
+              ? "（模型这一轮没有写出推理过程）"
+              : (d.isRules
+                ? "规划器已关闭：这一轮不由模型规划，改由本地规则单步判定（规则不会拆步，所以复杂任务会漏）。"
+                : "思考模式关着：模型直接下判断，没有留下推理过程。<b>但规划照常发生</b>——这正是“看不见规划”的样子，不是“规划停了”。"))));
+      },
+      onPlan: function (d) {
+        pushReact("act", d.round,
+          "决定调用：" + (d.names || "?") +
+          (d.picks && d.picks.length > 1 ? "（一次调 " + d.picks.length + " 个，可并行）" : ""),
+          d.picks);
+      },
+      onObserve: function (d) {
+        pushReact("observe", d.round,
+          (d.results || []).map(function (r) {
+            var t = String(r.text || "").replace(/\s+/g, " ");
+            return r.fn + " 返回：" + (t.length > 90 ? t.slice(0, 90) + "…" : t);
+          }).join('　|　'));
+      },
+      onStop: function (d) {
+        pushReact("stop", d.rounds || 0, d.reason || "");
+        lastRun.stopReason = d.reason || "";
+      },
+      onContext: function (messages) { setChain(messages); },
+      onTool: function (tool) {
+        lastRun.tools++;
+        addToolMsg(tool);
+        if (tool.name === "计时器工具" && tool.payload && tool.payload.seconds) {
+          startTimer(tool.payload.seconds, tool.payload.label, tool.payload.pomodoro, tool.payload.remindText);
+        }
+      },
+      onPayload: function (messages, info) {
+        lastPayload = messages;
+        renderPayload(messages);
+        /* 「拆开看看」里的说明文字随引擎变——三种情况下发给大脑的东西并不一样 */
+        var note = $("pg-inspect-note");
+        if (note && info) {
+          if (info.engine === "ask") {
+            note.innerHTML = '<b style="color:var(--c-per-deep)">问答模式</b>：这份请求里<b>没有 tools 字段</b>——' +
+              '模型拿不到任何工具说明书，只能凭自己已有的知识作答，因此压根进不了 ReAct 循环。' +
+              '把同一个问题换成「自动」模式再问一遍，差别一眼可见：有工具它去查，没工具它只能说不知道。';
+          } else {
+            note.innerHTML = info.engine === "rules"
+              ? (info.plannerOff
+                ? '<b style="color:var(--c-plan-deep)">规划器已关闭</b>：这一次<b>不由模型选工具</b>，改由本地规则做单步判定，' +
+                  '再把结果<b>写成标准的 tool_calls 样子</b>发给模型，让它只负责把结果说成一句人话。' +
+                  '把需要拆步、有先后依赖的任务交给它，就能看到“不会拆步”的后果。'
+                : '<b style="color:var(--c-exe-deep)">降级模式</b>：这一次规划由本地规则决定，' +
+                  '再把结果<b>写成标准的 tool_calls 样子</b>发给模型——模型并没有真的参与选工具。这和真实 Function Calling 只是长得像。')
+              : '<b style="color:var(--c-mem-deep)">真实模式</b>：下面这份 messages 就是<b>逐轮真实发出去</b>的内容。' +
+              '注意 tool_calls 是大脑自己产生的，程序只是照着它去执行，再把结果作为 tool 角色追加回去。' +
+              '这一次共 ' + (lastRun.rounds || (info.round || 1)) + ' 轮' + (info.round ? "（当前显示第 " + info.round + " 轮发出前的上下文）" : "") + '。';
+          }
+        }
+      },
+      /* 规划模式：这一轮没有"回答"，只有"计划"。渲染成卡片，等学生确认。 */
+      onPlanReady: function (plan) {
+        setStatePill("done", "计划已产出，等你确认");
+        renderPlanCard(plan, question);
+      },
+      onDone: async function (answer) {
+        history.push({ role: "assistant", content: answer });
+        lastRun.rounds = roundLog.length;
+        endRun();                        // 先把工作台定格，再写字
+        setStatePill("done");
+        var el = addMsg("ai", "");
+        await U.typewriter(el, answer, 12);
+        /* 打字机放的是纯文本预览；放完统一换成 Markdown 渲染结果。
+         * 打字机是整块重写 el.innerHTML，会把 .who 一起清掉，所以这里重建完整结构。 */
+        el.innerHTML = '<span class="who">智能体小管家</span>' +
+          '<div class="md-body">' + U.md(answer) + "</div>";
+        el.scrollIntoView && el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      },
+      onError: function (err) {
+        setStatePill("error");
+        addMsg("ai", "出错了：" + (err.message || err) + "\n\n小提示（卡住三步走）：① 自己读一遍问题并复述 ② 把问题说清楚再问 AI ③ 还不行就求助老师/同伴。");
+      }
+    };
+  }
+
   async function send(text) {
     if (busy) return;
     text = (text || "").trim();
@@ -853,72 +1406,10 @@ AgentLab.LabPlayground = (function () {
     setStatePill("running");
 
     try {
-      await Agent.run(text, history, {
-        onEngine: function (mode, info) { engineMode = mode; lastRun.engine = mode; paintEngine(); },
-        onStage: function (id, text, flag, round) { setStage(id, text, flag, round); },
-        /* ReAct 三步：思考 / 行动 / 观察 —— 这是规划器真正的"内容" */
-        onThink: function (d) {
-          var txt = (d.text || "").trim();
-          pushReact("think", d.round, txt
-            ? txt
-            : (d.thinkingOn
-              ? "（模型这一轮没有写出推理过程）"
-              : "思考模式已关：模型直接根据提问和工具说明书下判断，没有留下推理过程——<b>这正是“看不见规划”的样子</b>"));
-        },
-        onPlan: function (d) {
-          pushReact("act", d.round,
-            "决定调用：" + (d.names || "?") +
-            (d.picks && d.picks.length > 1 ? "（一次调 " + d.picks.length + " 个，可并行）" : ""),
-            d.picks);
-        },
-        onObserve: function (d) {
-          pushReact("observe", d.round,
-            (d.results || []).map(function (r) {
-              var t = String(r.text || "").replace(/\s+/g, " ");
-              return r.fn + " 返回：" + (t.length > 90 ? t.slice(0, 90) + "…" : t);
-            }).join('　|　'));
-        },
-        onStop: function (d) {
-          pushReact("stop", d.rounds || 0, d.reason || "");
-          lastRun.stopReason = d.reason || "";
-        },
-        onContext: function (messages) { setChain(messages); },
-        onTool: function (tool) {
-          lastRun.tools++;
-          addToolMsg(tool);
-          if (tool.name === "计时器工具" && tool.payload && tool.payload.seconds) {
-            startTimer(tool.payload.seconds, tool.payload.label, tool.payload.pomodoro, tool.payload.remindText);
-          }
-        },
-        onPayload: function (messages, info) {
-          lastPayload = messages;
-          renderPayload(messages);
-          /* 「拆开看看」里的说明文字随引擎变——两种模式发给大脑的东西并不一样 */
-          var note = $("pg-inspect-note");
-          if (note && info) {
-            note.innerHTML = info.engine === "rules"
-              ? '<b style="color:var(--c-exe-deep)">降级模式</b>：这一次规划由本地规则决定，' +
-              '再把结果<b>写成标准的 tool_calls 样子</b>发给模型——模型并没有真的参与选工具。这和真实 Function Calling 只是长得像。'
-              : '<b style="color:var(--c-mem-deep)">真实模式</b>：下面这份 messages 就是<b>逐轮真实发出去</b>的内容。' +
-              '注意 tool_calls 是大脑自己产生的，程序只是照着它去执行，再把结果作为 tool 角色追加回去。' +
-              '这一次共 ' + (lastRun.rounds || (info.round || 1)) + ' 轮' + (info.round ? "（当前显示第 " + info.round + " 轮发出前的上下文）" : "") + '。';
-          }
-        },
-        onDone: async function (answer) {
-          history.push({ role: "assistant", content: answer });
-          lastRun.rounds = roundLog.length;
-          endRun();                        // 先把工作台定格，再写字
-          setStatePill("done");
-          var el = addMsg("ai", "");
-          await U.typewriter(el, answer, 12);
-          el.insertAdjacentHTML("beforeend", turnBadgesHTML());
-          el.scrollIntoView && el.scrollIntoView({ block: "nearest", behavior: "smooth" });
-        },
-        onError: function (err) {
-          setStatePill("error");
-          addMsg("ai", "出错了：" + (err.message || err) + "\n\n小提示（卡住三步走）：① 自己读一遍问题并复述 ② 把问题说清楚再问 AI ③ 还不行就求助老师/同伴。");
-        }
-      });
+      await Agent.run(text, history, makeHooks(text));
+    } catch (e) {
+      /* 出错已经由上面的 onError 提示给学生了（含"卡住三步走"提示），
+       * 这里吞掉异常，避免控制台出现"未处理的 Promise 拒绝"噪音。 */
     } finally {
       endRun();                          // 幂等：出错时也把未参与的环节标清楚
       busy = false;
@@ -948,7 +1439,9 @@ AgentLab.LabPlayground = (function () {
   function pickTestQuestion() {
     if (Agent.flags.memory === false) return "今天下午有什么课？";
     if (Agent.flags.executor === false) return "明天会下雨吗？";
-    if (Agent.flags.planner === false) return "帮我算 25×4+10";
+    /* 关掉规划器时，要挑一句【必须拆步】的话才暴露得出来：
+     * 单步题（如“算 25×4+10”）规则也能做，关不关规划器看不出区别。 */
+    if (Agent.flags.planner === false) return PG_COMPLEX_TASK;
     return "明天会下雨吗？";
   }
 
@@ -976,7 +1469,10 @@ AgentLab.LabPlayground = (function () {
     input.addEventListener("keydown", function (e) { if (e.key === "Enter") doSend(); });
 
     document.querySelectorAll("#pg-chips .chip-suggest").forEach(function (c) {
-      c.addEventListener("click", function () { send(c.textContent); });
+      c.addEventListener("click", function () {
+        /* 优先读 data-q：多步那条芯片里混着「多步」标签，textContent 不干净 */
+        send(c.getAttribute("data-q") || c.textContent);
+      });
     });
 
     $("pg-clear").addEventListener("click", function () {
@@ -1021,12 +1517,46 @@ AgentLab.LabPlayground = (function () {
       });
     });
 
-    // 欢迎语
+    /* 思考模式单独绑：它不是组件，不进上面的四组件循环，也不和下方实验②联动。
+     * 它只改一件事——模型要不要把推理过程写出来。 */
+    var thinkCb = $("pg-flag-thinking");
+    if (thinkCb) {
+      thinkCb.checked = Agent.flags.thinking === true;
+      thinkCb.addEventListener("change", function () {
+        Agent.flags.thinking = thinkCb.checked;
+        U.toast(thinkCb.checked
+          ? "思考模式已开：模型会先写出推理过程（更慢，但过程可见）"
+          : "思考模式已关：直接决策、更快——规划器照常工作，只是看不见推理过程");
+      });
+    }
+
+    /* 运行模式：分段控件。
+     * 它只管"这一轮它有多大自主权"，与上面那排组件开关（flags）是两回事，两条线互不干扰。 */
+    document.querySelectorAll("#pg-mode .mode-btn").forEach(function (b) {
+      b.addEventListener("click", function () { applyMode(b.getAttribute("data-mode")); });
+      /* 说明气泡的三处触发：鼠标移入 / 键盘聚焦出现，移出 / 失焦收起。
+       * click 不额外处理——点完鼠标还在按钮上，气泡继续显示是对的。 */
+      b.addEventListener("mouseenter", function () { showModePop(b); });
+      b.addEventListener("focus", function () { showModePop(b); });
+      b.addEventListener("mouseleave", hideModePop);
+      b.addEventListener("blur", hideModePop);
+    });
+    /* 气泡是 fixed 定位：容器一滚，它就悬在原地、和按钮对不上了，所以滚动时直接收起来。
+     * 用捕获阶段监听，才能收到卡片内部 .chat-msgs 这类子容器的滚动。 */
+    document.addEventListener("scroll", hideModePop, true);
+    window.addEventListener("resize", hideModePop);
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") hideModePop(); });
+    applyMode(Agent.getMode(), true);   // 初始按当前模式刷新按钮高亮与输入框占位
+
+    // 欢迎语（只留一句：身份 + 核心功能，其余细节交给芯片与工作台现场演示）
     var box = $("pg-msgs");
-    box.innerHTML = '<div class="msg ai"><span class="who">智能体小管家</span>你好！我是智能体小管家。你可以问我班级的事、明天的天气，也可以让我算题、记提醒。发一句话，右侧“内部工作台”会一步步亮起来——<b>注意看“信息怎么流”那一块</b>：工具的结果会拼回上下文，大脑要再看一遍才能回答，这就是它和你脑子里想的“流水线”不一样的地方。点「重放本轮」可以慢放重讲，点「拆开看看」还能看到这一轮发给大脑的上下文。<b>没配置 API Key 时是演示形态</b>（规划由本地规则代劳）；配好 Key，这里显示的就是逐轮真实发出的请求。</div>';
+    box.innerHTML = '<div class="msg ai"><span class="who">智能体小管家</span>' +
+      '你好，我是智能体小管家。问我课表、天气，也能让我算题、记提醒。</div>';
     resetStages();
     resetFlow();
     setStatePill("idle");
+    /* 总装图的连线全部由 CSS 变量算位置，这里不再需要给斜边现算坐标，
+     * 也就不需要 ResizeObserver 了（旧实现见 layoutHubDiag 的注释）。 */
   }
 
   /* ============================================================
@@ -1056,7 +1586,7 @@ AgentLab.LabPlayground = (function () {
       analogy: "像给新老师配的“带教制度”：不是不信他的能力，而是要有流程、有检查、有兜底。",
       real: "Harness 负责：构造上下文、维护循环与状态、暴露工具接口、权限校验、结果验证、失败纠正、日志审计。模型能力边界之外的部分，正是 Harness 的价值所在——它决定系统能不能上线。",
       quiz: { q: "同一个模型，为什么在“网页聊天框”里和“接入 Harness 的系统”里表现差这么多？", a: "因为 Harness 决定了它能看到什么（上下文）、能用什么（工具）、被允许做什么（约束）、错了怎么补救（纠正）。模型只是整套系统里的一环。" },
-      links: [{ t: "现场开关组件", el: "pg-flags" }]
+      links: [{ t: "现场开关组件", el: "pg-flags" }, { t: "运行模式：自动 / 规划 / 问答", el: "pg-mode" }]
     },
     {
       id: "evaluation", icon: "target", nav: "评估 Evaluation", name: "评估（Evaluation）", en: "EVALUATION",
@@ -1096,7 +1626,7 @@ AgentLab.LabPlayground = (function () {
       analogy: "像家里的电器：开台灯随便开（自动），用煤气灶要有人在旁边（先问人），拆插座你自己不许动手（禁止）。",
       real: "工程做法是按风险设“闸门”：只读、可撤销的操作自动执行；写操作（发消息、删数据、花钱、提交表单）走人工确认；越权和危险动作直接禁止。确认环节也要设计好——给出“要做什么 + 影响范围 + 能不能撤销”，让人一眼能判断。这属于 Harness 的职责。",
       quiz: { q: "为什么“能撤销”和“不能撤销”要分成两档？", a: "因为犯错的代价完全不同：可撤销的操作（查天气、改写草稿）错了也没关系，自动执行更快；不可撤销的操作（删数据、发消息、付款）错了就收不回来，必须先让人确认。分级的依据是“错误代价”，不是“技术难度”。" },
-      links: [{ t: "实验：关掉一个组件", el: "pg-switch" }]
+      links: [{ t: "实验：关掉一个组件", el: "pg-switch" }, { t: "切到「规划」模式看确认闸门", el: "pg-mode" }]
     },
     {
       id: "multiagent", icon: "users", nav: "多智能体协作", name: "多智能体协作（Multi-Agent）", en: "MULTI-AGENT",
@@ -1728,12 +2258,12 @@ AgentLab.LabPlayground = (function () {
         id: "noPlan", label: "B 组：关掉规划器", icon: "gear",
         steps: [
           { t: "第 1 步：收到请求。记忆里确实存着「周三 8:00 交美术作业」这条提醒。", tone: "dim" },
-          { t: "第 2 步：没有规划器，它不拆步骤，<b>把整句话直接丢给“提醒”工具</b>。", tone: "warn" },
-          { t: "第 3 步：提醒工具只收一个参数——<b>要提醒的内容原文</b>。可“上次说的那个提醒”到底该填成什么？没人负责把这句话展开成明白话。", tone: "no" },
+          { t: "第 2 步：规划器关着 —— <b>不由模型决定怎么做，改由本地规则做单步判定</b>：它只会按关键词挑一个工具，不会拆步骤、更不会“先查再改再确认”。", tone: "warn" },
+          { t: "第 3 步：规则挑中“提醒”工具，可它只收一个参数——<b>要提醒的内容原文</b>。“上次说的那个提醒”到底该填成什么？没有人负责把这句话展开成明白话。", tone: "no" },
           { t: "第 4 步：它只能把原话硬塞进去、或者凭感觉猜一个内容 —— 猜错了，就等于把提醒改成了另一件事。", tone: "no" },
           { t: "第 5 步：工具报错或写错，用户还得回头检查一遍。", tone: "warn" }
         ],
-        tail: "结局：记得住，却办不成——有记忆不等于会办事，“把话变成步骤”是另一件事。"
+        tail: "结局：记得住，却办不成——有记忆不等于会办事，“把话变成步骤”是另一件事；规则只会单步匹配，接不住要拆步的活。"
       }
     ],
     summary: "<b>结论：</b>四样零件<b>串成一条接力链</b>：感知器把世界变成上下文 → 规划器决定怎么做 → 记忆器决定记住什么 → 执行器把决定变成动作（结果还会流回大脑，进入下一轮）。缺了哪一段，整条链就在那一段断掉，<b>而且断点各不相同</b>。<br>" +
@@ -1758,6 +2288,30 @@ AgentLab.LabPlayground = (function () {
     AgentLab.Adv.types.race.bind(host, PG_AB_DEMO);
   }
 
+  /* ---------- 多步任务示例：离线逐步演示 + 真机实跑 ---------- */
+  function bindPgMulti() {
+    var demo = $("pg-multi-demo");
+    var step = $("pg-multi-step");
+    var reset = $("pg-multi-reset");
+    var run = $("pg-multi-run");
+    if (!demo) return;
+    multiIdx = 0;
+    multiRender();
+    demo.addEventListener("click", multiPlay);
+    step.addEventListener("click", function () {
+      if (busy) { U.toast("正在真实运行，等它跑完再演示～"); return; }
+      if (multiTimer) { clearTimeout(multiTimer); multiTimer = null; }
+      multiStep();
+    });
+    reset.addEventListener("click", multiReset);
+    if (run) {
+      run.addEventListener("click", function () {
+        multiReset();            /* 先清空，免得离线轨迹和真实运行混在一起 */
+        send(PG_COMPLEX_TASK);
+      });
+    }
+  }
+
   /* ---------- 实验②：组件开关对能力的影响（与工作台开关双向联动） ---------- */
   function bindPgSwitch() {
     var host = $("pg-switch");
@@ -1768,7 +2322,7 @@ AgentLab.LabPlayground = (function () {
       chipsTitle: "① 当前开启的组件（点一下即可关掉，上方工作台的开关会跟着变）：",
       chips: [
         { id: "perception", label: "感知器（观察 / 把输入变成上下文）", on: Agent.flags.perception !== false },
-        { id: "planner", label: "规划器（推理 / 决定要不要用工具）", on: Agent.flags.planner !== false },
+        { id: "planner", label: "规划器（决策 / 决定要不要用工具、用哪个）", on: Agent.flags.planner !== false },
         { id: "memory", label: "记忆器（上下文 / 短期 + 长期）", on: Agent.flags.memory !== false },
         { id: "executor", label: "执行器（真正调用工具）", on: Agent.flags.executor !== false }
       ],

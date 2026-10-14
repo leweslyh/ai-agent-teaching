@@ -271,6 +271,137 @@ AgentLab.LabPerception = (function () {
     }
   };
 
+  /* 没配 Key 时的示例响应：不是一段写死的 JSON，而是**按当前请求体算出来**的——
+   * 学生拖了 temperature / max_tokens / stop、开了 logprobs，
+   * 右下角「回来的」那一栏也跟着换结构，于是"改一个参数、回来一个样"的对照
+   * 在没有 Key 的机器上照样成立。（有 Key 的时候走真实接口，不看这里。） */
+  function llmDemoResp(body) {
+    body = body || {};
+    var note = [];
+    var msg = { role: "assistant", content: "还剩 14 元。" };
+    var finish = "stop";
+
+    /* ---- 第一段：先用「参数」把这段回答本身捏出来（措辞 / 长度 / 结尾） ---- */
+    if (typeof body.temperature === "number" && body.temperature >= 1.2) {
+      msg.content = "3 支笔一共 36 元，50 减 36 等于 14，所以还剩 14 元哦～";
+      note.push('<span class="ok">temperature 调高：</span>回来的<b>结构没变</b>，' +
+        "但用词变活了——这类采样参数改的是“内容的样子”，不是“回来的结构”。");
+    }
+    if (typeof body.max_tokens === "number" && body.max_tokens <= 32) {
+      msg.content = "还剩 14";
+      finish = "length";
+      note.push('<span class="no">max_tokens 太小：</span>回答被<b>当场打断</b>，只剩半句，' +
+        "<code>finish_reason</code> 变成 <code>length</code>——程序看到它就知道“话没说完”。");
+    }
+    if (body.stop && body.stop.length) {
+      var s = body.stop[0];
+      var at = String(msg.content).indexOf(s);
+      if (at >= 0) {
+        msg.content = String(msg.content).slice(0, at);   /* stop 的那个词本身不进回答 */
+        finish = "stop";
+        note.push('<span class="ok">stop 命中：</span>模型一吐出「' + U.esc(s) + "」就收工，" +
+          "而且<b>这个停下来的词不会出现在回答里</b>——所以用户看到的是被截到「" +
+          U.esc(s) + "」前面的那一段。");
+      } else {
+        note.push('<span class="dim">stop 设成「' + U.esc(s) + "」：这次回答里没出现它，" +
+          "所以等于没生效——停止词要设成模型真会写到的内容。</span>");
+      }
+    }
+    if (body.frequency_penalty || body.presence_penalty) {
+      note.push('<span class="dim">两个惩罚参数：它们改的是"用词偏好"（同一个词别老重复 / 多说点新内容），' +
+        "响应的<b>结构还是老样子</b>——想一眼看出区别，得对比两次回答的用词。</span>");
+    }
+
+    /* ---- 第二段：再用「开关」决定结构（结构优先于措辞，与真实接口一致） ---- */
+    if (body.response_format && body.response_format.type === "json_object") {
+      var js = '{"answer": 14, "reason": "3×12=36，50−36=14"}';
+      msg.content = (finish === "length") ? js.slice(0, 16) : js;
+      note.push(finish === "length"
+        ? '<span class="no">JSON + 太小的 max_tokens：</span>这段 JSON 也被截断了——程序解析会直接报错，' +
+          "这正是真实工程里必须“先校验、能兜底”的原因。"
+        : '<span class="ok">JSON 格式：</span><code>content</code> 里不再是一句话，' +
+          "而是一段程序能直接取字段的 JSON——界面不用再猜数字藏在哪。");
+    } else if (body.tools && body.tools.length) {
+      msg.content = null;
+      msg.tool_calls = [{
+        id: "call_demo", type: "function",
+        function: { name: "calculator", arguments: '{"expression":"50-3*12"}' }
+      }];
+      finish = "tool_calls";
+      note.push('<span class="ok">工具调用：</span>回来的不是答案，而是一张“委托单”——' +
+        "<code>content</code> 变成 null、<code>finish_reason</code> 变成 <code>tool_calls</code>。" +
+        "程序要执行完、把结果回填后再调一次，用户才看得到文字。");
+    }
+    if (body.thinking && body.thinking.type === "enabled") {
+      msg.reasoning_content = "50 元买 3 支笔：3 × 12 = 36 元；50 − 36 = 14 元。所以还剩 14 元。";
+      note.push('<span class="ok">思考模式：</span>响应体多出 <code>reasoning_content</code>——' +
+        "这段“草稿”不显示给用户，但会额外花掉不少 Token（<code>usage</code> 里看得见）。");
+    }
+    if (body.logprobs) {
+      note.push('<span class="ok">logprobs：</span>响应体多出 <code>logprobs</code> 字段，' +
+        "每个字当时还有哪些候选、各有多大概率，全在里面（用户看不到，调试才用）。");
+    }
+
+    var txt = String(msg.content || "");
+    var json = {
+      id: "chatcmpl-demo", object: "chat.completion",
+      model: body.model || "deepseek-v4-flash",
+      choices: [{ index: 0, finish_reason: finish, message: msg }],
+      usage: {
+        prompt_tokens: 48,
+        completion_tokens: Math.max(3, Math.round(txt.length * 0.8)),
+        total_tokens: 48 + Math.max(3, Math.round(txt.length * 0.8))
+      }
+    };
+    if (msg.reasoning_content) json.usage.completion_tokens_details = { reasoning_tokens: 42 };
+    if (body.logprobs) {
+      json.choices[0].logprobs = {
+        content: [{ token: "还", logprob: -0.21, top_logprobs: [{ token: "还", logprob: -0.21 }, { token: "剩", logprob: -1.8 }] }]
+      };
+    }
+
+    var out = { json: json, text: null };
+    out.meta = "示例耗时 1.1s　·　finish_reason: " + finish +
+      (msg.reasoning_content ? "　·　含 reasoning_content" : "") +
+      (msg.tool_calls ? "　·　含 tool_calls" : "") +
+      (body.logprobs ? "　·　含 logprobs" : "");
+
+    /* 流式：同一段文字被切成几帧推回来——「回来的」那一栏显示真正的 SSE 原文，
+     * 而右边「用户读到的结果」还是完整那一段：一眼看清 SSE 只是"分批到货"。 */
+    if (body.stream) {
+      var parts = [], step = Math.max(1, Math.ceil(txt.length / 3));
+      for (var i = 0; i < txt.length; i += step) parts.push(txt.slice(i, i + step));
+      var frames = parts.map(function (c) {
+        return "data: " + JSON.stringify({
+          id: "chatcmpl-demo", object: "chat.completion.chunk",
+          choices: [{ index: 0, delta: (body.thinking && body.thinking.type === "enabled" && parts[0] === c)
+            ? { reasoning_content: msg.reasoning_content } : { content: c }, finish_reason: null }]
+        });
+      });
+      if (!parts.length && msg.tool_calls) {
+        frames.push("data: " + JSON.stringify({
+          id: "chatcmpl-demo", object: "chat.completion.chunk",
+          choices: [{ index: 0, delta: { tool_calls: msg.tool_calls }, finish_reason: null }]
+        }));
+      }
+      frames.push("data: " + JSON.stringify({
+        id: "chatcmpl-demo", object: "chat.completion.chunk",
+        choices: [{ index: 0, delta: {}, finish_reason: (finish === "length" ? "length" : "stop") }]
+      }));
+      out.text = frames.join("\n\n") + "\n\ndata: [DONE]\n";
+      note.push('<span class="ok">流式返回：</span>「回来的」那一栏是真正的 SSE 原文——' +
+        "同一段文字被切成 " + Math.max(1, parts.length) + " 帧推回来，以 <code>data: [DONE]</code> 收尾；" +
+        "右边「用户读到的结果」仍然是完整那一段。");
+    }
+
+    if (!note.length) {
+      note.push("<b>这是最基础的一次调用：</b>开关全关、参数都没写入，模型直接给出一句文字答案。" +
+        "这道题心算就有把握，所以看不出“算错”——换成复杂计算就不一定了。");
+    }
+    out.note = note.join("<br>");
+    return out;
+  }
+
   var LLM_IO = {
     color: "per",
     title: "动手实验：改一个参数，回来的结构就换一个",
@@ -300,7 +431,6 @@ AgentLab.LabPerception = (function () {
           { role: "system", content: "你是一个五年级数学小助手。回答要简短，只说结果和一句话理由。" },
           { role: "user", content: "小明有 50 元，买 3 支每支 12 元的笔，还剩多少元？" }
         ],
-        temperature: 0.3,
         stream: false
       }
     },
@@ -361,21 +491,110 @@ AgentLab.LabPerception = (function () {
           '会自动换成 <code>auto</code>——工具照样能被调用，只是这回由模型自己判断。</span>'
       }
     ],
-    fallback: {
-      json: {
-        id: "chatcmpl-demo",
-        object: "chat.completion",
-        choices: [{
-          index: 0,
-          finish_reason: "stop",
-          message: { role: "assistant", content: "还剩 14 元。" }
-        }],
-        usage: { prompt_tokens: 48, completion_tokens: 9, total_tokens: 57 }
+    /* ---- 更多参数：和上面五个开关分工不同 ----
+     * 开关回答「有没有」（要不要 system、要不要工具）；
+     * 参数回答「是多少」（多随机、多长、遇到什么停）。
+     * 每一项都带"拖到两端各会发生什么"，并且只在写入时才出现在请求体里——
+     * 于是学生能同时看到两种东西：请求体多了哪个字段、回来的东西变成什么样。 */
+    params: [
+      {
+        k: "temperature", label: "temperature", cn: "随机性", icon: "dice",
+        group: "随机性 · 回答的“性格”", on: true, value: 0.3, min: 0, max: 2, step: 0.1,
+        fmt: function (v) { return v.toFixed(1); },
+        apply: function (b, v) { b.temperature = v; },
+        hint: "越小越稳（几乎每次一样），越大越发散",
+        offNote: "请求体里没有它时，接口用自己的默认值（DeepSeek 是 1.0，比 0.3 更随机）",
+        note: '<b>它就在请求体里：</b>模型的每个字都是按概率挑出来的，这个值决定“挑得有多大胆”。<br>' +
+          '<span class="ok">拖到 0：</span>每次只挑最稳的那个字——同一道题问十遍，答案几乎一模一样，' +
+          "适合算数、写代码这类“只要一个正确答案”的活。<br>" +
+          '<span class="no">拖到 1.5 以上：</span>开始挑“不那么稳”的字，措辞变活、也更容易跑题——' +
+          "写作文、想创意时才需要它。<br>" +
+          '<span class="dim">注意：它改的是<b>内容的样子</b>，不是<b>回来的结构</b>。' +
+          "和思考模式一起开时，推理过程通常不受它影响——采样参数管的是最后那段话。</span>"
       },
-      meta: "示例耗时 1.1s　·　finish_reason: stop",
-      note: "<b>这是最基础的一次调用：</b>开关全关，模型直接给出文字答案。" +
-        "这道题心算就有把握，所以看不出“算错”——但换成复杂计算就不一定了。"
-    },
+      {
+        k: "top_p", label: "top_p", cn: "候选池大小", icon: "percent",
+        group: "随机性 · 回答的“性格”", on: false, value: 0.9, min: 0.1, max: 1, step: 0.05,
+        fmt: function (v) { return v.toFixed(2); },
+        apply: function (b, v) { b.top_p = v; },
+        hint: "只在“最像的那几个字”里挑",
+        note: '<b>另一种控制随机的方式：</b>temperature 管“挑得多大胆”，top_p 管“从多少候选里挑”——' +
+          "先只留累计概率排在前 p 的那几个字，再在里面挑。<br>" +
+          '<span class="ok">拖到 0.1：</span>候选池很窄，回答稳但容易变得干巴、翻来覆去；<br>' +
+          '<span class="no">拖到 1.00：</span>整个词表都可能被选中，最“放飞”。<br>' +
+          '<span class="dim">官方建议：这两个一般<b>只调一个</b>——两个一起动，效果互相打架，' +
+          "出了问题也不知道该怪谁，实验也难复现。</span>"
+      },
+      {
+        k: "max_tokens", label: "max_tokens", cn: "回答长度上限", icon: "ruler",
+        group: "长度与停止", on: false, value: 512, min: 16, max: 1024, step: 16,
+        fmt: function (v) { return v + " tokens"; },
+        apply: function (b, v) { b.max_tokens = v; },
+        hint: "故意拖到最小：看回答被“腰斩”",
+        note: '<b>请求体多出 <code>max_tokens</code>：</b>这是“回答最多能写多长”的硬上限' +
+          "（只算模型写的，不算你发过去的题）。<br>" +
+          '<span class="no">拖到最小（16）：</span>模型会被<b>当场打断</b>，回答只剩半句，' +
+          "<code>finish_reason</code> 从 <code>stop</code> 变成 <code>length</code>。<br>" +
+          '这个值不是“给模型看的”，是<b>给程序看的信号</b>：看到 length 就知道“话没说完”，' +
+          "该调大上限、或接着上一段继续写。<br>" +
+          '<span class="dim">真实工程里最怕的正是“被截断了，却被当成完整答案交出去”。</span>'
+      },
+      {
+        k: "stop", label: "stop", cn: "遇到它就收工", icon: "clock",
+        group: "长度与停止", on: false, type: "select", value: "。",
+        options: [
+          { v: "。", t: "遇到句号“。”就停" },
+          { v: "元", t: "遇到“元”就停" },
+          { v: "所以", t: "遇到“所以”就停" }
+        ],
+        fmt: function (v) { return "「" + v + "」"; },
+        apply: function (b, v) { b.stop = [v]; },
+        hint: "模型吐出这几个字就立刻收尾",
+        note: '<b>请求体多出 <code>stop: ["…"]</code>：</b>模型一吐到这个内容就立刻收工，不再往下写。<br>' +
+          '<span class="ok">选「元」：</span>答案是“还剩 14 元。”，模型写到“元”就停；而且要留意——' +
+          '<b>停下来用的那个词不会出现在回答里</b>，所以这次回来的是被截到它前面的那一段。' +
+          "（选「所以」看看：如果这句话里根本没有“所以”，它就不会生效。）<br>" +
+          '<span class="dim">它常用来卡格式：比如只想要一行 JSON，就把 stop 设成换行或 <code>}</code>，' +
+          "模型想说废话也说不出来。</span>"
+      },
+      {
+        k: "frequency_penalty", label: "frequency_penalty", cn: "重复词惩罚", icon: "refresh",
+        group: "重复与用词", on: false, value: 0, min: -2, max: 2, step: 0.1,
+        fmt: function (v) { return (v > 0 ? "+" : "") + v.toFixed(1); },
+        apply: function (b, v) { b.frequency_penalty = v; },
+        hint: "正数：同一个词别老重复",
+        note: '<b>看名字就知道它管什么：</b>一个词在这次的回答里出现过<b>越多次</b>，再说它就越“贵”。' +
+          "正数在打压重复，负数在鼓励重复（一般没人用负数）。<br>" +
+          '<span class="ok">调到 +1 左右：</span>模型开始换着说法讲同一件事，不容易出现“车轱辘话”；<br>' +
+          '<span class="no">调到 +2：</span>为了不重复而硬换词，可能反而说不清楚、开始用怪词。<br>' +
+          '<span class="dim">它改的是用词偏好，响应<b>结构完全不变</b>——要看出区别，得对比两次回答的用词。</span>'
+      },
+      {
+        k: "presence_penalty", label: "presence_penalty", cn: "新话题奖励", icon: "spark",
+        group: "重复与用词", on: false, value: 0, min: -2, max: 2, step: 0.1,
+        fmt: function (v) { return (v > 0 ? "+" : "") + v.toFixed(1); },
+        apply: function (b, v) { b.presence_penalty = v; },
+        hint: "正数：更愿意说“还没说过的”",
+        note: '和上一个很像，但管的方向不同：<b>frequency</b> 数“这个词出现过多少次”，' +
+          "<b>presence</b> 只问“它出现过没有”——只要提过一次就压一下。<br>" +
+          '<span class="ok">调到 +1：</span>模型更愿意开新话题、补新信息，写作文时内容更丰富；<br>' +
+          '<span class="no">调得太大：</span>容易为了“说新的”而跑题、把不该说的也倒出来。<br>' +
+          '<span class="dim">和上一个一样，它不改变回来的结构——这也是这张卡想教的分界线：' +
+          "<b>有些参数改的是结构，有些改的是内容。</b></span>"
+      },
+      {
+        k: "logprobs", label: "logprobs", cn: "把候选词也带回来", icon: "microscope",
+        group: "调试信息", on: false, type: "bool", value: true,
+        apply: function (b) { b.logprobs = true; b.top_logprobs = 5; },
+        hint: "调试用：顺便报出每个字当时的候选",
+        note: '<b>请求体多出 <code>logprobs: true</code> 和 <code>top_logprobs: 5</code>：</b>' +
+          "模型会顺便把每个字当时的<b>候选词和概率</b>一起交回来，响应体因此多一个 <code>logprobs</code> 字段。<br>" +
+          '它的用处不是给学生看，而是给工程师看：模型到底“有多确信”，一眼就查得到。<br>' +
+          '<span class="dim">用户永远看不到它，生产环境通常也不开——它会让响应体明显变大。</span>'
+      }
+    ],
+    /* 示例响应改成函数：没配 Key 时，回来的东西跟着参数一起变 */
+    fallback: function (body) { return llmDemoResp(body); },
     sendLabel: "发送请求",
     latency: 700
   };
@@ -946,8 +1165,8 @@ AgentLab.LabPerception = (function () {
           '<button class="btn btn-ghost btn-sm" id="pc-ocr-toggle">' + U.icon("info", 14) + ' 识别通道 / 默认对象说明（点开看细节）</button>' +
         '</div>' +
         '<div class="tx-points ocr-notes" id="pc-ocr-notes" style="display:none">' +
-          '<div class="tx-point">' + U.icon("cloud", 15) + '<div class="tx-point-txt"><b>识别通道：</b>云端视觉大模型（最准）→ 本地轻量引擎 → 示例讲解。本演示默认走「示例讲解」通道，不联网、不安装，课堂上点开就能用。</div></div>' +
-          '<div class="tx-point">' + U.icon("img", 15) + '<div class="tx-point-txt"><b>默认对象：</b>没选图时自动载入内置的 Transformer 架构图，方便直接演示；也可点「选择图片」换成你自己的图。</div></div>' +
+          '<div class="tx-point">' + U.icon("cloud", 15) + '<div class="tx-point-txt"><b>识别通道：</b>云端视觉大模型（最准）→ 本地轻量引擎 → 示例讲解。配好密钥走云端；没配密钥自动改用<b>本地轻量引擎</b>（首次需联网下载中文语言包，约 20~60 秒，之后一直走缓存）；两者都不可用时才降级为示例讲解——<b>课堂上点开就能用</b>。</div></div>' +
+          '<div class="tx-point">' + U.icon("img", 15) + '<div class="tx-point-txt"><b>默认对象：</b>不选图也能直接演示——配有密钥时自动载入 Transformer 论文英文原图，没配密钥时载入内置的「数学作业图」；想用自己的图，点「选择图片」即可。</div></div>' +
           '<div class="tx-point">' + U.icon("spark", 15) + '<div class="tx-point-txt"><b>识别逻辑：</b>先框出图里的文字区域，再逐行识别——字体越清晰、排版越规整，结果越准（但也越容易踩到 0/O、1/l 这类易错字，记得校对）。</div></div>' +
         '</div>' +
         '<div class="row" style="margin-bottom:12px">' +
@@ -1160,13 +1379,14 @@ AgentLab.LabPerception = (function () {
         '</div>'
       ) +
 
-      /* ⑧ 怎么调用大模型：一次调用的四件套 + 五步链路 + 四个参数开关
+      /* ⑧ 怎么调用大模型：一次调用的四件套 + 五步链路 + 五个开关 + 一组可调参数
        * 位置：在「消息四角色」之后——messages 刚拼好，紧接着看它怎么发出去、拿回什么。
        *       调用卡引用的两个概念（messages、Token）在前两张卡里都已经铺好 */
       card("per", "怎么调用大模型：把上下文发出去，把答案传回来",
         "上一张卡拼好的 <b>messages</b>（里面每一段文字都已经切成了 Token），接下来要真的<b>发出去</b>。一次真实的大模型调用只有四样东西：" +
         "<b>发给谁</b>（接口地址）、<b>你是谁</b>（鉴权 Key）、<b>说什么</b>（请求体：模型名 + messages + 参数）、<b>拿回什么</b>（响应体：content 或 tool_calls）。" +
-        "先看完整链路，再亲手「发一次」，最后用五个开关对照：改哪个参数，回来的结构就怎么换。",
+        "先看完整链路，再亲手「发一次」，最后做两组对照：<b>五个开关</b>决定“有没有”（要不要 system、要不要工具），" +
+        "<b>一组可调参数</b>决定“是多少”（多随机、多长、遇到什么停）——改哪一处，回来的东西就换一种样子。",
         /* 区 1：原理 —— 四件套 + 五步链路 */
         '<div class="pf-kit-head">' + U.icon("send", 16) + ' 原理：一次调用要带齐四样东西</div>' +
         '<div class="pf-demo-grid">' +
@@ -1201,7 +1421,7 @@ AgentLab.LabPerception = (function () {
         '<div class="pf-kit-head">' + U.icon("target", 16) + ' 分步接力：一次调用要走完哪五步</div>' +
         '<div id="pc-llm-flow"></div>' +
         /* 区 3：对照 —— 请求 ↔ 响应 */
-        '<div class="pf-kit-head">' + U.icon("refresh", 16) + ' 对照：五个开关独立组合，改哪个参数就换哪种回来的结构</div>' +
+        '<div class="pf-kit-head">' + U.icon("refresh", 16) + ' 对照：五个开关 × 一组可调参数，改哪一处就换哪种回来的结构</div>' +
         '<div id="pc-llm-io"></div>' +
         '<div class="tip tip-info" style="margin-top:12px">' + U.icon("lock", 15) + ' <b>安全提醒（很重要）：</b>API Key 等于“钱包密码”。' +
           '真做产品时，Key <b>必须放在服务端</b>，由服务器代替浏览器去调用；本项目是课堂演示，才让你把 Key 填在自己的浏览器里、直接连官方接口——' +
@@ -1407,7 +1627,7 @@ AgentLab.LabPerception = (function () {
   /* 统一编号：渲染完成后，按"栏目内顺序"给没有手写编号的卡片补一个圈码，
    * 让 7 个栏目的卡片编号口径完全一致（有手写编号的沿用作者编号，如 ⑨⁺）。 */
   function numberCards() {
-    ["origin", "home", "perception", "planner", "memory", "executor", "playground"].forEach(function (id) {
+    ["origin", "home", "perception", "planner", "memory", "executor", "playground", "works"].forEach(function (id) {
       var sec = $("sec-" + id);
       if (!sec) return;
       var idx = 0;
@@ -2477,21 +2697,25 @@ AgentLab.LabPerception = (function () {
 
     runBtn.addEventListener("click", async function () {
       playPipe("pc-ocr-chips", 280, ".tx-chip");   /* 联动：识别一开始，右侧解读条就一条条点亮 */
-      /* 未选择图片时：有网且已配置云端密钥 → 默认载入内置 Transformer 架构图识别；
-       * 否则提示先上传图片。 */
+      /* 未选择图片时不打断课堂：自动载入一张内置示例图继续识别。
+       * 配了云端密钥 → Transformer 论文英文原图（信息密度高，最能体现云端视觉模型的读图能力）；
+       * 没配密钥（课堂常态）→ 内置的中文「数学作业图」，交给本地引擎真识别，失败再降级示例讲解。 */
       var usingDefault = false;
+      var defaultLabel = "";
       if (!currentFile || !currentDataUrl) {
-        if (navigator.onLine && AgentLab.API.hasCloudKey()) {
-          usingDefault = true;
-          currentFile = null;
+        usingDefault = true;
+        var hasCloud = navigator.onLine && AgentLab.API.hasCloudKey();
+        currentFile = null;
+        if (hasCloud) {
           currentDataUrl = "images/transformer-architecture-original.png";
-          preview.innerHTML = '<img src="' + currentDataUrl + '" style="max-width:100%;max-height:240px;border-radius:8px">';
-          result.textContent = "等待识别……";
-          status.textContent = "未选择图片，已自动载入默认示例：Transformer 论文英文原图";
+          defaultLabel = "Transformer 论文英文原图";
         } else {
-          U.toast("请先选择一张图片（联网并配置密钥后，可不选图直接体验默认示例）");
-          return;
+          currentDataUrl = drawSampleImage();
+          defaultLabel = "数学作业图";
         }
+        preview.innerHTML = '<img src="' + currentDataUrl + '" style="max-width:100%;max-height:240px;border-radius:8px">';
+        result.textContent = "等待识别……";
+        status.textContent = "未选择图片，已自动载入内置示例：" + defaultLabel;
       }
       runBtn.disabled = true;
       progressBox.style.display = "block";
@@ -2508,14 +2732,14 @@ AgentLab.LabPerception = (function () {
         try {
           var dataUrl = await compressForCloud(currentDataUrl);
           result.textContent = "正在识别……";
-          status.textContent = "云端视觉大模型正在读图……";
+          status.textContent = "云端视觉大模型正在读图……（大模型读图较慢，约需 60 秒，请稍候）";
           var text = (await AgentLab.API.ocrImage(dataUrl) || "").trim();
 
           result.textContent = text || "(图片中没有识别到文字，试试更清晰、文字更占画面的图片)";
           progressBox.style.display = "block";
           progressBar.style.width = "100%";
           progressPct.textContent = "100%";
-          status.textContent = "识别完成（云端大模型）！共 " + text.replace(/\s/g, "").length + " 个字符" + (usingDefault ? " · 默认示例图：Transformer 论文英文原图" : "");
+          status.textContent = "识别完成（云端大模型）！共 " + text.replace(/\s/g, "").length + " 个字符" + (usingDefault ? " · 内置示例图：" + defaultLabel : "");
           runBtn.disabled = false;
         } catch (err) {
           var m = (err && err.message) || "未知错误";
@@ -2529,7 +2753,7 @@ AgentLab.LabPerception = (function () {
       /* ② 无密钥：本地 Tesseract 引擎（按需联网加载；离线/失败时自动降级为示例） */
       var ok = false;
       try {
-        status.textContent = "正在加载本地识别引擎（首次约需下载中文语言包）……";
+        status.textContent = "正在加载本地识别引擎（首次需联网下载中文语言包，约 20~60 秒）……";
         result.textContent = "正在识别……";
         var canvas = await preprocess(currentDataUrl);
 
@@ -2554,7 +2778,7 @@ AgentLab.LabPerception = (function () {
         result.textContent = t2 || "(图片中没有识别到文字，试试更清晰、光线更均匀的图片)";
         progressBar.style.width = "100%";
         progressPct.textContent = "100%";
-        status.textContent = "识别完成（本地引擎）！共 " + t2.replace(/\s/g, "").length + " 个字符";
+        status.textContent = "识别完成（本地引擎）！共 " + t2.replace(/\s/g, "").length + " 个字符" + (usingDefault ? " · 内置示例图：" + defaultLabel : "");
         ok = true;
       } catch (err) {
         ocrWorkerPromise = null;   // 出错后允许下次重建 worker

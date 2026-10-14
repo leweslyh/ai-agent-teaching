@@ -125,8 +125,9 @@
     AgentLab.LabMemory.render();
     AgentLab.LabExecutor.render();
     AgentLab.LabPlayground.render();
+    AgentLab.LabWorks.render();
 
-    // 全部栏目渲染完成后，统一卡片编号（7 个栏目口径一致）
+    // 全部栏目渲染完成后，统一卡片编号（各栏目口径一致）
     AgentLab.LabPerception.numberCards();
 
     initNav();

@@ -118,7 +118,7 @@ AgentLab.LabPlanner = (function () {
       fail: "提醒在凌晨 3 点响了——参数把“下午 3 点”传成了“3:00”（24小时制理解为凌晨）",
       options: ["告诉用户“是你自己没说清楚”", "反思：时间参数需要明确 AM/PM 或 24 小时制，下次规划时要确认参数语义", "把提醒工具删掉"],
       correct: 1,
-      why: "工具调用的参数语义很重要。规划器不仅要选对工具，还要传对参数，并从错误中学习。"
+      why: "工具调用的参数语义很重要。规划器负责选对工具，而真正把参数写进调用的是大脑——它必须按工具接口的要求把“下午 3 点”写成 15:00，参数传错了整件事就白做，所以要从错误中学会确认参数语义。"
     }
   ];
 
@@ -192,15 +192,18 @@ AgentLab.LabPlanner = (function () {
       '</div>' +
 
       /* ① 认识规划器：Agent 的思考中枢 */
-      LP.card("plan", "认识规划器：Agent 的思考中枢", "规划器（Planner）是 Agent 的「大脑」：<b>理解意图 → 拆解任务 → 排序步骤 → 选择工具</b>，并在执行中不断调整。",
+      LP.card("plan", "认识规划器：Agent 的思考中枢", "规划器（Planner）是 Agent 的一项核心<b>决策职责</b>（由大脑这个 LLM 承担）：<b>理解意图 → 拆解任务 → 排序步骤 → 选择工具</b>，并在执行中不断调整。注意：它是独立的一项职责，<b>不等于“思考模式”</b>——思考模式只是决定推理过程可不可见的能力开关。",
         '<div class="row" style="gap:24px;justify-content:center;margin:6px 0 10px;flex-wrap:wrap">' +
           '<div class="tf-node" style="border-color:var(--c-plan);min-width:140px">' + U.icon("target", 20) + ' 法宝一：拆解<br><small style="color:var(--c-sub);font-weight:400">大任务 → 小步骤</small></div>' +
           '<div class="tf-arrow">→</div>' +
           '<div class="tf-node" style="border-color:var(--c-plan);min-width:140px">' + U.icon("link", 20) + ' 法宝二：排序<br><small style="color:var(--c-sub);font-weight:400">排好先后顺序</small></div>' +
           '<div class="tf-arrow">→</div>' +
-          '<div class="tf-node" style="border-color:var(--c-plan);min-width:140px">' + U.icon("gear", 20) + ' 法宝三：执行<br><small style="color:var(--c-sub);font-weight:400">调工具+看结果</small></div>' +
+          /* 第三格原来是「法宝三：执行（调工具+看结果）」——这把“执行”算进了规划器的手艺里，
+           * 和本页①号卡的「选择工具」、以及小测验里的「两件法宝＝拆解和排序」都对不上，
+           * 也会让学生以为规划器能直接调用工具。改成“选工具”，并点明它只做决定、不亲自调用。 */
+          '<div class="tf-node" style="border-color:var(--c-plan);min-width:140px">' + U.icon("gear", 20) + ' 法宝三：选工具<br><small style="color:var(--c-sub);font-weight:400">只决定调哪个 · 不亲自调用</small></div>' +
         '</div>' +
-        '<div class="tip">' + U.icon("spark", 16) + ' <b>核心公式：</b>规划器不是一次性列完步骤就完事，而是在“思考→行动→观察”的循环中动态调整——这就是 <b>ReAct 循环</b>，下面会专门演示！</div>' +
+        '<div class="tip">' + U.icon("spark", 16) + ' <b>核心公式：</b>规划器不是一次性列完步骤就完事，它嵌在“思考→行动→观察”的循环里动态调整——这就是 <b>ReAct 循环</b>。注意分工：<b>“行动”这一步不由规划器做</b>，而是大脑按工具接口把参数写成调用、交给执行器去跑，结果再回流，规划器据此改计划。下面会专门演示！</div>' +
         '<div class="tip" style="margin-top:8px">' + U.icon("book", 16) + ' <b>ai-agent-book 原文：</b>“LLM 是 Agent 的决策核心——理解意图、思考规划、做出判断。”规划器的能力来自预训练积累的世界知识，以及后训练固化的决策策略。</div>' +
         '<div class="tip" style="margin-top:8px">' + U.icon("brain", 16) + ' <b>一句话理解“规划”：先在脑子里预演一遍，再动手。</b>规划不是把任务写长，而是把“模糊的大愿望”变成“可执行的清单”——该拆的拆开、该等的排队、该并行的同时做。执行中遇到新情况，还要回来改计划（这就是后面的 ReAct 循环）。</div>',
         { id: "pl-intro" }
@@ -490,6 +493,7 @@ AgentLab.LabPlanner = (function () {
               '<div class="pf-step"><span class="pf-step-tag">为什么必须有“出口”</span>循环要有边界：<b>最大轮数（约 12 轮）+ 停止条件</b>——不然会一直转下去，越转越贵</div>' +
             '</div>' +
             '<div class="pf-note">' + U.icon("info", 13) + ' 对照着记：<b>思维链 CoT = 只“想”不“做”；ReAct = 边想边做。</b></div>' +
+            '<div class="pf-note">' + U.icon("gear", 13) + ' 分清楚谁是谁：<b>“思考 / 行动”是规划器的产出</b>（想完就去调工具），<b>“观察”是执行器的产物</b>（工具结果回来）——别把整圈 ReAct 都算成规划器。</div>' +
           '</div>' +
         '</div>' +
         '<div class="game-box">' +
@@ -547,7 +551,8 @@ AgentLab.LabPlanner = (function () {
         '<div class="tip" style="margin-top:10px">' + U.icon("book", 16) + ' <b>原理：</b>CoT 让模型把推理过程显式输出，每一步都基于上一步——减少「跳步」错误。在数学、符号推理、决策任务上提升显著。' +
           '<br><b>实验条件：</b>题干完全相同，只有指令不同——「直接问」那侧被限制只能输出很短一句，模拟「不假思索就报数」。' +
           '<br><b>换模型看什么：</b>小模型（Qwen2.5-7B）要提醒它「写过程」才稳，像借助外部脚手架；换成大模型后重点看「直接问」那一侧——如果也答对了，说明「一步一步想」已经被<b>内化</b>成模型本能。' +
-          '<br><b>模型与 Key：</b>Qwen2.5-7B 走「设置 → 云端能力密钥 · 硅基流动」；DeepSeek V4 Flash 走「设置」里的 DeepSeek Key。</div>'
+          '<br><b>模型与 Key：</b>Qwen2.5-7B 走「设置 → 云端能力密钥 · 硅基流动」；DeepSeek V4 Flash 走「设置」里的 DeepSeek Key。</div>' +
+        '<div class="tip" style="margin-top:8px">' + U.icon("gear", 16) + ' <b>别和规划器、思考模式搅在一起：</b>CoT 只是规划器可用的一种“想清楚”的手段——<b>它不是规划器本身</b>。规划器是每轮都要做的决策职责（拆解 / 排序 / 选工具）；CoT 是让这一步想得更稳的写法。至于“思考模式”，那是大模型的<b>能力开关</b>：只决定推理过程要不要显式写出来（可见 / 不可见）——关掉它，规划照常发生，只是你看不见过程。</div>'
       ) +
 
       /* ⑩ 循环的边界：上下文轨迹 + 停止条件 + 假完成（合并同一主题，补两个互动） */

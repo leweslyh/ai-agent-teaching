@@ -14,8 +14,31 @@ AgentLab.Agent = (function () {
   var STAGE_DELAY = 700;   // 每个阶段动画时长（毫秒）
   var MAX_HISTORY = 8;     // 短期记忆：最多保留的对话轮数
 
-  /* 组件开关（智能体实验室里可以现场关掉某个组件看效果） */
-  var flags = { perception: true, planner: true, memory: true, executor: true };
+  /* 组件开关（智能体实验室里可以现场关掉某个组件看效果）
+   * 教学口径（全站统一，勿混）：
+   *   · flags.planner ——「规划器」是一项【决策职责】，每轮都参与。
+   *       true ：模型自主决策（tool_choice: auto，读工具说明书自己判断要不要调工具、调哪个）。
+   *       false：「关掉规划器」= 剥夺模型的决策权，改由本地规则单步判定调哪个工具，
+   *              模型只负责把结果组织成人话。这正是「不会拆步、参数凑不齐」的样子。
+   *   · flags.thinking ——「思考模式」是模型的【能力开关】，只决定要不要把推理过程
+   *       （reasoning_content）写出来，与规划器无关：关掉它，规划照常发生，只是看不见推理过程。
+   * 默认 thinking=false：与 api.js 的 disableThinking 基线一致——直接决策，不先走一段思维链。 */
+  var flags = { perception: true, planner: true, memory: true, executor: true, thinking: false };
+
+  /* 运行模式（「智能体小管家」上可现场切换）。
+   * 同一套组件、同一个大脑，三种模式的差别只在【自主程度】——这恰好是 Harness 在管的事：
+   *   · auto 自动：模型自主决定要不要调工具、调哪个，调完直接给答案。（原有行为，默认）
+   *   · plan 规划：只做规划、不执行。先把"分几步、每步调什么工具、参数是什么"摆出来交给同学，
+   *              点「按这个计划执行」后才真正跑工具（＝人在回路的确认闸门）。
+   *   · ask  问答：只用模型已有的知识回答——请求里【根本不带工具说明书】，
+   *              没有工具（手脚），"能做什么"这一项就没了，所以只能聊天。
+   * 注意与 flags 的分工：flags 管的是"某个组件开没开"，mode 管的是"这一轮的自主程度"，
+   * 两者正交——例如「关掉规划器」在任何模式下都照旧生效（见 run 里的引擎分流）。 */
+  var MODES = ["auto", "plan", "ask"];
+  var runMode = "auto";
+
+  function setMode(m) { if (MODES.indexOf(m) >= 0) runMode = m; return runMode; }
+  function getMode() { return runMode; }
 
   /* 中文数字 → 阿拉伯数字（支持：一~十、两、X十、十X、X百、X千） */
   var CN_NUM = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10, 百: 100, 千: 1000 };
@@ -703,10 +726,18 @@ AgentLab.Agent = (function () {
 
   /* ---------- 记忆收集（记忆器） ---------- */
 
-  function collectMemory(history) {
+  function collectMemory(history, profile) {
     var classInfo = AgentLab.Store.getClassInfo();
     var manual = AgentLab.Store.getManual();
     var tools = AgentLab.Store.getTools();
+    /* 作品档案（profile）：只放开该作品声明的工具，其余一律关掉。
+     * 「作品展示」里两个作品“工具配置不同”就体现在这里——不传 profile 时这一整段跳过，
+     * 行为与「智能体实验室」现状逐字一致。 */
+    if (profile && profile.toolKeys && profile.toolKeys.length) {
+      var allow = {};
+      profile.toolKeys.forEach(function (k) { allow[k] = true; });
+      for (var tk in tools) { if (!allow[tk]) tools[tk] = false; }
+    }
     var kbItems = 0;
     ["className", "slogan", "schedule", "duty", "notice", "teacher"].forEach(function (k) {
       if (classInfo[k] && String(classInfo[k]).trim()) kbItems++;
@@ -715,6 +746,7 @@ AgentLab.Agent = (function () {
       classInfo: classInfo,
       manual: manual,
       tools: tools,
+      profile: profile || null,
       kbItems: kbItems,
       historyCount: history ? history.length : 0
     };
@@ -993,10 +1025,18 @@ AgentLab.Agent = (function () {
   /**
    * @param {Object} [opts] { mode: "" | "reasoning" | "legacy" } —— 工具结果的写法（见上方说明）
    */
+  /* system 提示词取值：作品档案自带专属提示词就用它的，否则回落到默认「智能体小管家」。 */
+  function sysPromptFor(memory) {
+    if (memory && memory.profile && typeof memory.profile.systemPrompt === "function") {
+      return memory.profile.systemPrompt(memory.classInfo, memory.manual);
+    }
+    return AgentLab.buildSystemPrompt(memory.classInfo, memory.manual);
+  }
+
   function buildMessages(intent, userText, memory, history, toolResult, toolBlocked, opts) {
     var mode = (opts && opts.mode) || "";
     var legacyToolResult = mode === "legacy";
-    var sys = AgentLab.buildSystemPrompt(memory.classInfo, memory.manual);
+    var sys = sysPromptFor(memory);
     var messages = [
       { role: "system", content: sys },
     ];
@@ -1057,13 +1097,23 @@ AgentLab.Agent = (function () {
   /* system 消息 = 规则 + 长期记忆档案 + 执行器状态。
    * 注意：长期记忆是<b>借 system 角色</b>进上下文的，它没有自己的角色——
    * 这是“记忆片段要给一个角色”最典型的例子。 */
-  function buildSys(memory, executorOn) {
-    var sys = AgentLab.buildSystemPrompt(memory.classInfo, memory.manual);
+  function buildSys(memory, executorOn, runMode) {
+    var sys = sysPromptFor(memory);
     sys += executorOn
       ? "\n\n【执行器】你有一批工具可以用。凡是需要外部信息（天气、时间、搜索）或精确计算（算数、换算、图形、计时）的地方，" +
         "请先调用工具拿到真实结果，再根据工具返回的内容回答；不要凭空编造数字。工具结果回来后你还要再看一遍，才能给出最终答案。"
       : "\n\n【执行器已关闭】这一轮你没有可用工具。凡是需要查真实数据的问题（天气、现在几点、换算结果等），" +
         "请直接告诉同学“我现在没有工具，查不到真实数据”，绝对不要编造。";
+    /* 模式补充说明：组件没变，只是这一轮的"自主程度"不同，所以要明确告诉模型这一轮的规矩。
+     * 不说清楚的话，规划模式的模型会直接动手（把答案算完），学生就看不到"计划"这一步了。 */
+    if (runMode === "plan") {
+      sys += "\n\n【这一轮是规划模式】请先只做规划，不要真的动手。把这件事打算分几步做、每一步调用哪个工具、" +
+        "大概要什么参数想清楚。判断需要工具就照常产生工具调用——系统会把它当作「计划」交给同学确认，" +
+        "确认之后才会真正执行；判断不需要工具，就把你要讲的步骤直接写清楚。";
+    } else if (runMode === "ask") {
+      sys += "\n\n【这一轮是问答模式】你没有工具可用，只能凭自己已有的知识回答。" +
+        "遇到必须查真实数据的问题（天气、现在几点、换算结果），请如实说明你查不到，不要编造。";
+    }
     return sys;
   }
 
@@ -1075,17 +1125,18 @@ AgentLab.Agent = (function () {
     return {};
   }
 
-  function callBrain(messages, tools, plannerOn) {
+  function callBrain(messages, tools, thinkingOn) {
     var body = { model: modelName(), messages: messages, temperature: 0.3, stream: false };
     if (tools && tools.length) {
       body.tools = tools;
       body.tool_choice = "auto";          // auto：模型有权判断“要不要调”
     }
-    /* 规划器开关 → 真实对应“要不要让模型先推理再答”（DeepSeek 的 thinking）。
-     * 开：先推理再规划；关：直接答，最快。两种都是真实机制，不是演出来的。
-     * plannerOn === null：平台不支持 thinking 字段（上次被 400 拒绝过），干脆不发。 */
-    if (plannerOn !== null) {
-      body.thinking = { type: plannerOn ? "enabled" : "disabled" };
+    /* 思考模式（模型的能力开关）→ 决定要不要把推理过程写出来（DeepSeek 的 thinking）。
+     * 开：会先在 reasoning_content 里把题算一遍；关：直接决策，最快。
+     * 注意：它与「规划器」无关——关掉思考，模型照样要完成规划（拆步、调工具），只是看不见过程。
+     * thinkingOn === null：平台不支持 thinking 字段（上次被 400 拒绝过），干脆不发。 */
+    if (thinkingOn !== null) {
+      body.thinking = { type: thinkingOn ? "enabled" : "disabled" };
     }
     return AgentLab.API.callRaw({
       method: "POST",
@@ -1093,6 +1144,23 @@ AgentLab.Agent = (function () {
       headers: [{ k: "Content-Type", v: "application/json" }],
       body: body
     });
+  }
+
+  /* 发一次请求；思考模式这个参数不被当前模型/平台支持时（400），剥掉它再试一次。
+   * 剥掉的只是"推理过程可不可见"这一项能力，不影响规划与工具调用。
+   * state.stripped 记下"已经剥过一次"，之后的轮次不再白发一次带 thinking 的请求。 */
+  async function callBrainSoft(messages, wireTools, state) {
+    if (state && state.stripped) return callBrain(messages, wireTools, null);
+    try {
+      return await callBrain(messages, wireTools, flags.thinking);
+    } catch (err) {
+      var em = String((err && err.message) || "");
+      if ((err && err.status) === 400 && /thinking|reasoning/i.test(em)) {
+        if (state) state.stripped = true;
+        return callBrain(messages, wireTools, null);
+      }
+      throw err;
+    }
   }
 
   function ctxDesc(messages) {
@@ -1115,18 +1183,54 @@ AgentLab.Agent = (function () {
     return h;
   }
 
+  /* ---------- 计划的三个小工具（规划模式的产物） ----------
+   * 每一步都直接来自模型真实返回的 tool_calls，界面上只是把它摆好看一点，
+   * 不含任何猜测——否则"计划"就成了编出来的，学生会以为计划是系统随便写的。 */
+  function planNamesOf(calls) {
+    return (calls || []).map(function (c) {
+      return toolLabelOf(FN_TO_KEY[c.function && c.function.name] || "?") + "工具";
+    }).join("、");
+  }
+
+  function planStepsOf(calls) {
+    return (calls || []).map(function (c, i) {
+      var fn = (c.function || {}).name || "";
+      var key = FN_TO_KEY[fn] || "";
+      return {
+        n: i + 1,
+        key: key,
+        label: toolLabelOf(key || "?") + "工具",
+        fn: fn,
+        argsRaw: (c.function && c.function.arguments) || ""
+      };
+    });
+  }
+
+  function planPicksOf(calls, userText, toolTotal) {
+    return (calls || []).map(function (c) {
+      return {
+        fn: (c.function && c.function.name) || "",
+        args: (c.function && c.function.arguments) || "",
+        steps: pickSteps(c, userText, toolTotal)
+      };
+    });
+  }
+
   /* ================= 引擎一：真·LLM 驱动多轮 ReAct =================
    * 流程（和大模型反复交互，直到它不再要工具为止）：
    *   感知 → 组装上下文(含长期记忆) → 大脑规划 → tool_calls → 执行器
    *        → 结果作为 tool 角色拼回 → 大脑再看一遍（第 2 轮）→ …→ 最终答案
    * 每一次调用大脑，上下文都要重新拼一次，所以记忆是“每轮都在”，不是查一次就完。 */
-  async function runLLM(userText, history, memory, hooks, t0) {
+  async function runLLM(userText, history, memory, hooks, t0, opts) {
+    opts = opts || {};
+    var planOnly = !!opts.planOnly;         // 规划模式：拿到模型的动作就停住，只交计划、不执行
+    var pending = opts.seedCalls || null;   // 已确认的计划：跳过"这一轮谁定动作"，把既定动作直接执行掉
     var tools = memory.tools;
     var executorOn = !!flags.executor;
     var wireTools = executorOn ? schemasFor(tools) : [];   // 执行器关闭 → 请求里根本不带 tools
-    var thinkingStripped = false;   // thinking 参数被平台拒绝过一次后，本轮不再发它
+    var thinkState = { stripped: false };                  // thinking 被平台拒过一次后，本轮不再发它
 
-    var messages = [{ role: "system", content: buildSys(memory, executorOn) }];
+    var messages = [{ role: "system", content: buildSys(memory, executorOn, planOnly ? "plan" : "") }];
     var past = flags.memory ? stripCurrentUser(history, userText) : [];
     past.forEach(function (m) { messages.push({ role: m.role, content: m.content }); });
     messages.push({ role: "user", content: userText });
@@ -1146,88 +1250,128 @@ AgentLab.Agent = (function () {
         hooks.onStage && hooks.onStage("memory", "记忆器被关闭：这一轮既没有长期记忆，也没有之前的对话", "skip", round);
       }
 
-      /* —— 规划器：真实模式下它就是"大脑自己决定要不要调工具" ——
-       * 必须点亮：否则学生"真实跑一遍"会看到规划器显示"本轮未参与"，
-       * 与实验①的答案（每轮都参与）直接矛盾。
-       * 规划器开关在这里的真实含义 = thinking 模式开/关（见 callBrain）。 */
-      hooks.onStage && hooks.onStage("planner",
-        "第" + round + "轮：读工具说明书，判断要不要调工具（tool_choice=auto" +
-        (flags.planner ? "，思考模式已开" : "，思考模式已关") + "）", null, round);
+      /* 这一轮的动作有两个来源，二选一：
+       *   ① 已确认的计划（规划模式 → 同学点了「按这个计划执行」）：直接执行，不重新决策；
+       *   ② 现算：让大脑读工具说明书，自己决定要不要调工具（默认路径）。 */
+      var calls, names;
 
-      /* —— 大脑（它自己决定要不要调工具）—— */
-      hooks.onStage && hooks.onStage("brain",
-        "第" + round + "轮：把 " + messages.length + " 条消息发给大脑，等它规划…" +
-        (isLastRound ? "（已到循环上限，这一轮必须给出答案）" : ""), null, round);
-
-      var data;
-      try {
-        data = await callBrain(messages, wireTools, flags.planner);
-      } catch (err) {
-        /* thinking 参数不被当前模型/平台支持时（400），剥掉它再试一次。
-         * 否则"关掉规划器"这个课堂动作本身会让整轮失败，实验就做不成了。 */
-        var em = String((err && err.message) || "");
-        if (!thinkingStripped && (err && err.status) === 400 && /thinking/i.test(em)) {
-          thinkingStripped = true;
-          data = await callBrain(messages, wireTools, null);
-        } else {
-          throw err;
-        }
-      }
-      var msg = pickMessage(data);
-      var calls = msg.tool_calls;
-      var finish = (data.choices && data.choices[0] && data.choices[0].finish_reason) || "";
-
-      hooks.onPayload && hooks.onPayload(messages, { engine: "llm", round: round, memory: memory });
-
-      /* —— ReAct 第①步「思考」：把这一轮真实想的东西摊开给学生看 ——
-       * 思考模式开着就有 reasoning_content 可看；关着就明说"没有推理过程"，
-       * 这正好演示"规划器开关 = 看不看得见思考"，比一句通用说明有用得多。 */
-      hooks.onThink && hooks.onThink({
-        round: round,
-        text: (msg.reasoning_content || "").trim(),
-        thinkingOn: !!flags.planner
-      });
-
-      if (!calls || !calls.length) {
-        /* 没有 tool_calls = 大脑认为可以收尾了 → 这就是 ReAct 循环的终止条件 */
-        var a0 = { role: "assistant", content: msg.content || "" };
-        messages.push(a0);
-        hooks.onContext && hooks.onContext(messages, "final");
-        hooks.onStage && hooks.onStage("brain",
-          "第" + round + "轮：大脑没有再要工具，给出最终答案", null, round);
-        hooks.onStop && hooks.onStop({
-          reason: finish === "stop"
-            ? "finish_reason=stop —— 模型自己认为任务完成了"
-            : "模型没有返回 tool_calls，直接收尾",
-          rounds: round, tools: toolCount
+      if (pending) {
+        calls = pending; pending = null;
+        names = planNamesOf(calls);
+        /* 必须把这条 assistant(tool_calls) 压回上下文，两个原因：
+         * ① 接口要求：role=tool 的消息必须紧跟一条带 tool_calls 的 assistant 消息，否则整轮报错；
+         * ② 如实反映：这些动作确实是模型自己决定过的（在规划模式那一轮），不是程序替它编的。 */
+        messages.push({ role: "assistant", content: "", tool_calls: calls });
+        hooks.onStage && hooks.onStage("planner",
+          "第" + round + "轮：执行同学已确认的计划——" + names + "（这一步不再重新决策）", null, round);
+        hooks.onPlan && hooks.onPlan({
+          round: round, names: names, fromPlan: true,
+          picks: planPicksOf(calls, userText, wireTools.length)
         });
-        return { answer: msg.content || "", rounds: round, tools: toolCount };
-      }
+      } else {
+        /* —— 规划器：这里是"大脑自己决定要不要调工具" ——
+         * 必须点亮：否则学生"真实跑一遍"会看到规划器显示"本轮未参与"，
+         * 与实验①的答案（每轮都参与）直接矛盾。
+         * 口径：规划器是【决策职责】（每轮都参与）；思考模式只是"推理过程可不可见"，单独一句交代。 */
+        hooks.onStage && hooks.onStage("planner",
+          (planOnly ? "【规划模式】" : "") +
+          "第" + round + "轮：读工具说明书，判断要不要调工具（tool_choice=auto，由模型自主决策）" +
+          "　·　思考过程：" + (flags.thinking ? "可见" : "不可见（不写推理过程，但规划照常）"),
+          null, round);
 
-      /* 模型原样回传（reasoning_content 若有就一起带回去，兼容思考模式接口） */
-      var aMsg = { role: "assistant", content: msg.content || "", tool_calls: calls };
-      if (msg.reasoning_content != null) aMsg.reasoning_content = msg.reasoning_content;
-      messages.push(aMsg);
+        /* —— 大脑（它自己决定要不要调工具）—— */
+        hooks.onStage && hooks.onStage("brain",
+          "第" + round + "轮：把 " + messages.length + " 条消息发给大脑，等它规划…" +
+          (isLastRound ? "（已到循环上限，这一轮必须给出答案）" : ""), null, round);
 
-      var names = calls.map(function (c) {
-        return toolLabelOf(FN_TO_KEY[c.function && c.function.name] || "?") + "工具";
-      }).join("、");
+        var data = await callBrainSoft(messages, wireTools, thinkState);
+        var msg = pickMessage(data);
+        calls = msg.tool_calls;
+        var finish = (data.choices && data.choices[0] && data.choices[0].finish_reason) || "";
 
-      /* —— ReAct 第②步「行动」：规划器的产出就是这个"计划" ——
-       * 同时把"怎么选到这个工具"的三步依据一起交出去，对应规划器实验室那张卡。 */
-      hooks.onPlan && hooks.onPlan({
-        round: round,
-        names: names,
-        picks: calls.map(function (c) {
+        hooks.onPayload && hooks.onPayload(messages, { engine: "llm", round: round, memory: memory });
+
+        /* —— ReAct 第①步「思考」：把这一轮真实想的东西摊开给学生看 ——
+         * 思考模式开着就有 reasoning_content 可看；关着就明说"没有留下推理过程"。
+         * 注意：这里体现的是【思考模式】（推理过程可不可见），不是"规划器有没有工作"——
+         * 规划器每一轮都参与，只是关掉思考后，它的推理过程看不见而已。 */
+        hooks.onThink && hooks.onThink({
+          round: round,
+          text: (msg.reasoning_content || "").trim(),
+          thinkingOn: !!flags.thinking,
+          plannerOn: true
+        });
+
+        if (!calls || !calls.length) {
+          /* 规划模式下"这一步不需要工具"也是一个真实的规划结果：它的正文就是计划本身。 */
+          if (planOnly) {
+            hooks.onContext && hooks.onContext(messages, "final");
+            hooks.onStage && hooks.onStage("planner",
+              "规划模式：模型判断这一句不需要工具，它写的内容就是计划", null, round);
+            hooks.onStage && hooks.onStage("executor", "规划模式：没有要执行的动作，等同学确认", "skip", round);
+            hooks.onStop && hooks.onStop({
+              reason: "规划模式：这一步不需要工具，只产出计划（未执行任何工具）",
+              rounds: round, tools: 0
+            });
+            return {
+              answer: "", planOnly: true, rounds: round, tools: 0,
+              plan: { steps: [], note: msg.content || "", calls: [] }
+            };
+          }
+          /* 没有 tool_calls = 大脑认为可以收尾了 → 这就是 ReAct 循环的终止条件 */
+          var a0 = { role: "assistant", content: msg.content || "" };
+          messages.push(a0);
+          hooks.onContext && hooks.onContext(messages, "final");
+          hooks.onStage && hooks.onStage("brain",
+            "第" + round + "轮：大脑没有再要工具，给出最终答案", null, round);
+          hooks.onStop && hooks.onStop({
+            reason: finish === "stop"
+              ? "finish_reason=stop —— 模型自己认为任务完成了"
+              : "模型没有返回 tool_calls，直接收尾",
+            rounds: round, tools: toolCount
+          });
+          return { answer: msg.content || "", rounds: round, tools: toolCount };
+        }
+
+        names = planNamesOf(calls);
+
+        /* —— 规划模式就在这里停住 ——
+         * 拿到的是模型这一轮【真实产生】的 tool_calls，把它整理成计划交出去，一个工具都不执行。
+         * 这正是"只规划、不执行"，也是人在回路的那道确认闸门。 */
+        if (planOnly) {
+          hooks.onContext && hooks.onContext(messages, "planned");
+          hooks.onPlan && hooks.onPlan({
+            round: round, names: names, planOnly: true,
+            picks: planPicksOf(calls, userText, wireTools.length)
+          });
+          hooks.onStage && hooks.onStage("planner", "规划模式：计划已产出——" + names, null, round);
+          hooks.onStage && hooks.onStage("executor",
+            "规划模式：工具一个都没执行，等同学点「按这个计划执行」", "skip", round);
+          hooks.onStop && hooks.onStop({
+            reason: "规划模式：只产出计划、未执行任何工具（人在回路的确认闸门）",
+            rounds: round, tools: 0
+          });
           return {
-            fn: (c.function && c.function.name) || "",
-            args: (c.function && c.function.arguments) || "",
-            steps: pickSteps(c, userText, wireTools.length)
+            answer: "", planOnly: true, rounds: round, tools: 0,
+            plan: { steps: planStepsOf(calls), note: msg.content || "", calls: calls }
           };
-        })
-      });
-      hooks.onStage && hooks.onStage("planner",
-        "第" + round + "轮计划：调 " + names, null, round);
+        }
+
+        /* 模型原样回传（reasoning_content 若有就一起带回去，兼容思考模式接口） */
+        var aMsg = { role: "assistant", content: msg.content || "", tool_calls: calls };
+        if (msg.reasoning_content != null) aMsg.reasoning_content = msg.reasoning_content;
+        messages.push(aMsg);
+
+        /* —— ReAct 第②步「行动」：规划器的产出就是这个"计划" ——
+         * 同时把"怎么选到这个工具"的三步依据一起交出去，对应规划器实验室那张卡。 */
+        hooks.onPlan && hooks.onPlan({
+          round: round,
+          names: names,
+          picks: planPicksOf(calls, userText, wireTools.length)
+        });
+        hooks.onStage && hooks.onStage("planner",
+          "第" + round + "轮计划：调 " + names, null, round);
+      }
 
       /* —— 执行器 —— */
       if (!executorOn) {
@@ -1275,8 +1419,82 @@ AgentLab.Agent = (function () {
     }
 
     /* 理论上走不到这里，但留一个兜底免得整轮白跑 */
-    var last = await callBrain(messages, wireTools, flags.planner);
+    var last = await callBrain(messages, wireTools, flags.thinking);
     return { answer: pickMessage(last).content || "", rounds: round, tools: toolCount };
+  }
+
+  /* ================= 引擎三：问答模式（只用已有知识，不调工具） =================
+   * 与 auto 的差别只有一处：请求里【根本不带 tools】。
+   * 没有工具说明书，模型就没有"能做什么"这一项——这正是「工具 = 智能体的手脚」
+   * 最直接的演示：同样一个问题，自动模式会去查，问答模式只能凭记忆答。
+   * 也正因为没有工具，它连一轮循环都进不去：只有"大脑说一次话"这一步。 */
+  async function runAsk(userText, history, memory, hooks, t0) {
+    var messages = [{ role: "system", content: buildSys(memory, false, "ask") }];
+    var past = flags.memory ? stripCurrentUser(history, userText) : [];
+    past.forEach(function (m) { messages.push({ role: m.role, content: m.content }); });
+    messages.push({ role: "user", content: userText });
+
+    hooks.onPayload && hooks.onPayload(messages, { engine: "ask", round: 0, memory: memory });
+    hooks.onContext && hooks.onContext(messages, "start");
+
+    hooks.onStage && hooks.onStage("planner",
+      "问答模式：这一步没有工具要选——模型不读工具说明书，也不会产生任何工具调用", null, 1);
+    hooks.onStage && hooks.onStage("executor",
+      "问答模式：请求里没有 tools，执行器这一轮没事可做", "skip", 1);
+    hooks.onStage && hooks.onStage("brain",
+      "第1轮：把 " + messages.length + " 条消息发给大脑，凭它已有的知识作答…", null, 1);
+
+    var data = await callBrainSoft(messages, [], { stripped: false });
+    var msg = pickMessage(data);
+
+    hooks.onThink && hooks.onThink({
+      round: 1,
+      text: (msg.reasoning_content || "").trim(),
+      thinkingOn: !!flags.thinking,
+      plannerOn: false,
+      askMode: true
+    });
+    hooks.onContext && hooks.onContext(messages, "final");
+    hooks.onStop && hooks.onStop({
+      reason: "问答模式：没有工具可选，模型直接凭已有知识作答（不进入 ReAct 循环）",
+      rounds: 1, tools: 0
+    });
+    return { answer: msg.content || "", rounds: 1, tools: 0 };
+  }
+
+  /* 问答模式没配 Key 时的兜底：模型压根没参与，必须如实说明，不能让规则假装是模型答的。 */
+  function askNoKeyAnswer() {
+    return "（降级演示：未配置 API Key，问答模式这一步没有真正的模型参与）\n\n" +
+      "问答模式的意思是：请求里不发给模型任何工具说明书，它只能凭自己学过的知识回答。" +
+      "所以「明天会下雨吗」「现在几点」这类必须查真实数据的问题，它只能如实说不知道——" +
+      "这不是它变笨了，是它手里没有工具（手脚）。\n\n" +
+      "点右上角「设置」填一个 DeepSeek Key，再问一次就能看到真实效果；" +
+      "也可以先切到「自动」模式，用没配 Key 时的降级链路对比着看。";
+  }
+
+  /* 规划模式的降级：没有 Key（或规划器被关掉）时模型不参与决策，
+   * 计划只能由本地规则写出来——正好让学生看见"规则写的计划"有多粗糙。 */
+  function runPlanByRules(userText, hooks, why) {
+    var intent = detectIntent(userText);
+    var steps = (intent.plan || []).map(function (t, i) { return { n: i + 1, text: t }; });
+
+    hooks.onStage && hooks.onStage("planner",
+      "规划模式（" + why + "）：这份计划由本地规则写，不是模型规划的——" +
+      (intent.plan || []).join(" → "), null, 1);
+    hooks.onStage && hooks.onStage("executor",
+      "规划模式：工具一个都没执行，等同学点「按这个计划执行」", "skip", 1);
+    hooks.onStop && hooks.onStop({
+      reason: "规划模式（" + why + "）：只产出计划、未执行任何工具",
+      rounds: 1, tools: 0
+    });
+    return {
+      answer: "", planOnly: true, rounds: 1, tools: 0,
+      plan: {
+        steps: steps, note: "", calls: [],
+        byRules: true, why: why,
+        toolName: intent.toolName || "", needTool: !!intent.needTool
+      }
+    };
   }
 
   /* 降级引擎的兜底回答：没配 Key 时大模型这一步由本地规则代劳。
@@ -1290,14 +1508,21 @@ AgentLab.Agent = (function () {
     return head + "\n\n这一轮没有调用工具。你可以拿同一句话对比两种模式：降级模式（现在）与真实模式（配好 Key 后）——工作台的点亮方式一样，但“谁做的决定”不一样。";
   }
 
-  /* ================= 引擎二：无 Key 时的规则降级 =================
-   * 没有 API Key 就调不动大模型，此时退回本地正则判定。
-   * 关键是要<b>如实告诉学生这是降级路径</b>——规划不是模型做的，是规则做的。
+  /* ================= 引擎二：规则代劳规划（两种触发场景） =================
+   * 场景一（reason="nokey"）：没有 API Key，大模型整条链路都调不动，全部由本地正则代劳。
+   * 场景二（reason="plannerOff"）：有 Key，但学生把「规划器」关掉了——
+   *   这时【由本地规则单步判定调哪个工具】，模型只负责把结果组织成人话。
+   * 两种场景的共同点：规划不是模型做的，是规则做的——这一点必须如实标注给学生。
    * 仍然按"两轮"演出来，让回路结构在离线时也看得见。 */
-  async function runRules(userText, history, memory, hooks, t0) {
+  async function runRules(userText, history, memory, hooks, t0, reason) {
+    var plannerOff = reason === "plannerOff";
+    var tag = plannerOff ? "【规划器已关闭】" : "【降级】";
     var intent = detectIntent(userText);
 
-    hooks.onStage && hooks.onStage("planner", "【降级】规划由本地规则代劳（没配 Key，大模型没参与）：" + intent.plan.join(" → "), null, 1);
+    hooks.onStage && hooks.onStage("planner",
+      tag + (plannerOff
+        ? "这次不由模型做规划，改由本地规则单步判定（这正是“关掉规划器”的样子——不会拆步、参数也常常凑不齐）："
+        : "规划由本地规则代劳（没配 Key，大模型没参与）：") + intent.plan.join(" → "), null, 1);
 
     var toolResult = null, toolBlocked = null;
     var TOOL_LABELS = {
@@ -1326,13 +1551,14 @@ AgentLab.Agent = (function () {
       hooks.onStage && hooks.onStage("executor", "不需要调用工具：直接交给大脑回答", "skip", 1);
     }
 
-    /* 降级模式也要按 ReAct 三步走，口径和真实模式一致：
+    /* 规则代劳模式也要按 ReAct 三步走，口径和真实模式一致：
      * 思考（规则怎么判的）→ 行动（调哪个工具、什么参数）→ 观察（工具回了什么）。
      * 差别只在"思考"是正则写死的，不是模型自己想的一一这一点必须如实标注。 */
     hooks.onThink && hooks.onThink({
       round: 1,
-      text: "【降级】由本地正则规则判定：" + intent.plan.join(" → "),
+      text: tag + "由本地正则规则判定：" + intent.plan.join(" → "),
       thinkingOn: false,
+      plannerOn: false,
       isRules: true
     });
     if (intent.needTool && toolResult) {
@@ -1344,7 +1570,7 @@ AgentLab.Agent = (function () {
           args: JSON.stringify(intent.params || {}),
           steps: [
             ["① 理解意图", "同学要的是：" + userText],
-            ["② 匹配能力", "【降级】由本地正则匹配关键词选中，不是模型读说明书选的"],
+            ["② 匹配能力", tag + "由本地正则匹配关键词选中，不是模型读说明书选的"],
             ["③ 构造参数", JSON.stringify(intent.params || {})]
           ]
         }]
@@ -1367,10 +1593,20 @@ AgentLab.Agent = (function () {
     if (toolResult) {
       hooks.onStage && hooks.onStage("memory", "把工具结果作为 tool 角色拼回上下文，进入第2轮", null, 2);
       hooks.onStage && hooks.onStage("brain", "第2轮：大脑带着工具结果重新组织回答…", null, 2);
-      hooks.onStop && hooks.onStop({ reason: "降级演示：规则只判一次，不进入真正的多轮循环", rounds: 2, tools: 1 });
+      hooks.onStop && hooks.onStop({
+        reason: plannerOff
+          ? "规划器已关闭：规则只做单步判定，不会拆步，也不进入真正的多轮循环"
+          : "降级演示：规则只判一次，不进入真正的多轮循环",
+        rounds: 2, tools: 1
+      });
     } else {
       hooks.onStage && hooks.onStage("brain", "第1轮：大脑直接组织回答…", null, 1);
-      hooks.onStop && hooks.onStop({ reason: "降级演示：这一轮不需要工具，直接作答", rounds: 1, tools: 0 });
+      hooks.onStop && hooks.onStop({
+        reason: plannerOff
+          ? "规划器已关闭：规则判定这一轮不需要工具，直接把话交给模型作答"
+          : "降级演示：这一轮不需要工具，直接作答",
+        rounds: 1, tools: 0
+      });
     }
 
     var mode = toolResult ? getCompat(modelName()) : "";
@@ -1383,7 +1619,7 @@ AgentLab.Agent = (function () {
     }
     for (var attempt = 0; attempt < 3 && answer === null; attempt++) {
       var messages = buildMessages(intent, userText, memory, flags.memory ? history : [], toolResult, toolBlocked, { mode: mode });
-      hooks.onPayload && hooks.onPayload(messages, { engine: "rules", round: toolResult ? 2 : 1, toolResult: toolResult, memory: memory, mode: mode });
+      hooks.onPayload && hooks.onPayload(messages, { engine: "rules", plannerOff: plannerOff, round: toolResult ? 2 : 1, toolResult: toolResult, memory: memory, mode: mode });
       try {
         answer = await AgentLab.API.chat(messages);
         break;
@@ -1401,15 +1637,23 @@ AgentLab.Agent = (function () {
    * @param {string} userText 学生说的话
    * @param {Array} history   此前的对话（短期记忆）
    * @param {Object} hooks    { onEngine(mode, info), onStage(id, text, flag, round),
-   *                            onThink({round,text,thinkingOn,isRules}),      ← ReAct①思考
+   *                            onThink({round,text,thinkingOn,plannerOn,isRules}), ← ReAct①思考
    *                            onPlan({round,names,picks}),                   ← ReAct②行动（规划器的产出）
    *                            onObserve({round,results}),                    ← ReAct③观察
    *                            onStop({reason,rounds,tools}),                 ← 为什么停了
    *                            onContext(messages, kind), onTool(toolInfo), onPayload(msgs, info),
-   *                            onDone(answer), onError(err) }
+   *                            onDone(answer), onError(err),
+   *                            onPlanReady(plan) }  ← 规划模式：计划好了，等同学确认（这一步没有答案）
+   * @param {Object} [profile] 可选。作品档案：{ toolKeys:[...], systemPrompt(classInfo, manual) }。
+   *                           用于「作品展示」里两个专属于某作品的智能体；不传则与现状完全一致。
+   * @param {Object} [opts] 可选。{ mode: "auto"|"plan"|"ask", seedCalls: [...] }。
+   *                           mode 覆盖本次的运行模式（默认取当前模式）；
+   *                           seedCalls 用于"执行一份已确认的计划"（见 executePlan）。
    */
-  async function run(userText, history, hooks) {
+  async function run(userText, history, hooks, profile, opts) {
     hooks = hooks || {};
+    opts = opts || {};
+    var activeMode = opts.mode || runMode;
     var t0 = Date.now();
     try {
       /* ① 感知器：把学生的原话接进来 */
@@ -1424,7 +1668,7 @@ AgentLab.Agent = (function () {
       await delay(STAGE_DELAY);
 
       /* ② 记忆器：把长期记忆和短期轨迹备好，后面每一轮都要带上 */
-      var memory = collectMemory(flags.memory ? history : []);
+      var memory = collectMemory(flags.memory ? history : [], profile);
       if (!flags.memory) {
         memory.classInfo = {}; memory.manual = ""; memory.kbItems = 0;
       }
@@ -1437,15 +1681,46 @@ AgentLab.Agent = (function () {
       }
       await delay(200);
 
-      /* ③ 引擎分流：有 Key 走真·LLM 多轮；没 Key 走规则降级 */
-      var useLLM = !!(AgentLab.API.hasApiKey && AgentLab.API.hasApiKey());
-      hooks.onEngine && hooks.onEngine(useLLM ? "llm" : "rules", {
-        tools: memory.tools, executor: flags.executor, planner: flags.planner, memory: flags.memory
+      /* ③ 引擎分流。
+       * 先按【运行模式】分（模式管的是"这一轮的自主程度"），再看组件开关：
+       *   ask  → runAsk：请求里不带 tools，模型只能凭已有知识答（执行器用不上）
+       *   plan → runLLM(planOnly)：只产出计划、不执行；模型不参与时退到本地规则写计划
+       *   auto → 原有口径：
+       *            有 Key 且规划器开 → runLLM          模型自主决策（tool_choice: auto）
+       *            有 Key 但规划器关 → runRules(plannerOff)  规则单步决策 + 模型作答（真实“关规划器”）
+       *            没 Key            → runRules(nokey)  全链路规则代劳（降级演示） */
+      var hasKey = !!(AgentLab.API.hasApiKey && AgentLab.API.hasApiKey());
+      var useLLM = hasKey && flags.planner;
+      var reason = hasKey ? "plannerOff" : "nokey";
+      var engine = activeMode === "ask" ? "ask" : (useLLM ? "llm" : "rules");
+      hooks.onEngine && hooks.onEngine(engine, {
+        tools: memory.tools, executor: flags.executor, planner: flags.planner, memory: flags.memory,
+        thinking: flags.thinking, plannerOff: !useLLM && hasKey, noKey: !hasKey, mode: activeMode
       });
 
-      var out = useLLM
-        ? await runLLM(userText, history, memory, hooks, t0)
-        : await runRules(userText, history, memory, hooks, t0);
+      var out;
+      if (activeMode === "ask") {
+        out = hasKey
+          ? await runAsk(userText, history, memory, hooks, t0)
+          : { answer: askNoKeyAnswer(), rounds: 0, tools: 0 };
+      } else if (activeMode === "plan") {
+        out = useLLM
+          ? await runLLM(userText, history, memory, hooks, t0, { planOnly: true })
+          : runPlanByRules(userText, hooks, hasKey ? "规划器已关闭" : "未配置 API Key");
+      } else {
+        out = useLLM
+          ? await runLLM(userText, history, memory, hooks, t0, opts)
+          : await runRules(userText, history, memory, hooks, t0, reason);
+      }
+
+      /* 规划模式到这儿就结束：这一轮产出的是"计划"，不是"回答"——
+       * 所以不发 onDone，改发 onPlanReady，由界面把它渲染成待确认的计划卡。 */
+      if (out.planOnly) {
+        hooks.onStage && hooks.onStage("brain",
+          "规划完成：计划已交给你确认，工具没有执行（用时 " + Math.round((Date.now() - t0) / 100) / 10 + " 秒）", null, 1);
+        hooks.onPlanReady && hooks.onPlanReady(out.plan);
+        return "";
+      }
 
       if (!out.answer || !out.answer.trim()) out.answer = "（大脑没有说出话来，请再问我一次吧）";
       hooks.onStage && hooks.onStage("brain", "回答完成，共 " + out.rounds + " 轮 / " + out.tools + " 次工具调用，用时 " + Math.round((Date.now() - t0) / 100) / 10 + " 秒", null, out.rounds);
@@ -1457,8 +1732,29 @@ AgentLab.Agent = (function () {
     }
   }
 
+  /**
+   * 执行一份"已确认的计划"（规划模式 → 同学点了「按这个计划执行」）
+   * 口径：这份计划是模型真实产出过的 tool_calls，所以直接把它当作既定动作执行，
+   * 不再让模型重新决策一遍——否则"确认"就成了摆设，学生看到的执行结果会和计划对不上。
+   * @param {Array}  calls    计划里的 tool_calls（没有具体动作时传空数组）
+   * @param {string} userText 同一个问题
+   * @param {Array}  history  同一份短期记忆
+   * @param {Object} hooks
+   * @param {Object} [profile]
+   */
+  async function executePlan(calls, userText, history, hooks, profile) {
+    return run(userText, history, hooks, profile, {
+      mode: "auto",
+      seedCalls: (calls && calls.length) ? calls : null
+    });
+  }
+
   return {
     run: run,
+    executePlan: executePlan,
+    setMode: setMode,
+    getMode: getMode,
+    MODES: MODES,
     detectIntent: detectIntent,
     runTool: runTool,
     schemasFor: schemasFor,
