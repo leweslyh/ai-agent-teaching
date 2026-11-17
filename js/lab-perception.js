@@ -370,7 +370,7 @@ AgentLab.LabPerception = (function () {
     var txt = String(msg.content || "");
     var json = {
       id: "chatcmpl-demo", object: "chat.completion",
-      model: body.model || "deepseek-v4-flash",
+      model: body.model || "deepseek-flash",
       choices: [{ index: 0, finish_reason: finish, message: msg }],
       usage: {
         prompt_tokens: 48,
@@ -446,7 +446,7 @@ AgentLab.LabPerception = (function () {
         { k: "Authorization", v: "Bearer sk-●●●●●●●●（你的 Key，只保存在本机浏览器）" }
       ],
       body: {
-        model: "deepseek-v4-flash",
+        model: "deepseek-flash",
         messages: [
           { role: "system", content: "你是一个五年级数学小助手。回答要简短，只说结果和一句话理由。" },
           { role: "user", content: "小明有 50 元，买 3 支每支 12 元的笔，还剩多少元？" }
@@ -1115,7 +1115,7 @@ AgentLab.LabPerception = (function () {
           '<div class="ta-desc">机器把<b>声音变成文字</b>的完整过程——5 个步骤，每一步实际在做什么。左图是原理示意图，右边逐部分解读（演示时逐条点亮）。</div>' +
           '<div class="ta-duo">' +
             '<div class="ta-image-wrap">' +
-              '<img src="images/asr-pipeline.svg" alt="语音识别（ASR）原理图：采集→切帧→特征→声学模型→语言模型" class="ta-image">' +
+              '<img loading="lazy" decoding="async" src="images/asr-pipeline.svg" alt="语音识别（ASR）原理图：采集→切帧→特征→声学模型→语言模型" class="ta-image">' +
               '<div class="ta-source">📐 本教学系统绘制 · 原理示意（通用 ASR 流水线：信号处理 → 声学模型 → 语言模型）</div>' +
             '</div>' +
             '<div class="ta-explain">' +
@@ -1195,7 +1195,7 @@ AgentLab.LabPerception = (function () {
           '<div class="ta-desc">机器把<b>图片里的文字读出来</b>的完整过程——5 个步骤，每一步实际在做什么。左图是原理示意图，右边逐部分解读（识别时逐条点亮）。</div>' +
           '<div class="ta-duo">' +
             '<div class="ta-image-wrap">' +
-              '<img src="images/ocr-pipeline.svg" alt="OCR 原理图：预处理→版面分析→字符切分→识别→后处理" class="ta-image">' +
+              '<img loading="lazy" decoding="async" src="images/ocr-pipeline.svg" alt="OCR 原理图：预处理→版面分析→字符切分→识别→后处理" class="ta-image">' +
               '<div class="ta-source">📐 本教学系统绘制 · 原理示意（通用 OCR 流水线：预处理 → 版面分析 → 切分 → 识别 → 后处理）</div>' +
             '</div>' +
             '<div class="ta-explain">' +
@@ -1629,6 +1629,7 @@ AgentLab.LabPerception = (function () {
       /* 课堂小结（收尾：全章总结放最下面，与记忆器 / 执行器 / 架构实验室保持一致） */
       '<div class="lesson-summary card-per">' +
         '<h3>' + U.icon("check", 18) + ' 课堂小结</h3>' +
+        U.designCta(3, "挑工具，并给每个工具写一句“给 AI 看的说明书”——感知类工具就是它的“眼睛和耳朵”") +
         '<div class="summary-core"><b>核心结论：</b>感知器 = 把外界的多模态信息（语音/图像/文字）转化为 AI 能理解的结构化数据，还要<b>结构化</b>（消息四角色/Token）、<b>策略化</b>（选哪条多模态路径）、<b>安全化</b>（防注入/纠错）。输入越清晰，感知越准确。</div>' +
         '<div class="summary-points">' +
           '<div class="sp-item"><span class="sp-icon">' + U.icon("txt", 14) + '</span><div><b>三种模态与感知转化：</b>语音（说话→ASR转文字）、图像（拍照→OCR转文字）、文字（打字＝提示词，要说全信息）</div></div>' +
@@ -1752,9 +1753,12 @@ AgentLab.LabPerception = (function () {
     return '<div class="card card-enhanced"' + cid + ' data-color="' + color + '" data-card-num="' + cardCounter + '">' +
       '<div class="card-accent"></div>' +
       '<h2><span class="card-no"' + (fixed ? ' data-fixed="1"' : (no ? "" : ' data-auto="1"')) + '>' + no + '</span>' + t.title + '</h2>' +
-      '<div class="sub">' + sub + '</div>' +
+      (sub ? '<div class="sub">' + sub + '</div>' : '') +
       '<div class="card-body">' + body + '</div>' +
-      (t.src ? '<div class="card-src">' + U.icon("book", 13) + ' 参考：' + t.src + '</div>' : '') +
+      /* 学生可见的来源一律用中文书名，不出现仓库/别名（ai-agent-book）；
+       * 代码注释里的英文名保留给维护者。 */
+      (t.src ? '<div class="card-src">' + U.icon("book", 13) + ' 参考：' +
+        t.src.replace(/ai-agent-book/g, "《深入理解 AI Agent》") + '</div>' : '') +
     '</div>';
   }
 
@@ -1921,6 +1925,7 @@ AgentLab.LabPerception = (function () {
     renderModeFamily();
     AgentLab.Quiz.mount({
       host: "pc-match-list",
+      card: "pc-per-tabs",   /* 回看：三种模态的切换演示（这两张卡连着的：先看模态，再配对） */
       color: "per",
       name: "模态小达人",
       star: "pc-match-score",
@@ -2542,7 +2547,7 @@ AgentLab.LabPerception = (function () {
       var reader = new FileReader();
       reader.onload = function (ev) {
         currentDataUrl = ev.target.result;
-        preview.innerHTML = '<img src="' + currentDataUrl + '" style="max-width:100%;max-height:240px;border-radius:8px">';
+        preview.innerHTML = '<img loading="lazy" decoding="async" src="' + currentDataUrl + '" style="max-width:100%;max-height:240px;border-radius:8px">';
       };
       reader.readAsDataURL(file);
       result.textContent = "等待识别……";
@@ -2744,7 +2749,7 @@ AgentLab.LabPerception = (function () {
 
     function runDemo(reason) {
       if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
-      preview.innerHTML = '<img src="' + drawSampleImage() + '" style="max-width:100%;border-radius:8px">';
+      preview.innerHTML = '<img loading="lazy" decoding="async" src="' + drawSampleImage() + '" style="max-width:100%;border-radius:8px">';
       // 把降级原因直接写在状态里，方便老师当场判断是"没配密钥""没网"还是"模型/余额"问题
       status.textContent = reason ? ("示例演示 · " + reason) : "示例演示（未联网或未配置云端密钥）";
 
@@ -2792,7 +2797,7 @@ AgentLab.LabPerception = (function () {
           currentDataUrl = drawSampleImage();
           defaultLabel = "数学作业图";
         }
-        preview.innerHTML = '<img src="' + currentDataUrl + '" style="max-width:100%;max-height:240px;border-radius:8px">';
+        preview.innerHTML = '<img loading="lazy" decoding="async" src="' + currentDataUrl + '" style="max-width:100%;max-height:240px;border-radius:8px">';
         result.textContent = "等待识别……";
         status.textContent = "未选择图片，已自动载入内置示例：" + defaultLabel;
       }
@@ -3394,6 +3399,7 @@ AgentLab.LabPerception = (function () {
     });
     AgentLab.Quiz.mount({
       host: "pc-obs-list",
+      card: "pc-obs-spaces",   /* 回看：本卡顶部的「观察空间 vs 动作空间」对照 */
       color: "per",
       name: "观察动作小达人",
       star: "pc-obs-score",
@@ -3811,6 +3817,7 @@ AgentLab.LabPerception = (function () {
     renderMmPaths();
     AgentLab.Quiz.mount({
       host: "pc-mm-list",
+      card: "pc-mm-paths",   /* 回看：多模态感知的三条路径 */
       color: "per",
       name: "感知路径小达人",
       questions: MULTIMODAL_CASES.map(function (c) {
@@ -3969,6 +3976,7 @@ AgentLab.LabPerception = (function () {
     renderFailToolbox();
     AgentLab.Quiz.mount({
       host: "pc-fail-list",
+      card: "pc-fail-demo",   /* 回看：感知失败的现场演示 */
       color: "per",
       name: "感知急救小医生",
       questions: PERCEPTION_FAILS,
@@ -3988,7 +3996,7 @@ AgentLab.LabPerception = (function () {
     box.innerHTML =
       '<div class="ta-duo">' +
         '<div class="ta-image-wrap">' +
-          '<img src="' + INJECTION_CASE.fig + '" alt="' + U.esc(INJECTION_CASE.figAlt) + '" class="ta-image">' +
+          '<img loading="lazy" decoding="async" src="' + INJECTION_CASE.fig + '" alt="' + U.esc(INJECTION_CASE.figAlt) + '" class="ta-image">' +
           '<div class="ta-source">' + INJECTION_CASE.figCap + '</div>' +
         '</div>' +
         '<div class="ta-explain">' +
@@ -4025,6 +4033,7 @@ AgentLab.LabPerception = (function () {
     renderInjectDefense();
     AgentLab.Quiz.mount({
       host: "pc-inject-flow",
+      card: "pc-inject-scene",   /* 回看：提示注入的场景演示 */
       color: "per",
       name: "感知安全小达人",
       questions: INJECTION_QUIZ,
@@ -4087,6 +4096,7 @@ AgentLab.LabPerception = (function () {
   function bindQuiz() {
     AgentLab.Quiz.mount({
       host: "pc-quiz-body",
+      card: "sec-map-perception",   /* 章末综合小测（12 题覆盖整课）→ 回看本课学习地图 */
       color: "per",
       name: "感知小达人",
       star: "pc-quiz-score",
@@ -4395,7 +4405,7 @@ AgentLab.LabPerception = (function () {
       resetLabel: "清空重来",
       jsonBody: function (msgs) {
         return {
-          model: AgentLab.Store.getApi().model || AgentLab.CONFIG.model,
+          model: (AgentLab.API.getSettings && AgentLab.API.getSettings().model) || AgentLab.CONFIG.model,
           messages: msgs,
           temperature: AgentLab.CONFIG.temperature
         };

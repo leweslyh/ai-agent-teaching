@@ -69,6 +69,11 @@ AgentLab.Agent = (function () {
   /* 数字 + 单位。「半」也算一个数，所以「半小时」「半分钟」都能识别。 */
   var DUR_RE = /([0-9]+(?:\.[0-9]+)?|半|[一二两三四五六七八九十百]+)\s*(小时|钟头|分钟|秒钟|秒|分)/g;
 
+  /* 英文单位（30s / 5min / 2h）：只认“后面跟着时间关系词（后 / 之后 / 以后 / 内）”的写法。
+   * 为什么加这道限制：不加的话「100m」（一百米）、「3h2」（面积/型号）都会被当成时长，
+   * 计时器就可能把「我跑100m要多久」误判成“计时 100 分钟”。 */
+  var DUR_EN_RE = /([0-9]+(?:\.[0-9]+)?)\s*(hours?|hrs?|hr|h|minutes?|mins?|min|m|seconds?|secs?|sec|s)(?=\s*(?:后|之后|以后|内))/gi;
+
   /* 「一刻钟」「一个半小时」这类整体说法：必须先判，否则会被拆成「半小时」少算一半。 */
   var DUR_FRAG = [
     { re: /一个半(?:小时|钟头|钟)/, sec: 5400 },
@@ -95,6 +100,16 @@ AgentLab.Agent = (function () {
       sec += v * DUR_SEC[m[2]];
       hit = true;
     }
+    /* 英文单位：h = 小时、m = 分钟、s = 秒（30s / 5min / 2h 都算） */
+    DUR_EN_RE.lastIndex = 0;
+    while ((m = DUR_EN_RE.exec(t)) !== null) {
+      var vn = parseFloat(m[1]);
+      if (isNaN(vn)) continue;
+      var u = String(m[2]).toLowerCase();
+      var mult = u.charAt(0) === "h" ? 3600 : (u.charAt(0) === "m" ? 60 : 1);
+      sec += vn * mult;
+      hit = true;
+    }
     if (!hit || sec < 1) return null;
     /* 超上限只做钳制，不静默丢弃——丢弃就又退回“只聊天不调工具”了。
      * 标签用真实秒数重新格式化，所以钳到 24 小时学生也能看懂。 */
@@ -110,6 +125,7 @@ AgentLab.Agent = (function () {
    * 如果还剩实质内容（「每天」「能做完吗」），那它只是一句话里的时间状语，不该起计时器。 */
   function durResidue(t) {
     return t.replace(DUR_RE, "")
+      .replace(DUR_EN_RE, "")
       .replace(/一个半(?:小时|钟头|钟)/g, "")
       .replace(/一刻钟/g, "")
       .replace(/[。！!，,、？?；;：:\s]/g, "");
@@ -150,6 +166,74 @@ AgentLab.Agent = (function () {
     /* “25分钟后提醒我” 只有动作没有内容，不要把“提醒我”当成提醒内容 */
     if (!s || /^(提醒我|叫我|喊我|告诉我|再|该|要|得|去)$/.test(s)) return "";
     return s;
+  }
+
+  /* 提醒工具的“什么时候响”：换算成一个时间戳。
+   * 支持三类说法（课堂够用）：
+   *   ① 相对时长：“10秒后”“5分钟后” → 现在 + 时长；
+   *   ② 日期：“明天 / 后天 / 下周五” → 那天早上 8:00（没给具体钟点时的默认）；
+   *   ③ 钟点：“今天下午3点”“15:30” → 今天的那个时刻，已经过了就顺延到明天。
+   * 都识别不出来就返回 null —— 不硬编一个时间，免得“说好的提醒”变成随机响。 */
+  function parseRemindWhen(t) {
+    t = String(t || "");
+    if (!t) return null;
+
+    var dur = parseDuration(t);
+    if (dur) {
+      return { at: Date.now() + dur.seconds * 1000, label: fmtDuration(dur.seconds) + "后" };
+    }
+
+    var now = new Date();
+    var d = null;
+    if (/后天/.test(t)) { d = new Date(now); d.setDate(d.getDate() + 2); }
+    else if (/明天|明早|明晚/.test(t)) { d = new Date(now); d.setDate(d.getDate() + 1); }
+    else {
+      var WANT = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 日: 0, 天: 0 };
+      var wm = t.match(/下(?:周|星期|礼拜)([一二三四五六日天])/);
+      var tw = t.match(/(?:这|本)(?:周|星期|礼拜)([一二三四五六日天])/);
+      if (wm) {
+        d = new Date(now);
+        var diff = (WANT[wm[1]] - now.getDay() + 7) % 7;
+        diff = diff === 0 ? 7 : diff;
+        d.setDate(d.getDate() + diff);
+      } else if (tw) {
+        d = new Date(now);
+        var df = (WANT[tw[1]] - now.getDay() + 7) % 7;
+        if (df === 0) df = 7;      // “这周五”碰巧就是今天：按下一个周五算，免得落到已经过去的时间
+        d.setDate(d.getDate() + df);
+      }
+    }
+
+    /* 钟点：15:30 / 15点 / 下午3点半 */
+    var hh = null, mm = 0;
+    var hm = t.match(/([01]?\d|2[0-3])\s*[:：]\s*([0-5]\d)/);
+    if (hm) { hh = parseInt(hm[1], 10); mm = parseInt(hm[2], 10); }
+    else {
+      var cn = t.match(/(上午|下午|晚上|中午|早上|明早|明晚)?\s*([0-9]{1,2}|[一二两三四五六七八九十]{1,3})\s*[点时](半|[0-5]?\d\s*分?)?/);
+      if (cn) {
+        var h = /^\d/.test(cn[2]) ? parseInt(cn[2], 10) : parseCnNum(cn[2]);
+        if (h !== null && h >= 0 && h <= 24) {
+          hh = h;
+          if (/下午|晚上|明晚/.test(cn[1] || "") && hh < 12) hh += 12;
+          if (cn[3] === "半") mm = 30;
+          else if (cn[3]) mm = parseInt(String(cn[3]).replace(/\s*分?/g, ""), 10) || 0;
+        }
+      }
+    }
+
+    if (!d && hh === null) return null;
+    if (!d) {
+      d = new Date(now);
+      if (hh < now.getHours() || (hh === now.getHours() && mm <= now.getMinutes())) d.setDate(d.getDate() + 1);
+    }
+    if (hh === null) { hh = 8; mm = 0; }
+    d.setHours(hh, mm, 0, 0);
+    if (d.getTime() <= Date.now()) return null;
+    var pad = function (n) { return (n < 10 ? "0" : "") + n; };
+    return {
+      at: d.getTime(),
+      label: (d.getMonth() + 1) + "月" + d.getDate() + "日 " + pad(hh) + ":" + pad(mm)
+    };
   }
 
   /**
@@ -195,7 +279,8 @@ AgentLab.Agent = (function () {
   function detectIntent(text) {
     var t = (text || "").replace(/\s+/g, "");
     var tools = AgentLab.Store.getTools();
-    var intent = { needTool: false, toolName: "", params: {}, plan: [] };
+    /* userText：把同学的原话随意图带着走——提醒工具要靠它判断“什么时候响”。 */
+    var intent = { needTool: false, toolName: "", params: {}, userText: text, plan: [] };
 
     /* 计时器抢在所有规则前面（原因见 detectTimer 上方注释） */
     var timerIntent = detectTimer(t, tools);
@@ -376,7 +461,23 @@ AgentLab.Agent = (function () {
       return intent;
     }
 
-    // 10) 联网搜索任务 → 联网搜索工具
+    // 10) 给了网址 → 联网搜索工具的「网页抓取」（web_fetch）
+    // 没配 Key / 关掉规划器时，规则也要能认出“打开这个网页看看”这类请求，
+    // 否则学生只看到一句闲聊，完全看不出执行器该上场。
+    if (tools.search) {
+      var urlM = text.match(/https?:\/\/[^\s，。；、）)】"'<>]+/i);
+      if (urlM) {
+        intent.needTool = true;
+        intent.toolName = "search";
+        intent.params.query = text.replace(urlM[0], " ")
+          .replace(/[，。！？,.;:：!?]/g, " ").replace(/\s+/g, " ").trim() || urlM[0];
+        intent.params.url = urlM[0];
+        intent.plan = ["听懂要打开哪个网页", "调出联网搜索工具（网页抓取）", "把这个网页真正读一遍", "把网页里的内容讲给同学听"];
+        return intent;
+      }
+    }
+
+    // 11) 联网搜索任务 → 联网搜索工具
     if (tools.search && /(搜索|搜一下|搜一搜|搜搜|搜|百度|上网查|网上查|查一下|查查|查资料|了解一下|科普|百科|最新|新闻|是什么|什么是|啥是|啥叫|怎么回事)/.test(t)) {
       var q = text.replace(/帮我|请/g, "")
         .replace(/搜索一下|搜一下|搜一搜|搜搜|上网搜|网上搜|百度一下|上网查|网上查|查一下|查查|查资料|了解一下|科普一下|最新|新闻/g, " ")
@@ -391,7 +492,7 @@ AgentLab.Agent = (function () {
       }
     }
 
-    // 11) 普通问题
+    // 12) 普通问题
     intent.plan = ["听懂你的问题", "回想学过的本领和知识", "组织一个清楚、简短的回答"];
     return intent;
   }
@@ -446,14 +547,73 @@ AgentLab.Agent = (function () {
       };
     }
     if (intent.toolName === "remind") {
+      /* 「到时间我会提醒你」不能只是一句话——真到点要响。
+       * 从“同学的原话 + 模型整理出的提醒内容”里找出时间，交给 Alarms 定时。
+       * 只在当前页面开着时有效，这一点要在结果里如实写清楚。 */
+      var src = String(intent.userText || "") + " " + String(p.text || "");
+      var when = parseRemindWhen(src);
+      if (when && AgentLab.Alarm) {
+        AgentLab.Alarm.schedule({
+          at: when.at,
+          text: "⏰ 提醒：" + (p.text || "该做这件事了")
+        });
+      }
+      var soon = !!(when && (when.at - Date.now()) <= 120000);
       return {
         name: "提醒工具",
-        summary: "记录一条提醒",
-        result: "好的，我已经把“" + p.text + "”记下来了，到时间我会提醒你。",
-        payload: {}
+        summary: when ? ("记下提醒（" + when.label + "响铃）") : "记录一条提醒",
+        result: when
+          ? "好的，我已经把“" + p.text + "”记下来了。" +
+            (soon ? (when.label + "我会响铃提醒你。") : ("到 " + when.label + " 会响铃提醒你。")) +
+            "\n（提示：这个提醒只在当前页面开着的时候有效；页面一关就会失效。）"
+          : "好的，我已经把“" + p.text + "”记下来了。不过你没说什么时候提醒——" +
+            "说个时间（例如“10秒后”“明天早上8点”）我才能到点响铃。",
+        payload: when ? { at: when.at, label: when.label } : {}
       };
     }
     if (intent.toolName === "search") {
+      /* 同学直接给了一个网址 → 先走 DeepSeek 服务端的「网页抓取」（web_fetch），
+       * 把那个页面真正读一遍；没给网址才走「搜索」（web_search，必要时模型自己再抓原文）。
+       * 两条路用的是同一个 DeepSeek Key、同一套内置联网工具。 */
+      if (p.url) {
+        try {
+          var fr = await AgentLab.API.fetchPage(p.url, p.query);
+          if (fr.blocked) {
+            return {
+              name: "联网搜索工具",
+              summary: "抓取网页 " + p.url,
+              result: "这个网址不适合课堂打开，请换一个内容再来问我。",
+              payload: { blocked: true }
+            };
+          }
+          if (!fr.ok) {
+            return {
+              name: "联网搜索工具",
+              summary: "抓取网页 " + p.url + "（没抓到）",
+              result: "这个网页没能抓到：" + (fr.error || "未知原因") + "\n" +
+                "请如实告诉同学没有打开成功；如果他只是想知道相关话题，可以让我先搜索资料。",
+              payload: { mode: "fetch", url: p.url, error: fr.error }
+            };
+          }
+          return {
+            name: "联网搜索工具",
+            summary: "抓取网页 " + (fr.title || p.url) + "（DeepSeek 官方抓取）",
+            result: "网页抓取成功。下面是从这个网页里读到的正文：\n" +
+              "标题：" + (fr.title || p.url) + "\n网址：" + p.url + "\n\n" +
+              fr.content +
+              (fr.truncated ? "\n\n（网页太长，这里只取了前 " + fr.content.length + " 个字；需要更多细节可以再问我。）" : "") +
+              "\n（内容由 DeepSeek 官方 Fetch 接口抓取，未经过模型改写）",
+            payload: { mode: "fetch", url: p.url, title: fr.title, truncated: !!fr.truncated }
+          };
+        } catch (e) {
+          return {
+            name: "联网搜索工具",
+            summary: "抓取网页 " + p.url,
+            result: "网页抓取服务暂时不可用：" + (e.message || "网络错误"),
+            payload: { mode: "fetch", url: p.url }
+          };
+        }
+      }
       try {
         var res = await AgentLab.API.search(p.query);
         if (res.blocked) {
@@ -465,20 +625,20 @@ AgentLab.Agent = (function () {
           };
         }
         if (res.mode === "deepseek") {
-          /* ① DeepSeek 服务端联网搜索：拿回的是“搜索后整理的资料”+ 引用来源，
-           * 不是一列网页——这一点要在结果里写清楚，方便学生对照着看。 */
-          var src = "";
-          if (res.results && res.results.length) {
-            src = "\n来源：\n" + res.results.slice(0, 5).map(function (r, i) {
-              return (i + 1) + ". " + (r.title || "") + (r.url ? "　" + r.url : "");
-            }).join("\n");
-          }
+          /* ① DeepSeek 官方搜索接口：拿回的是一列**接口原样的**搜索结果
+           * （标题 / 摘要 / 链接 / 排序分），不是模型“替我们总结过的话”——
+           * 这一点要在结果里写清楚，方便学生对照着看、也方便大脑组织回答。 */
+          var dsList = (res.results || []).slice(0, 5).map(function (r, i) {
+            return (i + 1) + ". " + (r.title || "") + "（" + (r.source || "网页") + "）\n   " +
+              (r.snippet || "").slice(0, 300) + "\n   " + (r.url || "");
+          }).join("\n");
           return {
             name: "联网搜索工具",
-            summary: "搜索“" + p.query + "”（DeepSeek 服务端联网搜索）",
-            result: "联网搜索成功。以下是搜索后整理出的资料：\n" + res.summary + src +
-                    "\n（资料由 DeepSeek 服务端联网获取并整理）",
-            payload: { mode: "deepseek", query: p.query, summary: res.summary }
+            summary: "搜索“" + p.query + "”（DeepSeek 官方搜索，共 " + (res.results || []).length + " 条）",
+            result: "联网搜索成功（DeepSeek 自研搜索引擎）。下面是搜到的网页：\n" + dsList +
+              "\n\n请基于这些网页内容回答同学，并说明信息来自哪个网页；" +
+              "网页里没写的内容不要编造。需要看某一页的完整正文时，可以让同学把网址发给你。",
+            payload: { mode: "deepseek", query: p.query, count: (res.results || []).length }
           };
         }
         if (res.fallback) {
@@ -532,7 +692,9 @@ AgentLab.Agent = (function () {
         };
       }
       try {
-        var sys = "你是一个专业的翻译工具。把用户给的内容翻译成" + (p.target === "zh" ? "简体中文" : "英语") + "。只输出译文本身，不要任何解释、注释或前后缀。";
+        /* 和「查看输入参数」里展示的模型请求共用同一份提示词（translateSysOf），
+         * 否则面板里展示的那份就成了假的。 */
+        var sys = translateSysOf(p.target);
         var ans = await AgentLab.API.ask(sys, p.text);
         return {
           name: "翻译工具",
@@ -846,8 +1008,14 @@ AgentLab.Agent = (function () {
     },
     {
       key: "search", fn: "web_search",
-      desc: "联网搜索资料。同学问课外知识、查百科、问「是什么/为什么」时用它。班级和课表类问题不要用。",
-      props: { query: { type: "string", desc: "搜索关键词，不要包含“帮我搜索一下”这类客套话" } }, req: ["query"]
+      desc: "联网搜索资料（DeepSeek 官方搜索接口，返回真实网页的标题、摘要和链接）。" +
+        "同学问课外知识、查百科、问「是什么/为什么」时用它；" +
+        "同学直接给了一个网址、让你「打开看看写了什么」时，把网址填进 url（走 DeepSeek 官方抓取接口）。" +
+        "班级和课表类问题不要用。",
+      props: {
+        query: { type: "string", desc: "搜索关键词，不要包含“帮我搜索一下”这类客套话；只抓网页时可以填网页主题或直接填网址" },
+        url: { type: "string", desc: "可选：要抓取正文的网页地址（同学给了链接、要“打开看看”时才填，必须以 http:// 或 https:// 开头）" }
+      }, req: ["query"]
     }
   ];
 
@@ -914,10 +1082,17 @@ AgentLab.Agent = (function () {
       if (p.pomodoro === undefined) p.pomodoro = /番茄|专注/.test(ut);
     } else if (key === "datetime") {
       p.text = ut;
-    } else if (key === "remind" || key === "search" || key === "translate") {
-      var field = key === "remind" ? "text" : "query";
-      if (!p[field]) p[field] = ut;
-      if (!p.text && key === "translate") p.text = ut;
+    } else if (key === "remind") {
+      if (!p.text) p.text = ut;
+    } else if (key === "search") {
+      if (!p.query) p.query = ut;
+      /* 抓取：只认真实的网址。模型把网址塞进了 query 也一并认出来，
+       * 这样“打开 https://… 看看写了什么”就不用再多一轮工具调用。 */
+      if (!p.url && /^https?:\/\//i.test(String(p.query || "").trim())) p.url = String(p.query).trim();
+      if (p.url) p.url = String(p.url).trim();
+      if (p.url && !/^https?:\/\//i.test(p.url)) p.url = "";   // 不是网址就当没给
+    } else if (key === "translate") {
+      if (!p.text) p.text = ut;
       if (!p.target) p.target = /中文|汉语/.test(ut) ? "zh" : "en";
     } else if (key === "convert") {
       if (typeof p.value === "string") p.value = parseFloat(p.value);
@@ -949,8 +1124,186 @@ AgentLab.Agent = (function () {
     }
     var args = rawArgs;
     if (typeof args === "string") { try { args = JSON.parse(args || "{}"); } catch (e) { args = {}; } }
-    var r = runTool({ toolName: key, params: normalizeParams(key, args, userText) });
+    var r = runTool({
+      toolName: key,
+      params: normalizeParams(key, args, userText),
+      userText: userText        // 提醒工具要拿原话判断“什么时候响”
+    });
     return r || { name: "工具", summary: "执行 " + key, result: "这个工具没有返回结果。", payload: {} };
+  }
+
+  /**
+   * 单独试跑一个工具（「执行器实验室 · 工具百宝箱」的「试一试」用它）。
+   * 走的是和智能体跑一轮**同一份实现**：参数归一化 → 真正执行 → 返回 {name, summary, result, payload}，
+   * 只是不经过大模型——所以没配 Key 也能试，也能让学生看清“参数是长什么样的”。
+   * 例外：翻译工具**内部**会调一次模型；联网搜索在联网失败时会走“知识兜底”（也调模型）。
+   * 这两处的请求体由 modelCallsFor 原样给出，供「查看输入参数」展示。
+   * @param {string} key       工具 key（weather / calc / search …，与工具开关同名的 11 个之一）
+   * @param {Object} [params]  预先填好的参数（相当于“模型替你填好的那一份”）
+   * @param {string} [userText] 同学的原话（归一化时用来补齐 / 纠正参数）
+   * @returns {Promise<{name:string, summary:string, result:string, payload:Object, params:Object}>}
+   */
+  function tryTool(key, params, userText) {
+    /* 课表查询不是外部工具，查的是记忆器里的班级知识库；
+     * 但它确实列在工具清单里，所以试用时按同一套口径给结果。 */
+    if (key === "classInfo") {
+      var info = AgentLab.Store.getClassInfo();
+      var has = AgentLab.hasClassInfo(info);
+      var type = (params && params.type) || "all";
+      var askOf = { all: "班级信息", schedule: "课程表", duty: "值日安排", notice: "最近的通知", teacher: "班主任是谁" };
+      var result;
+      if (!has) {
+        result = "长期记忆小本子现在是空的——去「记忆器实验室」把班级课表、值日、通知填进去，这里就能查到了。";
+      } else if (type === "schedule") {
+        result = "课程表：" + (info.schedule || "（还没填）");
+      } else if (type === "duty") {
+        result = "值日安排：" + (info.duty || "（还没填）") + (info.dutyRule ? "；规则：" + info.dutyRule : "");
+      } else if (type === "notice") {
+        result = "班级通知：" + (info.notice || "（还没填）");
+      } else if (type === "teacher") {
+        result = "班主任：" + (info.teacher || "（还没填）");
+      } else {
+        result = AgentLab.formatClassInfo(info);
+      }
+      return Promise.resolve({
+        name: "课表查询工具",
+        summary: "查记忆器里的班级知识库（" + (askOf[type] || "班级信息") + "）",
+        result: result,
+        payload: { fromMemory: true, type: type },
+        params: { type: type }
+      });
+    }
+    var p = normalizeParams(key, params || {}, userText || "");
+    return Promise.resolve()
+      .then(function () { return runTool({ toolName: key, params: p, userText: userText || "" }); })
+      .then(function (r) {
+        var out = r || { name: "工具", summary: "执行 " + key, result: "这个工具没有返回结果。", payload: {} };
+        out.params = p;
+        return out;
+      });
+  }
+
+  /* ---------- 「这次到底经过大模型没有？」（工具百宝箱的透明度面板） ----------
+   * 口径必须说死，因为学生最容易误会“参数”是谁填的：
+   *   ① 试用面板本身**不经过**模型：参数是同学在面板里填的，直接走 runTool 执行；
+   *   ② 但工具**内部**可能自己调模型——
+   *        · 翻译工具：它没有词典，本身就是一次模型调用；
+   *        · 联网搜索：搜索接口只返回网页，联网失败改走「知识兜底」时才会问模型。
+   * 下面两个函数只把“要发给模型的东西”原样拼出来给学生看，**不发请求**；
+   * 其中 modelCallsFor(translate) 拼出来的那一份，点「运行这个工具」时确实会被发出去。 */
+  function modelBodyOf(sys, userText, maxTokens) {
+    return {
+      model: modelName(),
+      messages: [
+        { role: "system", content: sys },
+        { role: "user", content: userText }
+      ],
+      temperature: (AgentLab.CONFIG.temperature != null) ? AgentLab.CONFIG.temperature : 0.7,
+      max_tokens: maxTokens || AgentLab.CONFIG.maxTokens,
+      /* 真实发送前 api.js 会自动关掉思考模式，这里一并写出来，做到“所见即所发” */
+      thinking: { type: "disabled" }
+    };
+  }
+
+  function translateSysOf(target) {
+    return "你是一个专业的翻译工具。把用户给的内容翻译成" +
+      (target === "zh" ? "简体中文" : "英语") +
+      "。只输出译文本身，不要任何解释、注释或前后缀。";
+  }
+
+  /**
+   * 这件工具**内部**会发生的模型调用（返回 [] 表示它自己完全不用模型）。
+   * when：run = 点运行就一定会发；fallback = 只有降级路径才可能发。
+   */
+  function modelCallsFor(key, params) {
+    var p = params || {};
+    if (key === "translate") {
+      return [{
+        when: "run",
+        label: "真正发给模型的请求体",
+        note: "点「运行这个工具」时就会原样发出去：模型只负责翻译，把 {text} 译成哪种语言写在 system 里。",
+        body: modelBodyOf(translateSysOf(p.target), p.text || "")
+      }];
+    }
+    if (key === "search") {
+      return [{
+        when: "fallback",
+        label: "只有联网失败时才会发的请求体",
+        note: "搜索主通道走 DeepSeek 搜索接口（只返回网页、不生成文字，不需要聊天模型）；" +
+          "两条搜索通道都没拿到资料时，才会用这份提示词让模型凭已有知识作答，并如实标注“不是刚查到的网页”。搜到了就不会发。",
+        body: modelBodyOf(AgentLab.API.knowledgeFallbackPrompt(), p.query || "", 1500)
+      }];
+    }
+    return [];
+  }
+
+  /**
+   * 预览：同一句原话走「智能体实验室」的真实对话时，模型第一轮收到的请求体。
+   * 只用于教学对照，**不发送**——试用面板本身不会发这份东西。
+   */
+  function previewRequest(userText) {
+    var memory = {
+      classInfo: AgentLab.Store.getClassInfo(),
+      manual: AgentLab.Store.getManual(),
+      tools: AgentLab.Store.getTools()
+    };
+    var executorOn = !!flags.executor;
+    var body = {
+      model: modelName(),
+      messages: [
+        { role: "system", content: buildSys(memory, executorOn, "") },
+        { role: "user", content: userText }
+      ],
+      temperature: 0.3,
+      stream: false,
+      thinking: { type: flags.thinking ? "enabled" : "disabled" }
+    };
+    if (executorOn) {
+      var list = schemasFor(memory.tools);
+      if (list.length) {
+        body.tools = list;
+        body.tool_choice = "auto";
+      }
+    }
+    return body;
+  }
+
+  /**
+   * 预览「执行器收到的完整输入」——参数已经过 normalizeParams，
+   * 就是 runTool 真正拿到的那一份（和模型填的 / 面板填的都可能有出入）。
+   * 只拼数据、不执行任何工具，供工具百宝箱的「查看输入参数」使用。
+   */
+  function previewToolInput(key, params, userText) {
+    var raw = params || {};
+    var p;
+    /* 课表查询不是外部工具，tryTool 里单独走了记忆器分支，这里保持同一口径 */
+    if (key === "classInfo") p = { type: raw.type || "all" };
+    else p = normalizeParams(key, raw, userText || "");
+
+    /* 提醒工具是个特例：参数里只有“提醒什么”，“什么时候响”是 runTool 自己
+     * 从原话里解析出来的（parseRemindWhen(userText + " " + params.text)）。
+     * 面板要是不把这一步摊开，学生就会觉得“输入怎么少了时间”。 */
+    var derived = null;
+    if (key === "remind") {
+      var when = parseRemindWhen(String(userText || "") + " " + String(p.text || ""));
+      derived = {
+        what: "什么时候响",
+        why: "不在参数里：工具从原话里解析（parseRemindWhen）",
+        ok: !!when,
+        label: when ? when.label : "",
+        at: when ? when.at : null
+      };
+    }
+
+    return {
+      toolKey: key,
+      fn: TOOL_FN[key] || "",
+      name: (key === "classInfo" ? "课表查询" : toolLabelOf(key)) + "工具",
+      userText: userText || "",
+      panelParams: raw,   // 面板里原样填的（归一化之前）
+      params: p,          // 执行器真正收到的（归一化之后）
+      derived: derived    // 工具内部再从原话里解析出来的东西（不属于参数）
+    };
   }
 
   function toolLabelOf(key) {
@@ -1125,11 +1478,16 @@ AgentLab.Agent = (function () {
     return {};
   }
 
-  function callBrain(messages, tools, thinkingOn) {
+  function callBrain(messages, tools, thinkingOn, forceToolName) {
     var body = { model: modelName(), messages: messages, temperature: 0.3, stream: false };
     if (tools && tools.length) {
       body.tools = tools;
-      body.tool_choice = "auto";          // auto：模型有权判断“要不要调”
+      /* 默认 auto：模型有权判断“要不要调”。
+       * 同学明确说了“搜一下 / 帮我查资料 / 打开这个网址”时，调用方会传 forceToolName，
+       * 这里就写成强制调用那个函数——否则模型很可能凭记忆直接答，学生看不到搜索发生。 */
+      body.tool_choice = forceToolName
+        ? { type: "function", function: { name: forceToolName } }
+        : "auto";
     }
     /* 思考模式（模型的能力开关）→ 决定要不要把推理过程写出来（DeepSeek 的 thinking）。
      * 开：会先在 reasoning_content 里把题算一遍；关：直接决策，最快。
@@ -1149,15 +1507,15 @@ AgentLab.Agent = (function () {
   /* 发一次请求；思考模式这个参数不被当前模型/平台支持时（400），剥掉它再试一次。
    * 剥掉的只是"推理过程可不可见"这一项能力，不影响规划与工具调用。
    * state.stripped 记下"已经剥过一次"，之后的轮次不再白发一次带 thinking 的请求。 */
-  async function callBrainSoft(messages, wireTools, state) {
-    if (state && state.stripped) return callBrain(messages, wireTools, null);
+  async function callBrainSoft(messages, wireTools, state, forceToolName) {
+    if (state && state.stripped) return callBrain(messages, wireTools, null, forceToolName);
     try {
-      return await callBrain(messages, wireTools, flags.thinking);
+      return await callBrain(messages, wireTools, flags.thinking, forceToolName);
     } catch (err) {
       var em = String((err && err.message) || "");
       if ((err && err.status) === 400 && /thinking|reasoning/i.test(em)) {
         if (state) state.stripped = true;
-        return callBrain(messages, wireTools, null);
+        return callBrain(messages, wireTools, null, forceToolName);
       }
       throw err;
     }
@@ -1216,6 +1574,17 @@ AgentLab.Agent = (function () {
     });
   }
 
+  /* 这句话是不是“明确要求联网”？只认两类：
+   *   ① 句子里直接出现一个网址（同学要“打开这一页”）；
+   *   ② 明确的搜索动词：搜一下 / 帮我搜 / 上网查 / 查资料 / 百度一下…
+   * 不把“帮我查一下今天几号”算进来——那是时间工具的事，强制搜索反而添乱。 */
+  function explicitSearchAsk(text) {
+    var t = String(text || "");
+    if (!t) return false;
+    if (/https?:\/\/[^\s，。；、）)】"'<>]+/i.test(t)) return true;
+    return /(搜索|搜一下|搜一搜|搜搜|搜下|搜个|帮我搜|上网搜|网上搜|百度一下|上网查|网上查|查资料)/.test(t);
+  }
+
   /* ================= 引擎一：真·LLM 驱动多轮 ReAct =================
    * 流程（和大模型反复交互，直到它不再要工具为止）：
    *   感知 → 组装上下文(含长期记忆) → 大脑规划 → tool_calls → 执行器
@@ -1229,6 +1598,10 @@ AgentLab.Agent = (function () {
     var executorOn = !!flags.executor;
     var wireTools = executorOn ? schemasFor(tools) : [];   // 执行器关闭 → 请求里根本不带 tools
     var thinkState = { stripped: false };                  // thinking 被平台拒过一次后，本轮不再发它
+    /* 同学明确说“搜一下 / 帮我查资料 / 打开这个网址”时，第一轮强制调用联网搜索工具。
+     * 不这么做的话，tool_choice=auto 的模型常常凭记忆直接答完——
+     * 学生明明说了“搜一下”，界面上却一次搜索都没发生。 */
+    var forceFirstSearch = (tools.search !== false) && explicitSearchAsk(userText);
 
     var messages = [{ role: "system", content: buildSys(memory, executorOn, planOnly ? "plan" : "") }];
     var past = flags.memory ? stripCurrentUser(history, userText) : [];
@@ -1282,9 +1655,11 @@ AgentLab.Agent = (function () {
         /* —— 大脑（它自己决定要不要调工具）—— */
         hooks.onStage && hooks.onStage("brain",
           "第" + round + "轮：把 " + messages.length + " 条消息发给大脑，等它规划…" +
+          (round === 1 && forceFirstSearch ? "（同学明确要求搜索：这一轮强制调用联网搜索工具）" : "") +
           (isLastRound ? "（已到循环上限，这一轮必须给出答案）" : ""), null, round);
 
-        var data = await callBrainSoft(messages, wireTools, thinkState);
+        var data = await callBrainSoft(messages, wireTools, thinkState,
+          (round === 1 && forceFirstSearch) ? "web_search" : "");
         var msg = pickMessage(data);
         calls = msg.tool_calls;
         var finish = (data.choices && data.choices[0] && data.choices[0].finish_reason) || "";
@@ -1757,6 +2132,10 @@ AgentLab.Agent = (function () {
     MODES: MODES,
     detectIntent: detectIntent,
     runTool: runTool,
+    tryTool: tryTool,
+    modelCallsFor: modelCallsFor,       // 工具内部会发生的模型调用（工具百宝箱展示用）
+    previewRequest: previewRequest,     // “如果走真实对话，模型会收到什么”（只预览、不发送）
+    previewToolInput: previewToolInput, // “执行器收到的完整输入”（归一化后的参数）
     schemasFor: schemasFor,
     TOOL_SCHEMAS: TOOL_SCHEMAS,
     flags: flags,

@@ -56,7 +56,7 @@ AgentLab.LabHome = (function () {
       planner: "判断需要查询订单→决定调用订单查询工具→组织回答结构",
       memory: "调取用户账号信息（知道是哪个用户的订单）；记住对话历史",
       executor: "调用订单查询 API，返回'快递已到北京转运中心'",
-      aiagentbook: "ai-agent-book chapter1:53 — Coding Agent 增量开发策略的客服版：理解需求→搜索相关信息→调用工具→验证结果"
+      aiagentbook: "ai-agent-book 第 1 章 — Coding Agent 增量开发策略的客服版：理解需求→搜索相关信息→调用工具→验证结果"
     },
     {
       name: "出行助手（高德/百度地图）",
@@ -66,7 +66,7 @@ AgentLab.LabHome = (function () {
       planner: "拆解任务：查天气→查路线→算时间→给建议；排序步骤",
       memory: "记住用户常用出发地、交通偏好（地铁/开车）",
       executor: "调用天气 API、路线规划 API、实时路况 API",
-      aiagentbook: "ai-agent-book chapter1:43 — Manus 合并观察空间与动作空间：出行助手同时扩大了'能看到什么'（路况/天气）和'能做什么'（导航/订票）"
+      aiagentbook: "ai-agent-book 第 1 章 — Manus 合并观察空间与动作空间：出行助手同时扩大了'能看到什么'（路况/天气）和'能做什么'（导航/订票）"
     },
     {
       name: "智能家居（小爱同学/Siri/灵犀）",
@@ -83,10 +83,10 @@ AgentLab.LabHome = (function () {
       icon: "code",
       desc: "程序员说“帮我给这个登录函数加上错误处理和单元测试”，CodeBuddy 读代码、理解项目结构、生成修改方案、编辑文件、运行测试、根据结果调试。",
       perception: "①读取当前打开的代码文件全文（含函数定义、变量、注释）；②扫描项目目录结构（src/、tests/、package.json 等）；③读取终端输出（编译错误、测试失败、日志）；④读取 Git 差异（git diff 看最近改了什么）；⑤读取选中的代码片段或光标所在行；⑥理解报错堆栈中的文件名和行号",
-      planner: "增量开发策略（ai-agent-book chapter1:53）：第一步“理解需求”——把自然语言需求拆解为具体代码改动点；第二步“搜索相关代码”——在项目中找到需要修改的函数和它的调用方；第三步“定位修改位置”——确定在哪个文件哪一行插入/替换代码；第四步“生成代码补丁”——写出符合项目编码规范的新代码；第五步“运行测试验证”——执行单元测试看是否通过；第六步“根据失败结果调试”——如果测试失败，读取错误信息，回到第三步重新修改，形成 ReAct 循环",
+      planner: "增量开发策略（ai-agent-book 第 1 章）：第一步“理解需求”——把自然语言需求拆解为具体代码改动点；第二步“搜索相关代码”——在项目中找到需要修改的函数和它的调用方；第三步“定位修改位置”——确定在哪个文件哪一行插入/替换代码；第四步“生成代码补丁”——写出符合项目编码规范的新代码；第五步“运行测试验证”——执行单元测试看是否通过；第六步“根据失败结果调试”——如果测试失败，读取错误信息，回到第三步重新修改，形成 ReAct 循环",
       memory: "①记住项目代码规范（如阿里Java规范、ESLint规则、命名风格）；②记住之前的修改历史（这个函数上次改过什么）；③记住用户编码偏好（如喜欢用箭头函数还是function、注释写中文还是英文）；④记住项目技术栈（React+TypeScript还是Vue+JS、用Jest还是Mocha）；⑤记住项目的目录约定（组件放src/components、测试放tests/）",
       executor: "①代码搜索工具——跨文件符号检索（找到所有调用login()的地方）；②文件读写工具——读取文件内容、生成补丁、写入修改；③命令执行工具——运行npm test、npm run lint、npm run build；④Git操作工具——查看git diff、git status、自动生成commit message；⑤终端交互工具——读取命令输出、向终端输入指令；⑥MCP扩展工具——通过MCP协议接入第三方工具（如数据库查询、API调试）",
-      aiagentbook: "ai-agent-book chapter1:53 — Coding Agent 增量开发策略：眼睛=需求/代码片段/终端输出/Git差异，手脚=代码搜索/文件读写/执行命令/Git操作，策略=增量开发（理解→搜索→编辑→测试→调试的ReAct循环）。腾讯CodeBuddy基于混元代码大模型+DeepSeek双引擎，支持VS Code/JetBrains插件，内置文件编辑/命令执行/Git操作/测试执行工具链，支持MCP协议扩展"
+      aiagentbook: "ai-agent-book 第 1 章 — Coding Agent 增量开发策略：眼睛=需求/代码片段/终端输出/Git差异，手脚=代码搜索/文件读写/执行命令/Git操作，策略=增量开发（理解→搜索→编辑→测试→调试的ReAct循环）。腾讯CodeBuddy基于混元代码大模型+DeepSeek双引擎，支持VS Code/JetBrains插件，内置文件编辑/命令执行/Git操作/测试执行工具链，支持MCP协议扩展"
     },
     {
       name: "搜索 Agent（Deep Research）",
@@ -96,7 +96,7 @@ AgentLab.LabHome = (function () {
       planner: "迭代深化：根据已有信息调整搜索方向，逐步综合出完整报告",
       memory: "记住已搜索的关键词、已阅读的网页、已整理的要点",
       executor: "搜索查询、网页读取、生成报告",
-      aiagentbook: "ai-agent-book chapter1:54 — Deep Research 等搜索 Agent：眼睛=搜索结果/网页内容，手脚=搜索查询/网页读取/生成报告，策略=迭代深化"
+      aiagentbook: "ai-agent-book 第 1 章 — Deep Research 等搜索 Agent：眼睛=搜索结果/网页内容，手脚=搜索查询/网页读取/生成报告，策略=迭代深化"
     }
   ];
 
@@ -149,12 +149,12 @@ AgentLab.LabHome = (function () {
     { q: "在人体类比中，'感知器'对应人体的哪个器官？", opts: ["大脑", "眼睛和耳朵", "手", "小本子"], ans: 1, why: "感知器像眼睛和耳朵，负责接收外界信息（文字、语音、图像）并转化为 AI 能理解的形式。" },
     { q: "'Model-Harness' 结构中，Harness 负责什么？", opts: ["负责策略决策和思考", "负责构造上下文、暴露工具接口、维护循环和状态", "负责存储用户数据", "负责渲染用户界面"], ans: 1, why: "Harness 是环绕模型的运行与治理层：构造上下文、暴露工具接口、维护循环和状态、实施权限验证纠正。Model（LLM）负责策略决策。" },
     { q: "拆解一个真实智能体时，'拆解四问'不包括以下哪个？", opts: ["它听到了什么？", "它怎么安排步骤？", "它的代码是谁写的？", "它调用了什么工具？"], ans: 2, why: "拆解四问：①它听到了什么？（感知器）②它怎么安排步骤？（规划器）③它记得你的上次提问吗？（记忆器）④它调用了什么工具？（执行器）。不包括'代码是谁写的'。" },
-    { q: "腾讯 CodeBuddy（Coding Agent）的'手脚'主要是什么？", opts: ["搜索结果和网页内容", "代码搜索、文件读写、执行命令", "屏幕截图和 DOM 树", "打电话和发邮件"], ans: 1, why: "ai-agent-book chapter1:53 — Coding Agent 的手脚=代码搜索、文件读写、执行命令等开放式操作。腾讯CodeBuddy内置文件编辑/命令执行/Git操作/测试执行工具链。" },
+    { q: "腾讯 CodeBuddy（Coding Agent）的'手脚'主要是什么？", opts: ["搜索结果和网页内容", "代码搜索、文件读写、执行命令", "屏幕截图和 DOM 树", "打电话和发邮件"], ans: 1, why: "ai-agent-book 第 1 章 — Coding Agent 的手脚=代码搜索、文件读写、执行命令等开放式操作。腾讯CodeBuddy内置文件编辑/命令执行/Git操作/测试执行工具链。" },
     { q: "智能家居（小爱同学）中，'记住用户晚上10点自动关灯的习惯'属于哪个组件？", opts: ["感知器", "规划器", "记忆器", "执行器"], ans: 2, why: "记住用户习惯和偏好是记忆器的长期记忆功能——跨会话记住用户信息。" },
-    { q: "'观察空间'和'动作空间'分别对应什么？", opts: ["大脑和手脚", "AI 能看到什么 和 AI 能做什么", "输入和输出", "硬件和软件"], ans: 1, why: "ai-agent-book chapter1:37 — 观察空间=AI 能接收到的所有信息，动作空间=AI 被允许执行的所有操作。没有进入观察空间的信息，对 AI 来说就像不存在。" },
+    { q: "'观察空间'和'动作空间'分别对应什么？", opts: ["大脑和手脚", "AI 能看到什么 和 AI 能做什么", "输入和输出", "硬件和软件"], ans: 1, why: "ai-agent-book 第 1 章 — 观察空间=AI 能接收到的所有信息，动作空间=AI 被允许执行的所有操作。没有进入观察空间的信息，对 AI 来说就像不存在。" },
     { q: "智能客服中，'调用订单查询 API 返回快递状态'属于哪个组件？", opts: ["感知器", "规划器", "记忆器", "执行器"], ans: 3, why: "调用外部工具（订单查询 API）获取真实数据是执行器的本领——AI 大脑不会自己查数据库，靠工具补。" },
     { q: "PPA 循环指的是什么？", opts: ["感知-规划-执行循环", "准备-执行-评估循环", "计划-处理-分析循环", "感知-处理-行动循环"], ans: 0, why: "PPA（Perception-Planning-Action）循环=感知-规划-执行，是智能体的核心工作循环：感知环境→规划行动→执行行动→观察结果→再规划。" },
-    { q: "ai-agent-book 把工具分成几类？", opts: ["3类：感知、执行、协作", "5类：感知、执行、协作、事件触发、用户沟通", "2类：输入、输出", "4类：搜索、计算、控制、通信"], ans: 1, why: "ai-agent-book chapter4:7 — 工具五分类：①感知工具（获取信息）②执行工具（改变世界）③协作工具（与其他 Agent 分工）④事件触发工具（外部输入驱动）⑤用户沟通工具（主动与用户连接）。" },
+    { q: "“每天早上 7:30 自动提醒今天谁值日”——它的类别和标签分别是什么？", opts: ["做 + 标签「到点自己动」", "读 + 标签「到点自己动」", "算 + 标签「到点自己动」", "派 + 标签「到点自己动」"], ans: 0, why: "它真的会去检查、会提醒，留下后果——类别是「做」；没人叫它、时间一到自己跑——标签是「到点自己动」。标签回答“什么时候做”，不是第五类。" },
     { q: "RAG（检索增强生成）主要解决什么问题？", opts: ["让 AI 跑得更快", "让 AI 能访问外部知识库，弥补模型知识的时效性和专业性不足", "让 AI 能生成图片", "让 AI 能听懂语音"], ans: 1, why: "RAG（Retrieval-Augmented Generation）= 检索+生成。先从外部知识库检索相关信息，再把检索结果注入上下文，让大模型基于真实知识生成回答。解决了大模型知识截止日期、专业领域知识不足、幻觉等问题。" },
     { q: "在 ReAct 循环中，'Act'（行动）之后紧接着是什么？", opts: ["直接给出最终答案", "观察（Observation）行动结果，再决定下一步思考", "结束任务", "重新规划整个任务"], ans: 1, why: "ReAct = Reasoning + Acting。循环是：思考（Thought）→行动（Action）→观察（Observation）→再思考（Thought）→... 直到得出最终答案。行动后必须观察结果，才能决定下一步。" }
   ];
@@ -299,24 +299,24 @@ AgentLab.LabHome = (function () {
       links: [{ t: "真实案例库", el: "case-tabs" }]
     },
     {
-      id: "tools5", icon: "wrench", nav: "工具五分类", name: "工具五分类", en: "TOOL TAXONOMY",
-      tip: "工具按用途分五类：<b>感知</b>（读世界）、<b>执行</b>（改世界）、<b>协作</b>（找帮手 / 找人确认）、<b>事件触发</b>（到点自动动）、<b>用户沟通</b>（发消息）。",
-      analogy: "像教室里的分工：有人看（感知）、有人动手（执行）、有人去问老师（协作）、有闹钟到点响（事件）、有人负责通知（沟通）。",
-      real: "分类的实际意义是<b>定风险等级</b>：感知类只读，可以放开用；执行类会改变真实世界，必须加确认与审计。CodeBuddy 的工具就覆盖了感知（代码搜索）与执行（文件读写 / 命令）两类。",
-      quiz: { q: "「每天 7:30 自动检查课表并提醒」用的是哪一类工具？", a: "事件触发工具。它不需要人叫，到点自己动——这也是 Agent 从「问答」走向「常驻助手」的关键。" },
+      id: "tools5", icon: "wrench", nav: "工具分类", name: "工具分类（读·算·做·派 + 标签）", en: "TOOL TAXONOMY",
+      tip: "工具按“做什么”分四类：<b>读</b>（把信息拿进来）、<b>算</b>（只加工，不碰外面）、<b>做</b>（让外面真的变）、<b>派</b>（交给别的 Agent 或人）；再按“什么时候开始做”贴一个<b>「到点自己动」</b>标签。（分类骨架来自 ai-agent-book 第 4 章的五类。）",
+      analogy: "像教室里的分工：有人看（读）、有人算（算）、有人动手（做）、有人去请别人帮忙（派）；闹钟到点响不是第五种人，它只是“到点自己动”的标签。",
+      real: "分类的实际意义是<b>定风险等级</b>：<b>读</b>只拿信息，可以放开用；<b>算</b>基本无副作用；<b>做</b>会改变真实世界，必须加确认与审计；<b>派</b>还要管住被委托的一方。CodeBuddy 的工具就覆盖了读（代码搜索）与做（文件读写 / 命令执行）。",
+      quiz: { q: "「每天 7:30 自动检查课表并提醒」——它的类和标签分别是什么？", a: "类是「做」（到点真的会去检查、会提醒，留下后果），标签是「到点自己动」（没人叫它，时间一到自己跑）。标签回答“什么时候做”，不是第五类。" },
       demo: "picker",
       demoData: {
         title: "动手试试：哪些工具会「改变真实世界」？", hint: "多选后检查", icon: "wrench",
-        taskLabel: "任务：", task: "下面这些工具里，哪些属于<b>执行类</b>（会改变真实世界，风险更高）？",
+        taskLabel: "任务：", task: "下面这些工具里，哪些属于<b>「做」类</b>（会改变真实世界，风险更高）？",
         items: [
-          { id: "search", label: "联网搜索资料", ok: false, why: "只读——属于感知类。" },
+          { id: "search", label: "联网搜索资料", ok: false, why: "只读——属于「读」。" },
           { id: "del", label: "删除服务器上的文件", ok: true, why: "会改变真实世界，而且不可逆。" },
-          { id: "mail", label: "给全班群发通知邮件", ok: true, why: "发出去就收不回来，属于执行类。" },
-          { id: "weather", label: "查询明天的天气", ok: false, why: "只读——属于感知类。" },
+          { id: "mail", label: "给全班群发通知邮件", ok: true, why: "发出去就收不回来，属于「做」。" },
+          { id: "weather", label: "查询明天的天气", ok: false, why: "只读——属于「读」。" },
           { id: "pay", label: "自动完成一笔支付", ok: true, why: "涉及真实资金，风险最高。" }
         ],
         checkLabel: "检查一下",
-        passHtml: "判断口诀：<b>只读的是感知，会留下后果的是执行</b>。执行类工具必须加确认、权限与审计。",
+        passHtml: "判断口诀：<b>只读的是「读」，会留下后果的是「做」</b>；只加工、不碰外面的是「算」；交给别人做的是「派」。会留下后果的工具必须加确认、权限与审计。",
         failHtml: "再想想：搜索和查天气都只是「看」，不会改变任何东西。"
       },
       links: [{ t: "组件抢答", el: "home-quick" }]
@@ -470,7 +470,7 @@ AgentLab.LabHome = (function () {
           '<div class="goal-item"><span class="goal-num">1</span>知道现代智能体的整体架构：大语言模型"大脑" + 感知器、规划器、记忆器、执行器四大组件；理解 Agent = 大脑 + 眼睛 + 手脚的核心公式</div>' +
           '<div class="goal-item"><span class="goal-num">2</span>能通过人体类比（眼睛→感知器、大脑→LLM、小本子→记忆器、手→执行器）理解各组件职责，并在总装图拼装互动中巩固</div>' +
           '<div class="goal-item"><span class="goal-num">3</span>掌握"拆解四问"（它听到了什么？它怎么安排步骤？它记得你的上次提问吗？它调用了什么工具？），能在真实案例（智能客服/出行助手/智能家居/Coding Agent/搜索 Agent）中定位四大组件</div>' +
-          '<div class="goal-item"><span class="goal-num">4</span>了解 ai-agent-book 科学口径：Model-Harness 结构、观察空间与动作空间、ReAct 循环、工具五分类；建立"AI 不是魔法，是组件化协作"的理性认知</div>' +
+          '<div class="goal-item"><span class="goal-num">4</span>了解 ai-agent-book 科学口径：Model-Harness 结构、观察空间与动作空间、ReAct 循环、工具分类（读/算/做/派 + 触发标签）；建立"AI 不是魔法，是组件化协作"的理性认知</div>' +
         '</div>' +
       '</div>' +
 
@@ -491,14 +491,14 @@ AgentLab.LabHome = (function () {
       /* ② 核心公式 */
       LP.card("brain", "② Agent = 大脑 + 眼睛 + 手脚（ai-agent-book 核心公式）", "ai-agent-book 第1章给出了现代 Agent 的最小工程实现公式：<b>Agent = LLM（大语言模型）+ 上下文 + 工具</b>。换一种更直观的说法：<b>Agent = 大脑 + 眼睛 + 手脚</b>。",
         '<span id="home-formula"></span><div class="formula-strip formula-center">' +
-          '<div class="formula-title">现代智能体核心公式（ai-agent-book chapter1:11）</div>' +
+          '<div class="formula-title">现代智能体核心公式（ai-agent-book 第 1 章）</div>' +
           '<div class="formula-line">' +
             '<span class="f-item f-brain">' + U.icon("brain", 15) + 'LLM 大语言模型</span><span class="f-op">+</span>' +
             '<span class="f-item f-mem">' + U.icon("eye", 15) + '上下文 Context</span><span class="f-op">+</span>' +
             '<span class="f-item f-exe">' + U.icon("hand", 15) + '工具 Tools</span><span class="f-op">=</span>' +
             '<span class="f-item f-gold">' + U.icon("robot", 15) + 'AI Agent 智能体</span>' +
           '</div>' +
-          '<div class="formula-note">大脑负责生成 · 记忆器与感知器共同构成"上下文" · 执行器就是"工具" · 规划器驱动循环</div>' +
+          '<div class="formula-note">大脑负责生成 · 记忆器与感知器共同构成"上下文" · 执行器是"岗位"、工具是它手里的"家伙" · 规划器驱动循环</div>' +
         '</div>' +
         '<div class="formula-cards">' +
           '<div class="notebook formula-card">' +
@@ -536,7 +536,7 @@ AgentLab.LabHome = (function () {
       ) +
 
       /* ④ Model-Harness 结构 */
-      LP.card("brain", "④ Model-Harness 结构（ai-agent-book 科学口径）", "ai-agent-book chapter1:25 给出了 Agent 内部的双层结构：<b>Model</b>（大语言模型）负责策略决策，<b>Harness</b>（运行与治理层）负责构造上下文、暴露工具接口、维护循环和状态、实施权限验证纠正。“大脑+眼睛+手脚”是儿童化说法，Model-Harness 是科学口径。",
+      LP.card("brain", "④ Model-Harness 结构（ai-agent-book 科学口径）", "ai-agent-book 第 1 章给出了 Agent 内部的双层结构：<b>Model</b>（大语言模型）负责策略决策，<b>Harness</b>（运行与治理层）负责构造上下文、暴露工具接口、维护循环和状态、实施权限验证纠正。“大脑+眼睛+手脚”是儿童化说法，Model-Harness 是科学口径。",
         '<span id="home-harness"></span><div class="harness-diagram">' +
           '<div class="hd-outer">' +
             '<div class="hd-label">Agent 内部</div>' +
@@ -740,7 +740,7 @@ AgentLab.LabHome = (function () {
               }).join("") +
             '</div>' +
             '<div class="cb-loop">' + U.icon("refresh", 14) +
-              '<span>失败 → 读错误 → 回到<b>第 3 步</b>重新修改，循环迭代　<code>chapter1:53</code></span>' +
+              '<span>失败 → 读错误 → 回到<b>第 3 步</b>重新修改，循环迭代　<code>第 1 章</code></span>' +
             '</div>' +
           '</div>' +
 
@@ -813,10 +813,10 @@ AgentLab.LabHome = (function () {
               '<div class="tx-point-txt"><b>ai-agent-book 依据</b>——每处设计都有出处。</div>' +
             '</div>' +
             [
-              ['chapter1:53', '增量开发', '理解 → 搜索 → 编辑 → 测试 → 调试'],
-              ['chapter4:7', '工具分类', '感知类 · 执行类 · 协作类'],
-              ['chapter4:100', 'MCP 协议', '工具的「USB 接口」'],
-              ['chapter3:72', '记忆层次', '长期记忆 · 轨迹 · 业务状态']
+              ['第 1 章', '增量开发', '理解 → 搜索 → 编辑 → 测试 → 调试'],
+              ['第 4 章', '工具分类', '感知类 · 执行类 · 协作类'],
+              ['第 4 章', 'MCP 协议', '工具的「USB 接口」'],
+              ['第 3 章', '记忆层次', '长期记忆 · 轨迹 · 业务状态']
             ].map(function (r) {
               return '<div class="tx-point">' + U.icon("check", 15) +
                 '<div class="tx-point-txt"><code>' + r[0] + '</code>　<b>' + r[1] + '：</b>' + r[2] + '</div>' +
@@ -827,7 +827,7 @@ AgentLab.LabHome = (function () {
       ) +
 
       /* ⑪ 五种 Agent 产品对比 */
-      LP.card("brain", "⑪ 五种 Agent 产品对比（ai-agent-book chapter1:51-59）", "五个真实 Agent 产品，从「眼睛（感知什么）、手脚（能做什么）、策略（怎么工作）」三个维度对比——看看谁的“手脚”伸得最远。",
+      LP.card("brain", "⑪ 五种 Agent 产品对比（ai-agent-book 第 1 章）", "五个真实 Agent 产品，从「眼睛（感知什么）、手脚（能做什么）、策略（怎么工作）」三个维度对比——看看谁的“手脚”伸得最远。",
         '<div class="agent-compare-cards" id="home-compare">' +
           AGENT_COMPARE.map(function (a, i) {
             var icons = ["code", "search", "display", "mobile", "phone"];
@@ -877,6 +877,7 @@ AgentLab.LabHome = (function () {
       /* 课堂小结（与其他实验室统一：<h3> 标题；不用深度拆解模块的 cbHead） */
       '<div class="lesson-summary card-brain">' +
         '<h3 id="home-adv">' + U.icon("check", 18) + ' 课堂小结（L03+L04）</h3>' +
+        U.designCta(5, "亲手写它的岗位说明书（能做什么 / 不能做什么 / 说话风格）——这是总装图里“规则”的位置") +
         '<div class="summary-core"><b>核心结论：</b>现代 AI 智能体 = 大语言模型"大脑" + 感知器、规划器、记忆器、执行器四大组件。ai-agent-book 科学口径：Agent = LLM + 上下文 + 工具（大脑+眼睛+手脚），内部是 Model-Harness 双层结构。真实产品（智能客服/出行助手/智能家居/Coding Agent/搜索 Agent）都是这四大组件的协作——用"拆解四问"可以把任何智能体拆开看明白。</div>' +
         '<div class="summary-points">' +
           '<div class="sp-item"><span class="sp-icon">' + U.icon("brain", 14) + '</span><div><b>核心公式：</b>Agent = LLM（大脑）+ 上下文（眼睛）+ 工具（手脚）；人体类比：眼睛→感知器、大脑→LLM、小本子→记忆器、手→执行器</div></div>' +
@@ -1033,6 +1034,7 @@ AgentLab.LabHome = (function () {
     };
     AgentLab.Quiz.mount({
       host: "home-quick-body",
+      card: "ag-board",   /* 回看：总装图拼装（抢答考的就是"哪个组件管什么"） */
       color: "brain",
       name: "组件小达人",
       bar: "qg-progress-bar",
@@ -1226,6 +1228,7 @@ AgentLab.LabHome = (function () {
     var LETTERS = "ABCDEF";
     AgentLab.Quiz.mount({
       host: "home-quiz-body",
+      card: "sec-map-home",   /* 章末综合小测（12 题覆盖整课）→ 回看本课学习地图 */
       color: "brain",
       name: "架构小达人",
       bar: "qz-progress-bar",

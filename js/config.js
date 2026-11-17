@@ -9,24 +9,35 @@ window.AgentLab = window.AgentLab || {};
 AgentLab.CONFIG = {
   /* ---------- DeepSeek API（静态版：浏览器直连，Key 由用户输入） ---------- */
   apiKey: "",
-  model: "deepseek-v4-flash",
+  /* 全站使用的模型，由系统统一配置（页面上不提供切换）。
+   * 官方模型名是 `deepseek-flash`，自 2026-10-17 起由 DeepSeek-V4.1-Flash-1017 提供服务
+   * （旧名 `deepseek-v4-flash` 仍可用，请求会路由到同一模型）。
+   * 联网搜索与抓取走独立的 Search / Fetch 接口，见下方与 api.js。 */
+  model: "deepseek-flash",
+  modelLabel: "DeepSeek V4.1 Flash（1017）",
+  /* 模型名兜底：只有当接口明确回一句“模型名不被支持”时，才按这个顺序换下一个，
+   * 保证旧账号/旧接口版本上课堂也不中断。
+   * 其余错误（Key / 余额 / 网络 / 参数）一律原样报错，绝不偷偷换模型。 */
+  modelFallbacks: ["deepseek-v4-flash"],
   temperature: 0.7,
   /* 单次回复的长度上限。原来是 1200，会把“一步一步推理”的长回答中途切断
    * （思维链要写 7 步推导 + 多位数竖式，1200 不够），导致最后那句“答案”根本没写出来。
    * 这里放宽到 4000；个别模块（如思维链实验）还会再单独调大。 */
   maxTokens: 4000,
   deepseekUrl: "https://api.deepseek.com/chat/completions",
-  /* DeepSeek 新版 Responses 接口（联网搜索 web_search 只在这条链路上声明；
-   * chat/completions 不支持。注意：接口对不支持的内置工具会“静默忽略”，
-   * 所以 api.js 里的判定标准是“响应里真的出现了搜索痕迹”，否则当作没搜到。 */
+  /* DeepSeek Responses 接口（OpenAI Responses 格式，基本教学卡里会对比展示）。
+   * 注意：这里不是联网搜索的入口——Responses 的内置 web_search 只对 deepseek-v4-pro 开放，
+   * 而且没有 web_fetch。课堂用的搜索/抓取走下面两条独立接口。 */
   responsesUrl: "https://api.deepseek.com/responses",
-  /* DeepSeek 服务端联网搜索开关。
-   * 实测（2026-10，Key 有效）：/responses 会静默忽略 web_search 工具（模型自己在思维链里
-   * 说“我没有联网工具”），/chat/completions 直接 422——所以这条路当前走不通，
-   * 系统会自动落到“必应 RSS → 大模型已有知识兜底”。
-   * 保留开关的原因：一旦 DeepSeek 侧放开，改回 true 即可启用；
-   * 即便开着，代码也只在响应里真出现搜索痕迹时才认账，不会把模型的话冒充成搜索结果。 */
+  /* DeepSeek 官方 Search & Fetch 接口（2026-10-17 上线，自研搜索引擎）：
+   *   POST /v1/tools/search  { query, count, ori_question, need_content } → { results:[...] }
+   *   POST /v1/tools/fetch   { url }                                      → { title, content }
+   * 与对话接口同一个 Key、同一套 Bearer 鉴权，不经过任何第三方搜索服务。
+   * 关掉也只是退回“必应 RSS + 大模型已有知识兜底”，不影响上课。 */
+  searchUrl: "https://api.deepseek.com/v1/tools/search",
+  fetchUrl: "https://api.deepseek.com/v1/tools/fetch",
   deepseekWebSearch: true,
+  deepseekWebFetch: true,
 
   /* ---------- 云端能力（感知器实验室用；均为 OpenAI 兼容接口） ----------
    * 默认服务商：硅基流动 SiliconFlow。
@@ -79,14 +90,14 @@ AgentLab.CONFIG = {
     /* 按序兜底清单（前面的失败自动换下一个，全部失败才降级示例演示）：
      *   字符串条目 = 硅基流动模型（用「云端能力密钥」）；
      *   对象条目   = 指定服务商（keyFrom:"main" 表示用「DeepSeek 主密钥」）。
-     * DeepSeek V4.1 Flash（2026-09 发布）原生支持视觉理解，走 OpenAI 兼容
+     * DeepSeek V4.1 Flash（1017 版）原生支持视觉理解，走 OpenAI 兼容
      * 格式 + base64 图片，作为硅基流动全线不可用时的最终兜底。 */
     models: [
       "PaddlePaddle/PaddleOCR-VL-1.5",
       "Qwen/Qwen3-VL-8B-Instruct",
       "Qwen/Qwen3-VL-30B-A3B-Instruct",
       "deepseek-ai/DeepSeek-OCR",
-      { model: "deepseek-v4.1-flash", url: "https://api.deepseek.com/chat/completions", keyFrom: "main", label: "DeepSeek V4.1 Flash（DeepSeek 官方）" }
+      { model: "deepseek-flash", url: "https://api.deepseek.com/chat/completions", keyFrom: "main", label: "DeepSeek V4.1 Flash 1017（DeepSeek 官方）" }
     ],
     model: "PaddlePaddle/PaddleOCR-VL-1.5",   // 主模型（兼容旧读取处，与 models 第一位一致）
     url: "https://api.siliconflow.cn/v1/chat/completions",
@@ -223,7 +234,7 @@ AgentLab.buildSystemPrompt = function (classInfo, manual) {
     "你由一个“大脑”（大语言模型）和四大组件协作完成一件事：感知器（听懂问题）、规划器（决定怎么做）、记忆器（记住信息）、执行器（调用工具去做）。",
     "其中的“规划器”是你的一项决策职责：理解意图 → 拆解任务 → 排出先后顺序 → 选择工具，每一步拿到结果后再决定下一步，每一轮都要参与。",
     "注意：“规划器”和“思考模式”是两回事——思考模式只决定你要不要把推理过程写出来；就算不写，规划这件事该做还是要做（该拆步就拆步，该调工具就调工具）。",
-    "你的工具包括：天气查询、计算器、提醒、班级课表查询、联网搜索、翻译、单位换算、时间日期、图形计算、数学计算、计时器。",
+    "你的工具包括：天气查询、计算器、提醒、班级课表查询、联网搜索（可以抓取网页正文）、翻译、单位换算、时间日期、图形计算、数学计算、计时器。",
     nowLine,
     "",
     "【班级知识库】（来自记忆器的长期记忆）",
@@ -357,7 +368,7 @@ AgentLab.WORKS = {
     },
     /* —— 执行用：系统提示词 + 工具子集 —— */
     toolKeys: ["classInfo", "remind", "timer", "calc", "datetime", "translate", "search"],
-    toolLine: "班级课表查询、提醒、计时器、计算器、时间日期、翻译、联网搜索",
+    toolLine: "班级课表查询、提醒、计时器、计算器、时间日期、翻译、联网搜索（含网页抓取）",
     roleIntro: "你是“班级小助手”，一个专门帮助五年级同学管理班级事务的智能体（同学们在界面上就叫你这个名字）。",
     scopeNote: "注意：天气查询、单位换算、图形计算这些不在你的本领里——遇到就如实告诉同学“这不在我的本领里，去问出行小管家更合适”。",
     usesClassKB: true,
@@ -410,7 +421,7 @@ AgentLab.WORKS = {
     },
     /* —— 执行用：系统提示词 + 工具子集 —— */
     toolKeys: ["weather", "convert", "datetime", "calc", "remind", "timer", "search"],
-    toolLine: "天气查询、单位换算、时间日期、计算器、提醒、计时器、联网搜索",
+    toolLine: "天气查询、单位换算、时间日期、计算器、提醒、计时器、联网搜索（含网页抓取）",
     roleIntro: "你是“出行小管家”，一个专门帮助五年级同学准备出门与旅行的智能体（同学们在界面上就叫你这个名字）。",
     scopeNote: "注意：班级课表、班级值日、班级通知这些不在你的本领里——遇到就如实告诉同学“这不在我的本领里，去问班级小助手更合适”。",
     usesClassKB: false,

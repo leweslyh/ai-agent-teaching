@@ -1,0 +1,281 @@
+/* ============================================================
+ * lesson-executor.css —— 「执行器小课堂」大屏课堂版（只有外壳）
+ * ------------------------------------------------------------
+ * 六张卡片本身来自 js/lab-executor.js，样式在 style.css 里——
+ * 这里只写：顶栏 / 六关导航 / 缩放舞台 / 老师提示 / 翻页，
+ * 以及课堂版独有的「认识执行器」卡片微调（见文件末尾）。
+ * ============================================================ */
+
+body.lesson-page {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(62, 155, 255, .10), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(255, 159, 46, .10), transparent 60%),
+    #FAF8F3;
+  color: var(--c-ink);
+}
+
+/* ---------- 顶栏 ---------- */
+.ls-top {
+  position: sticky; top: 0; z-index: 60;
+  background: rgba(255, 255, 255, .9);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--c-line);
+}
+.ls-top-in {
+  max-width: 1320px; margin: 0 auto; padding: 9px 22px;
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+}
+.ls-brand { display: flex; align-items: center; gap: 9px; text-decoration: none; color: var(--c-ink); }
+.ls-logo {
+  width: 34px; height: 34px; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--c-exe); color: #fff; font-weight: 900; font-size: 15px;
+  box-shadow: 0 4px 12px rgba(231, 76, 60, .28);
+}
+.ls-brand b { display: block; font-size: 15px; line-height: 1.2; }
+.ls-brand small { display: block; font-size: 11.5px; color: var(--c-sub); }
+
+.ls-nav { display: flex; gap: 4px; flex-wrap: wrap; margin-left: 6px; }
+.ls-nav-btn {
+  font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
+  padding: 6px 11px; border-radius: var(--r-pill);
+  border: 1px solid transparent; background: none; color: var(--c-sub);
+  white-space: nowrap;
+}
+.ls-nav-btn:hover { color: var(--exe-ink); background: var(--exe-tint); }
+.ls-nav-btn.is-on {
+  color: var(--exe-ink); background: var(--exe-tint); border-color: var(--exe-line);
+}
+
+.ls-tools { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.ls-tool-btn {
+  font: inherit; font-size: 12.5px; font-weight: 800; cursor: pointer;
+  min-width: 36px; padding: 6px 10px; border-radius: var(--r-pill);
+  border: 1.5px solid var(--c-line-strong); background: #fff; color: var(--c-ink-2);
+}
+.ls-tool-btn:hover { border-color: var(--c-exe); color: var(--exe-ink); }
+.ls-tool-btn.is-ghost { color: var(--c-sub); }
+.ls-scale-label { font-size: 12px; color: var(--c-sub); min-width: 42px; text-align: center; }
+
+/* ---------- 版心 ---------- */
+.ls-main { max-width: 1320px; margin: 0 auto; padding: 22px 22px 80px; }
+
+/* ---------- 首屏 ---------- */
+.ls-hero {
+  padding: 26px 30px 24px; margin-bottom: 20px;
+  border-radius: 22px; border: 1px solid var(--exe-line);
+  background: linear-gradient(135deg, #FFFFFF 0%, #FFF8F2 100%);
+  box-shadow: 0 16px 44px rgba(90, 70, 30, .07);
+}
+.ls-hero h1 { margin: 0 0 8px; font-size: 36px; line-height: 1.25; letter-spacing: -.5px; }
+.ls-hero p { margin: 0; font-size: 16px; line-height: 1.8; color: var(--c-ink-2); }
+.ls-hero-note { margin-top: 10px; font-size: 13px; color: var(--c-sub); }
+.ls-hero-note b { color: var(--exe-ink); }
+
+/* ---------- 缩放舞台 ----------
+ * 用 transform: scale() 放大整块卡片区：字号、按钮、间距一起变大，
+ * 比逐个改字号可靠。JS 同时把 width 设成 100/scale%，视觉宽度刚好填满；
+ * 外层高度由 JS 按「未缩放高度 × 倍率」撑开，滚动条才对得上。 */
+.ls-scale { position: relative; width: 100%; }
+.ls-stage {
+  display: flow-root;             /* 包住 card 的外边距，offsetHeight 才准 */
+  opacity: 0; transition: opacity .2s ease;
+  will-change: transform;
+}
+.ls-stage.is-ready { opacity: 1; }
+/* 跳转留白随缩放变化：卡片被 scale 后，scroll-margin 也会被放大，
+   所以用 JS 写入「70 / 倍率」，保证视觉上始终留出 ~70px 给顶栏 */
+.ls-stage .card { scroll-margin-top: var(--ls-scroll-gap, 84px); }
+
+/* 大屏上卡片本身给足内边距，文字更好读（只改外壳间距，不动内容） */
+.ls-stage .card { padding: 30px 32px; }
+
+/* 课堂版只讲主线：把“工具越多越好 / 专用 vs 通用”这两段选讲收起来。
+ * 内容仍在完整实验室里，这里不删、只隐藏。 */
+body.lesson-page .tip-extra { display: none; }
+
+/* ---------- 老师提示 ---------- */
+.ls-teacher { margin-top: 22px; }
+.ls-teacher summary { cursor: pointer; font-size: 14px; font-weight: 800; color: var(--c-sub); }
+.ls-teacher .inner {
+  margin-top: 10px; padding: 16px 18px; border-radius: var(--r-md);
+  background: var(--c-bg-alt); border: 1px dashed var(--c-line-strong);
+  font-size: 13px; line-height: 1.95; color: var(--c-ink-2);
+}
+.ls-teacher .inner b { color: var(--c-ink); }
+
+/* ---------- 页脚 ---------- */
+footer.ls-foot {
+  margin-top: 26px; padding: 14px 0 6px; text-align: center;
+  font-size: 12.5px; color: var(--c-dim);
+  background: transparent; border-top: 1px dashed var(--c-line-strong);
+}
+footer.ls-foot a { color: var(--exe-ink); font-weight: 700; text-decoration: none; }
+
+/* ---------- 右下角翻页 ---------- */
+.ls-pager {
+  position: fixed; right: 22px; bottom: 22px; z-index: 70;
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 9px; border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, .95);
+  border: 1px solid var(--c-line);
+  box-shadow: 0 10px 28px rgba(70, 55, 20, .16);
+}
+.ls-pager[hidden] { display: none; }
+.ls-pager-btn {
+  font: inherit; font-size: 18px; font-weight: 900; line-height: 1;
+  width: 34px; height: 34px; cursor: pointer;
+  border-radius: 50%; border: 1.5px solid var(--c-line-strong);
+  background: #fff; color: var(--exe-ink);
+}
+.ls-pager-btn:hover { background: var(--exe-tint); border-color: var(--c-exe); }
+.ls-pager-btn[disabled] { opacity: .35; cursor: default; }
+.ls-pager-pos { font-size: 12px; font-weight: 800; color: var(--c-sub); min-width: 44px; text-align: center; }
+
+/* ============================================================
+ * 课堂版：认识执行器（只作用于本页）
+ * 覆盖 style.css 里的黑底 .tf-out，并给新卡片结构上色
+ * ============================================================ */
+
+/* 兜底：万一 JS 增强没跑到，也不再是黑底终端 */
+body.lesson-page #exe-intro .tf-out {
+  background: linear-gradient(135deg, #fff 0%, var(--exe-tint) 100%);
+  color: var(--exe-ink);
+  border: 1.5px solid var(--exe-line);
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  min-width: 0;
+  padding: 10px 14px;
+}
+body.lesson-page #exe-intro .tf-arrow {
+  color: var(--c-dim);
+  animation: none;
+}
+
+/* ① 对比：只有大脑 vs 大脑 + 执行器 */
+body.lesson-page .ls-exe-compare {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  margin: 2px 0 14px;
+}
+body.lesson-page .ls-exe-side {
+  padding: 14px 16px;
+  border: 1.5px solid var(--c-line);
+  border-radius: var(--r-md);
+  background: var(--c-bg-alt);
+}
+body.lesson-page .ls-exe-side.is-exe {
+  border-color: var(--exe-line);
+  background: linear-gradient(135deg, #fff 0%, var(--exe-tint) 100%);
+}
+body.lesson-page .ls-exe-kicker {
+  display: inline-block;
+  margin-bottom: 6px;
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  letter-spacing: .3px;
+  color: var(--c-sub);
+}
+body.lesson-page .ls-exe-side.is-exe .ls-exe-kicker { color: var(--exe-ink); }
+body.lesson-page .ls-exe-line {
+  margin-bottom: 5px;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--c-ink);
+}
+body.lesson-page .ls-exe-side p {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.65;
+  color: var(--c-sub);
+}
+body.lesson-page .ls-exe-switch {
+  align-self: center;
+  padding: 6px 10px;
+  border: 1px solid var(--exe-line);
+  border-radius: var(--r-pill);
+  background: var(--exe-tint);
+  color: var(--exe-ink);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* ② 岗位 / 家伙 */
+body.lesson-page .ls-exe-duo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+body.lesson-page .ls-exe-mini {
+  padding: 12px 14px;
+  border: 1px solid var(--c-line);
+  border-radius: 12px;
+  background: #fff;
+}
+body.lesson-page .ls-exe-mini b {
+  font-size: var(--fs-sm);
+  color: var(--c-ink);
+}
+body.lesson-page .ls-exe-mini p {
+  margin: 6px 0 0;
+  font-size: var(--fs-xs);
+  line-height: 1.65;
+  color: var(--c-sub);
+}
+body.lesson-page .ls-exe-tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--exe-line);
+  border-radius: var(--r-pill);
+  background: var(--exe-tint);
+  color: var(--exe-ink);
+  font-size: 11px;
+  font-weight: 800;
+}
+body.lesson-page .ls-exe-tag.is-tool {
+  border-color: var(--brain-line);
+  background: var(--brain-tint);
+  color: var(--brain-ink);
+}
+
+/* ③ 底部一句话 */
+body.lesson-page .ls-exe-foot {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-left: 4px solid var(--c-exe);
+  border-radius: 0 10px 10px 0;
+  background: var(--exe-tint);
+  color: var(--exe-ink);
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+}
+body.lesson-page .ls-exe-foot .icon {
+  color: var(--c-exe);
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+
+@media (max-width: 760px) {
+  body.lesson-page .ls-exe-compare { grid-template-columns: 1fr; }
+  body.lesson-page .ls-exe-switch { justify-self: start; }
+  body.lesson-page .ls-exe-duo { grid-template-columns: 1fr; }
+}
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 980px) {
+  .ls-top-in { padding: 8px 14px; gap: 8px; }
+  .ls-nav { order: 3; width: 100%; margin-left: 0; justify-content: flex-start; }
+  .ls-tools { margin-left: auto; }
+  .ls-main { padding: 16px 14px 70px; }
+  .ls-hero { padding: 20px 18px; }
+  .ls-hero h1 { font-size: 28px; }
+  .ls-stage .card { padding: 20px 18px; }
+  .ls-pager { right: 12px; bottom: 12px; }
+}

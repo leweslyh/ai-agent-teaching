@@ -411,6 +411,53 @@ AgentLab.LabWorks = (function () {
     box.scrollTop = box.scrollHeight;
   }
 
+  /* ---------- 计时器工具：聊天里真的走一条倒计时，到点响铃 ----------
+   * 与「智能体实验室」同一套口径：倒计时条在这里显示，声音统一走 AgentLab.Alarm。 */
+  function worksFmt(s) {
+    var m = Math.floor(s / 60), x = s % 60;
+    return (m < 10 ? "0" : "") + m + ":" + (x < 10 ? "0" : "") + x;
+  }
+
+  function startWorksTimer(work, seconds, label, remindText, pomodoro) {
+    var box = $("w-msgs-" + work.id);
+    if (!box) return;
+    if (AgentLab.Alarm) AgentLab.Alarm.unlock();
+
+    var d = document.createElement("div");
+    d.className = "msg ai timer-bar";
+    d.innerHTML = '<span class="who">⏳ 倒计时 ' + U.esc(label || "") + (pomodoro ? " · 番茄钟" : "") +
+      (remindText ? " · 提醒：" + U.esc(remindText) : "") + "</span>" +
+      '<div class="timer-num">' + worksFmt(seconds) + "</div>" +
+      '<div class="timer-desc">时间到会响铃提醒你（可点下方取消计时）</div>' +
+      '<button class="btn btn-ghost btn-sm timer-cancel">取消计时</button>';
+    box.appendChild(d);
+    box.scrollTop = box.scrollHeight;
+
+    var remain = seconds;
+    var numEl = d.querySelector(".timer-num");
+    var iv = null;
+    d.querySelector(".timer-cancel").addEventListener("click", function () {
+      if (iv) clearInterval(iv);
+      iv = null;
+      d.remove();
+    });
+
+    iv = setInterval(function () {
+      remain--;
+      if (remain <= 0) {
+        clearInterval(iv);
+        iv = null;
+        numEl.textContent = "时间到！";
+        d.classList.add("timer-done");
+        var text = remindText ? ("⏰ 时间到！该" + remindText + "啦！") : ("⏰ " + (label || "计时") + " 到啦！");
+        if (AgentLab.Alarm) AgentLab.Alarm.ring({ text: text });
+        addMsg(work, "ai", text + (pomodoro ? "番茄工作法建议：休息 5 分钟，站起来活动活动。" : ""));
+      } else {
+        numEl.textContent = worksFmt(remain);
+      }
+    }, 1000);
+  }
+
   /* ---------- 内部工作台：统计胶囊 / 总装图 / 本轮轨迹 ---------- */
 
   function setMeta(work, key, val) {
@@ -532,12 +579,19 @@ AgentLab.LabWorks = (function () {
     if (n) n.textContent = s.log.length + " 步";
   }
 
-  /* 一行轨迹：四组件行走各自语义色，工具调用 / 收尾 / 出错走专用色 */
+  /* 一行轨迹：四组件行走各自语义色，工具调用 / 收尾 / 出错走专用色。
+   * meta.full 存在时（长工具结果）额外给一个默认折叠的「查看完整结果」。 */
   function logRowHTML(row) {
     var meta = row.meta || STAGE_ROW[row.id] || { name: row.id, icon: "gear", color: "brain" };
+    var full = meta.full ? String(meta.full) : "";
     return '<div class="pg-log-row c-' + meta.color + (row.skip ? " is-skip" : "") + '">' +
       '<span class="pg-log-dot">' + U.icon(meta.icon, 13) + "</span>" +
-      '<span class="pg-log-body"><b>' + U.esc(meta.name) + "</b>" + U.esc(row.text || "") + "</span>" +
+      '<span class="pg-log-body"><b>' + U.esc(meta.name) + "</b>" + U.esc(row.text || "") +
+        (full
+          ? '<details class="pg-log-fold"><summary>查看完整结果（' + full.length + " 字）</summary>" +
+            '<div class="pg-log-fold-body">' + U.esc(full) + "</div></details>"
+          : "") +
+      "</span>" +
       '<span class="pg-log-ms">+' + ((row.at || 0) / 1000).toFixed(1) + "s</span>" +
     "</div>";
   }
@@ -661,9 +715,22 @@ AgentLab.LabWorks = (function () {
           rt.tools += 1;
           setMeta(work, "tools", rt.tools);
           addNote(work, U.icon("wrench", 13) + " 执行器调用了工具：<b>" + U.esc(tool.name) + "</b>");
+          /* 计时器工具：聊天里真的开一条倒计时，到点响铃 */
+          if (tool.name === "计时器工具" && tool.payload && tool.payload.seconds) {
+            startWorksTimer(work, tool.payload.seconds, tool.payload.label,
+              tool.payload.remindText, tool.payload.pomodoro);
+          }
+          /* 轨迹行只放一句摘要；长结果（联网搜索一次就是好几条网页）默认折叠，
+           * 点行内的「查看完整结果」才展开——轨迹区始终能一屏看完整条链路。 */
+          var full = String(tool.result || "（没有返回结果）");
+          var fold = full.length > 90;
+          var brief = fold
+            ? full.replace(/\s+/g, " ").slice(0, 90) + "…"
+            : full;
           wbAddLog(work, "tool",
-            tool.name + "：" + (tool.summary || "") + " → " + (tool.result || "（没有返回结果）"),
-            false, null, ROW_TOOL);
+            tool.name + "：" + (tool.summary || "") + " → " + brief,
+            false, null,
+            fold ? { name: "工具调用", icon: "wrench", color: "exe", full: full } : ROW_TOOL);
           wbPaintLog(work);
         },
         onStop: function (info) {

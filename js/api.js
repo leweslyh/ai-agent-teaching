@@ -17,12 +17,23 @@ AgentLab.API = (function () {
   var WIKIPEDIA_API = "https://zh.wikipedia.org/w/api.php";
 
   /* ---------- 工具函数 ---------- */
+
+  /* 当前使用的模型：一律以 config.js 里系统统一配置的为准
+   * （现在是 DeepSeek V4.1 Flash 1017）。
+   * 不再读浏览器里存的旧模型名——升级版本后所有人都会自动用上新模型，
+   * 不会被上次保存的 `deepseek-v4-flash` 卡在旧版本上。
+   * activeModel 只在“接口明确说这个模型名不被支持”时才会被换成备用名（见 postModel）。 */
+  var activeModel = "";
+
+  function currentModel() {
+    return activeModel || AgentLab.CONFIG.model || "deepseek-flash";
+  }
+
   function getSettings() {
     var api = AgentLab.Store.getApi();
-    var model = (api && api.model) || AgentLab.CONFIG.model;
     return {
       key: (api && api.key) || "",
-      model: model
+      model: currentModel()
     };
   }
 
@@ -85,6 +96,44 @@ AgentLab.API = (function () {
         });
       }
       return resp.json();
+    });
+  }
+
+  /* ---------- 模型名兜底（只在“接口明确说这个模型名不被支持”时触发） ----------
+   * 场景：账号或接口版本还没放出 config.js 里配的最新模型名。接口会明确回一句
+   *   “The supported API model names are A, B, but you passed X.”
+   * 这时从接口给出的可用清单里，挑一个和 CONFIG.modelFallbacks 顺序最接近的顶上，
+   * 让课堂不中断；其余错误（Key / 余额 / 网络 / 参数）一律原样抛出，绝不偷偷换模型。
+   * 换完只记在内存里（不写 localStorage），刷新页面会再按最新模型试一次。 */
+  function pickFallbackModel(err) {
+    var msg = String((err && err.message) || "");
+    var cur = currentModel();
+    var listM = msg.match(/supported\s+API\s+model\s+names\s+are\s+(.+?)\s*,\s*but\s+you\s+passed/i);
+    if (!listM) {
+      if (/model\s+(does\s+not\s+exist|not\s+found)|unknown\s+model|模型不存在/i.test(msg)) {
+        var fbs = AgentLab.CONFIG.modelFallbacks || [];
+        for (var i = 0; i < fbs.length; i++) if (fbs[i] !== cur) return fbs[i];
+      }
+      return null;
+    }
+    var available = listM[1].split(/\s*(?:,|and)\s*/).filter(Boolean);
+    var prefs = (AgentLab.CONFIG.modelFallbacks || []).concat(["deepseek-chat"]);
+    for (var p = 0; p < prefs.length; p++) {
+      if (prefs[p] !== cur && available.indexOf(prefs[p]) >= 0) return prefs[p];
+    }
+    for (var j = 0; j < available.length; j++) if (available[j] !== cur) return available[j];
+    return null;
+  }
+
+  /* 带“模型名兜底”的 POST：请求失败且错误是“模型名不被支持”时，
+   * 换下一个可用模型重发一次；其他错误照原样抛给上层。 */
+  function postModel(url, body, headers, timeoutMs, what) {
+    return post(url, body, headers, timeoutMs, what).catch(function (err) {
+      var next = pickFallbackModel(err);
+      if (!next) throw err;
+      activeModel = next;
+      if (body && typeof body === "object") body.model = next;
+      return post(url, body, headers, timeoutMs, what);
     });
   }
 
@@ -235,12 +284,24 @@ AgentLab.API = (function () {
       ((body.thinking && body.thinking.type === "disabled") ||
        (body.reasoning && body.reasoning.effort === "none"));
 
-    return doPost(body).catch(function (err) {
+    /* 先把“模型名不被支持”这一种错误按 config.js 的兜底清单换一次模型，
+     * 之后再处理“思考模式字段不被支持”的情况。 */
+    function send(b) {
+      return doPost(b).catch(function (err) {
+        var next = pickFallbackModel(err);
+        if (!next) throw err;
+        activeModel = next;
+        b.model = next;
+        return doPost(b);
+      });
+    }
+
+    return send(body).catch(function (err) {
       var msg = (err && err.message) || "";
       if (canFallback && err && /thinking|reasoning/i.test(msg)) {
         delete body.thinking;
         delete body.reasoning;
-        return doPost(body);
+        return send(body);
       }
       throw err;
     });
@@ -291,7 +352,7 @@ AgentLab.API = (function () {
     };
     var auth = { Authorization: "Bearer " + s.key };
 
-    return post(DEEPSEEK_URL, body, auth).then(function (data) {
+    return postModel(DEEPSEEK_URL, body, auth).then(function (data) {
       /* 截断检测：finish_reason === "length" 表示回答写到一半就被长度上限切断——
        * 这时“最后的答案”往往还没写出来，如果不在界面上明确提示，
        * 就会被误判成“模型答错了”，而实际上只是没写完。 */
@@ -323,17 +384,20 @@ AgentLab.API = (function () {
       }
       /* 模型名不被支持：接口通常会回一句
        * “The supported API model names are A, B, but you passed X.”
+       * postModel 已经按 config.js 的兜底清单换过一轮模型；走到这里说明连备用名也对不上。
        * 直接把可用列表翻译出来，省得老师去猜。 */
       var supM = String(msg || "").match(
         /supported\s+API\s+model\s+names\s+are\s+(.+?)\s*,\s*but\s+you\s+passed/i);
       if (supM) {
         var list = supM[1].replace(/\s*(?:,|and)\s*/g, "、").trim();
         throw new Error("模型名不被接口支持：当前可用的是 " + list +
-          "。请点右上角「设置」，把模型改成其中之一（或选「自定义模型名」填写）。");
+          "。请让开发者把 js/config.js 里的 model（以及 modelFallbacks）改成其中之一；" +
+          "页面上不提供模型切换。");
       }
       if (/model/i.test(msg || "") &&
           /(not\s+exist|does\s+not\s+exist|unknown|invalid|不支持|不存在)/i.test(msg || "")) {
-        throw new Error("模型名不被接口支持。请点右上角「设置」，换一个你的接口支持的模型名。");
+        throw new Error("模型名不被接口支持。请让开发者更新 js/config.js 里的 model" +
+          "（系统已自动试过 modelFallbacks 里的备用名）。");
       }
 
       // 401 → 密钥无效
@@ -359,7 +423,7 @@ AgentLab.API = (function () {
        * 给老师一句能看懂的提示（关键词“思考模式”也被兼容层用来判断重试）。 */
       if (/reasoning_content|thinking\s*mode/i.test(msg || "")) {
         var eThink = new Error("模型处于“思考模式”，接口要求把推理内容（reasoning_content）一起回传。" +
-          "已自动尝试兼容写法仍未成功：请点右上角「设置」，把模型换成 deepseek-chat，或改用非思考模式的模型。");
+          "已自动尝试兼容写法仍未成功：请让开发者把 js/config.js 里的模型换成非思考模式的模型。");
         eThink.status = status;
         throw eThink;
       }
@@ -435,14 +499,15 @@ AgentLab.API = (function () {
       });
   }
 
-  /* ---------- 联网搜索（多端点 × 多代理 + 大模型知识兜底） ----------
-   * 背景（2026-10 实测）：必应已把 www.bing.com/search?format=rss 302 到 cn.bing.com；
-   * 公共 CORS 代理普遍访问不了必应（allorigins 500/522、codetabs 522、corsproxy.io 已收费 401），
-   * 维基百科在国内网络又经常超时——所以「联网搜索」随时可能整条失败。
-   * 策略：① 依次尝试「端点 × 代理」组合，每个限时 6 秒，拿到结果立即返回；
-   *      ② 维基百科并发尝试，限时 8 秒；
-   *      ③ 都没拿到 → 若已配 DeepSeek Key，请大模型用“自己学过的知识”兜底，
-   *         并在结果里如实标注“这不是刚查到的网页”，绝不冒充搜索结果。 */
+  /* ---------- 联网搜索（DeepSeek 官方 Search & Fetch 为主，逐级降级） ----------
+   * ① DeepSeek 官方接口（主力，用现有 DeepSeek Key）：
+   *    POST /v1/tools/search —— 按 query 返回结构化网页结果（标题 / 摘要 / 链接 / 排序分）；
+   *    POST /v1/tools/fetch  —— 按 url 返回网页标题 + Markdown 正文。
+   *    两条都是 2026-10-17 上线的独立原始 JSON 接口，同一个 Key、同一套 Bearer 鉴权，
+   *    不经过任何第三方搜索服务，也不受公共 CORS 代理可用性的影响。
+   * ② 必应 RSS（多端点 × 多代理，各限时 6 秒）+ 维基百科备用——① 不可用时的下一条路。
+   * ③ 都没拿到 → 若已配 DeepSeek Key，请大模型用“自己学过的知识”兜底，
+   *    并在结果里如实标注“这不是刚查到的网页”，绝不冒充搜索结果。 */
   var SEARCH_HOSTS = ["https://cn.bing.com/search", "https://www.bing.com/search"];
   var SEARCH_PROXIES = [
     { mode: "get", url: "https://api.allorigins.win/get?url=" },
@@ -502,6 +567,14 @@ AgentLab.API = (function () {
     });
   }
 
+  /* ③ 知识兜底的提示词：单独抽出来，因为「工具百宝箱」要把它原样展示给学生看
+   *   （“这次到底给模型发了什么”）。两处必须是同一份，否则展示就成假的了。 */
+  function knowledgeFallbackPrompt() {
+    return "你是课堂上的“知识兜底”助手：联网搜索没有成功，请用你已有的知识回答。" +
+      "要求：直接给出答案，不要写思考过程；用小学五年级学生听得懂的中文；不超过 150 字；" +
+      "只讲你确定的事实，不要编造数字、年份或引用来源；如果不确定，就明确说不确定。";
+  }
+
   /* ③ 没搜到时的兜底：请大模型用已有知识回答，并如实标注来源 */
   function knowledgeFallback(query) {
     searchTraceMark("③ 知识兜底：开始尝试");
@@ -512,10 +585,8 @@ AgentLab.API = (function () {
         error: "联网搜索没有成功（三级来源都没能拿到资料），且未配置大模型 Key，无法用已有知识兜底。"
       });
     }
-    var sys = "你是课堂上的“知识兜底”助手：联网搜索没有成功，请用你已有的知识回答。" +
-      "要求：直接给出答案，不要写思考过程；用小学五年级学生听得懂的中文；不超过 150 字；" +
-      "只讲你确定的事实，不要编造数字、年份或引用来源；如果不确定，就明确说不确定。";
-    /* maxTokens 给足：deepseek-v4-flash 默认带思维链，额度太小会被思考过程吃光，
+    var sys = knowledgeFallbackPrompt();
+    /* maxTokens 给足：DeepSeek V4.1 Flash 默认带思维链，额度太小会被思考过程吃光，
      * 导致 HTTP 200 但 content 为空（表现为“接口没有返回内容”）。 */
     return ask(sys, query, { maxTokens: 1500 }).then(function (ans) {
       var text = (ans || "").trim();
@@ -534,65 +605,16 @@ AgentLab.API = (function () {
     });
   }
 
-  /* ---------- DeepSeek 服务端联网搜索（Responses API + web_search 工具） ----------
-   * 用现有 DeepSeek Key，走新 Responses 接口（chat/completions 没有 web_search）。
-   * 关键点：官方文档说明接口对不支持的内置工具会“静默忽略”，社区实测又说可用——
-   * 两者有出入，所以这里的判定标准是“响应里真的出现了搜索痕迹”：
-   *   · output 里有 web_search_call 项，或
-   *   · 正文带 url_citation / 链接引用；
-   * 两者都没有 = 工具被忽略、模型只是用已有知识作答 → 返回 null，
-   * 让上层继续走必应 / 知识兜底，绝不把“模型自己的话”标成搜索结果。 */
-
-  /* 从 Responses 响应里取正文（兼容 output_text / output[].content 两种形态） */
-  function extractResponsesText(data) {
-    if (!data) return "";
-    if (typeof data.output_text === "string" && data.output_text.trim()) return data.output_text.trim();
-    var out = "";
-    var items = data.output || [];
-    items.forEach(function (it) {
-      if (!it) return;
-      if (it.type === "message" && it.content) {
-        (Array.isArray(it.content) ? it.content : [it.content]).forEach(function (c) {
-          if (!c) return;
-          if (typeof c === "string") out += c;
-          else if (c.type === "output_text" && c.text) out += c.text;
-          else if (c.text) out += c.text;
-        });
-      }
-    });
-    // 个别网关可能按 chat 格式返回
-    if (!out && data.choices && data.choices[0] && data.choices[0].message) {
-      out = data.choices[0].message.content || "";
-    }
-    return out.trim();
-  }
-
-  /* 从响应里收集引用来源（web_search_call 的 action.url / 正文里的 url_citation 注解） */
-  function extractCitations(data) {
-    var out = [], seen = {};
-    function push(t, u) {
-      t = (t || "").trim(); u = (u || "").trim();
-      if (!u || seen[u]) return;
-      seen[u] = 1;
-      out.push({ title: t || u, url: u });
-    }
-    ((data && data.output) || []).forEach(function (it) {
-      if (!it) return;
-      if (it.type === "web_search_call" && it.action && it.action.url) {
-        push(it.action.title || "", it.action.url);
-      }
-      var content = it.content;
-      if (Array.isArray(content)) {
-        content.forEach(function (c) {
-          if (!c || !c.annotations) return;
-          c.annotations.forEach(function (a) {
-            if (a && (a.type === "url_citation" || a.url)) push(a.title, a.url);
-          });
-        });
-      }
-    });
-    return out;
-  }
+  /* ---------- DeepSeek 官方 Search & Fetch API（2026-10-17 上线，自研搜索引擎） ----------
+   *   POST /v1/tools/search  { query, count, ori_question, need_content } → { results:[...] }
+   *   POST /v1/tools/fetch   { url }                                      → { title, content }
+   * 与对话接口同一个 Key、同一套 Bearer 鉴权，不经过任何第三方搜索服务。
+   * 注意：这不是 /responses 的“内置工具”——那里只有 `web_search`、且只对 deepseek-v4-pro 开放，
+   * 也没有 web_fetch。课堂用的是这两条独立的原始 JSON 接口：任何模型都能用，
+   * 搜到的结果直接作为工具（执行器）的结果回给大脑，由大脑组织成回答。 */
+  var SEARCH_API = (AgentLab.CONFIG.searchUrl) || "https://api.deepseek.com/v1/tools/search";
+  var FETCH_API = (AgentLab.CONFIG.fetchUrl) || "https://api.deepseek.com/v1/tools/fetch";
+  var FETCH_MAX_CHARS = 4000;   // 抓回来的正文截断长度：够模型判断，又不把上下文塞爆
 
   /* ---------- 搜索诊断 ----------
    * 三级来源逐级降级时，每一级“为什么没成”都记下来，
@@ -600,101 +622,140 @@ AgentLab.API = (function () {
   var searchTrace = [];
   function searchTraceMark(s) { searchTrace.push(s); }
   function searchTraceText() {
-    return searchTrace.length ? searchTrace.join("；") : "";
+    if (!searchTrace.length) return "";
+    /* ①② 是并发发起的，写入顺序可能乱；按来源编号排一下，
+     * 诊断串读起来才像“逐级降级：① 没成 → ② 没成 → ③ 兜底”。 */
+    var order = { "①": 1, "②": 2, "③": 3 };
+    return searchTrace.slice().sort(function (a, b) {
+      return (order[a.charAt(0)] || 9) - (order[b.charAt(0)] || 9);
+    }).join("；");
   }
 
-  /* 单次尝试：声明 web_search 工具发起请求，并判定“是否真的联网搜索了”。
-   * 返回 {kind:"ok"|"noTrace"|"empty"|"error", ...}，便于上层决定要不要再试。 */
-  function tryDeepseekSearch(query, opt, timeoutMs) {
-    var body = {
-      model: opt.model,
-      tools: [{ type: "web_search" }],
-      tool_choice: opt.tool_choice,
-      max_output_tokens: 2000,   /* 思维链也要占额度：给太小会 200 但没有正文 */
-      input: "请先联网搜索，再回答下面这个问题：" + query +
-        "\n回答要求：用小学五年级学生听得懂的中文，不超过 180 字；必须依据你搜索到的网页内容；" +
-        "回答末尾用「来源：」列出你实际用到的网页标题和链接（如果有的话）。" +
-        "如果网页里没有可靠信息，就明确写“网上没有查到可靠资料”；不要编造数字、年份或来源。"
-    };
-    /* 注意：必须把 Authorization 带上——post() 的第三个参数是“额外请求头”，
-     * 之前这里传了 {}，导致请求不带鉴权，接口一律回 401 “auth header format”。 */
-    var s = getSettings();
-    return post(AgentLab.CONFIG.responsesUrl, body, { Authorization: "Bearer " + s.key }, timeoutMs).then(function (data) {
-      var searched = false;
-      ((data && data.output) || []).forEach(function (it) {
-        if (it && (it.type === "web_search_call" || it.type === "web_search")) searched = true;
-      });
-      var text = extractResponsesText(data);
-      var cites = extractCitations(data);
-      if (!text) {
-        searchTraceMark(opt.note + "：接口返回 200，但响应里没有正文");
-        return { kind: "empty" };
-      }
-      if (!searched && !cites.length) {
-        searchTraceMark(opt.note + "：接口正常应答，但没有联网搜索痕迹（web_search 工具被当前接口忽略，已记录，7 天内不再尝试）");
-        markDsWsUnsupported();
-        return { kind: "noTrace" };
-      }
-      searchTraceMark(opt.note + "：联网搜索成功（" + cites.length + " 条来源）");
-      return { kind: "ok", text: text, citations: cites };
-    }).catch(function (e) {
-      var msg = (e && e.message) || String(e);
-      searchTraceMark(opt.note + "：请求失败（" + msg + "）");
-      return { kind: "error", message: msg };
-    });
-  }
-
-  /* “接口忽略 web_search”的记忆：记下时间，7 天内不再白等这 18 秒；
-   * 7 天后会再试一次——万一 DeepSeek 哪天放开了，系统能自动启用。 */
-  var DS_WS_SKIP_KEY = "agentlab_ds_ws_unsupported_v1";
-  var DS_WS_RETRY_MS = 7 * 24 * 3600 * 1000;
-
-  function dsWsUnsupported() {
-    var s = AgentLab.Store.get(DS_WS_SKIP_KEY, null);
-    return !!(s && s.at && (Date.now() - s.at) < DS_WS_RETRY_MS);
-  }
-  function markDsWsUnsupported() {
-    try { AgentLab.Store.set(DS_WS_SKIP_KEY, { at: Date.now() }); } catch (e) { }
+  /* 把 Search / Fetch 接口的失败翻译成学生、老师都看得懂的中文 */
+  function explainSearchError(err, action) {
+    var status = err && err.status;
+    var msg = (err && err.message) || "";
+    if (status === 401 || /401|unauthorized|invalid.*key|authentication/i.test(msg)) {
+      return action + "密钥无效：请点右上角「设置」，检查 DeepSeek API Key 是否正确（注意别有多余空格）。";
+    }
+    if (status === 402 || /insufficient|balance|余额|quota/i.test(msg)) {
+      return action + "账户余额不足：请登录 platform.deepseek.com 充值。";
+    }
+    if (status === 429 || /429|rate limit|频率/i.test(msg)) {
+      return action + "调用太频繁了（429），请稍等几秒再试。";
+    }
+    if (/Failed to fetch|NetworkError|Load failed|CORS|TypeError/i.test(msg)) {
+      return action + "连不上：网络不通，或被浏览器的跨域策略拦截。";
+    }
+    return action + "失败：" + (msg || "未知错误");
   }
 
   /**
-   * DeepSeek 服务端联网搜索（只试一次“强制联网搜索”）。
-   * 实测（2026-10，Key 有效、HTTP 200）：/responses 会静默忽略 web_search——
-   * 响应里没有任何 web_search_call / 引用，模型自己在思维链里说“我没有联网工具”；
-   * /chat/completions 则直接 422（tools[0].type: unknown variant `web_search`）。
-   * 所以这条路能否走通取决于 DeepSeek 侧是否开放，代码保持兼容：
-   * 一旦响应里真出现搜索痕迹就会启用；被忽略则记录下来，7 天内不再尝试。
-   * @returns {Promise<{text:string, citations:Array}|null>}
-   *          null = 未配置 Key / 已知不支持 / 请求失败 / 没真的联网（原因记入 searchTrace）
+   * DeepSeek 官方网页搜索（POST /v1/tools/search，自研搜索引擎）
+   * 返回来的是**接口原样的结构化结果**，不含任何模型“替学生总结过的话”。
+   * @param {string} query 搜索词（接口上限 128 字符，这里截到 120）
+   * @returns {Promise<{query:string, items:Array}|null>}
+   *   null = 未配置 Key / 已关闭 / 请求失败 / 没有结果（原因记入 searchTrace）
    */
   function deepseekWebSearch(query) {
     if (!hasApiKey()) {
-      searchTraceMark("① DeepSeek 服务端搜索：未配置 Key，跳过");
+      searchTraceMark("① DeepSeek 搜索：未配置 Key，跳过");
       return Promise.resolve(null);
     }
     if (AgentLab.CONFIG.deepseekWebSearch === false) {
-      searchTraceMark("① DeepSeek 服务端搜索：已在 js/config.js 里关闭，跳过");
+      searchTraceMark("① DeepSeek 搜索：已在 js/config.js 里关闭，跳过");
       return Promise.resolve(null);
     }
-    if (dsWsUnsupported()) {
-      searchTraceMark("① DeepSeek 服务端搜索：此前实测该接口忽略 web_search 工具，7 天内不再尝试");
-      return Promise.resolve(null);
+    var q = String(query || "").trim().slice(0, 120);
+    if (!q) return Promise.resolve(null);
+
+    /* 注意：必须带 Authorization——post 的第三个参数是“额外请求头”，
+     * 早前一版这里传了 {}，导致请求不带鉴权，接口一律回 401。 */
+    return post(SEARCH_API, {
+      query: q,
+      count: 8,             // 接口允许 1~50；课堂取 8 条足够
+      ori_question: q,      // 原始问题有助于接口理解搜索意图
+      need_content: false   // 正文用 fetch 单独取：这里只要摘要，避免一次塞进几万字
+    }, { Authorization: "Bearer " + getSettings().key }, 20000, "DeepSeek 搜索服务")
+      .then(function (data) {
+        var list = (data && data.results) || [];
+        if (!list.length) {
+          searchTraceMark("① DeepSeek 搜索：接口正常，但没有搜到结果");
+          return null;
+        }
+        searchTraceMark("① DeepSeek 搜索：成功（" + list.length + " 条结果）");
+        return { query: q, items: list };
+      })
+      .catch(function (e) {
+        searchTraceMark("① DeepSeek 搜索：" + explainSearchError(e, "联网搜索"));
+        return null;
+      });
+  }
+
+  /**
+   * DeepSeek 官方网页抓取（POST /v1/tools/fetch）——同学直接给了一个网址时用。
+   * 返回网页标题 + 正文（接口原样给 Markdown，这里截断到 FETCH_MAX_CHARS 字）。
+   * @param {string} url      网页地址（http/https，≤8192 字符，不能带账号密码）
+   * @param {string} [focus]  同学特别想知道什么（只写进工具消息，不影响接口）
+   * @returns {Promise<{ok:boolean, url:string, title?:string, content?:string,
+   *                    truncated?:boolean, error?:string}>}
+   */
+  function fetchPage(url, focus) {
+    url = String(url || "").trim();
+    if (!/^https?:\/\//i.test(url)) {
+      return Promise.resolve({
+        ok: false, url: url,
+        error: "这不是一个有效的网页地址（要以 http:// 或 https:// 开头）。"
+      });
     }
-    var forced = { model: AgentLab.CONFIG.model, tool_choice: { type: "web_search" }, note: "① 强制联网搜索" };
-    return tryDeepseekSearch(query, forced, 18000).then(function (r) {
-      return r.kind === "ok" ? { text: r.text, citations: r.citations } : null;
-    });
+    if (url.length > 8192 || /^https?:\/\/[^/]*@/i.test(url)) {
+      return Promise.resolve({ ok: false, url: url, error: "这个网址不符合抓取接口的要求（过长，或带了账号密码）。" });
+    }
+    if (checkSafeSearch(url)) {
+      return Promise.resolve({ ok: false, blocked: true, url: url, error: "这个网址包含不适合课堂的内容，已被安全过滤拦截。" });
+    }
+    if (!hasApiKey()) {
+      return Promise.resolve({
+        ok: false, url: url,
+        error: "尚未配置 DeepSeek API Key：点右上角「设置」填写后就能抓取网页。"
+      });
+    }
+    if (AgentLab.CONFIG.deepseekWebFetch === false) {
+      return Promise.resolve({ ok: false, url: url, error: "网页抓取已在 js/config.js 里关闭。" });
+    }
+
+    return post(FETCH_API, { url: url },
+      { Authorization: "Bearer " + getSettings().key }, 25000, "DeepSeek 网页抓取服务")
+      .then(function (data) {
+        var title = (data && data.title) || "";
+        var content = String((data && data.content) || "");
+        if (!content) {
+          return { ok: false, url: url, error: "接口没有返回网页正文（这一页可能是空的，或者打不开）。" };
+        }
+        var truncated = content.length > FETCH_MAX_CHARS;
+        return {
+          ok: true,
+          url: url,
+          title: title || url,
+          content: truncated ? content.slice(0, FETCH_MAX_CHARS) : content,
+          truncated: truncated,
+          focus: focus || ""
+        };
+      })
+      .catch(function (e) {
+        return { ok: false, url: url, error: explainSearchError(e, "网页抓取") };
+      });
   }
 
   /**
    * 联网搜索（三级来源，逐级降级，来源如实标注）
-   * ① DeepSeek 服务端联网搜索（现有 Key，Responses API + web_search）
+   * ① DeepSeek 官方搜索接口（POST /v1/tools/search，现有 Key，返回结构化网页结果）
    * ② 必应 RSS（多端点 × 多代理并行）+ Wikipedia 备用
    * ③ 大模型已有知识兜底（summary 里明确标注“不是刚查到的网页”）
    * @param {string} query 搜索词
    * @returns {Promise<{ok:boolean, mode?:string, blocked?:boolean, fallback?:boolean,
    *                     query:string, summary:string, results:Array, error?:string}>}
-   *   mode="deepseek"      ① 成功：summary 是搜索后整理的资料，results 是引用来源
+   *   mode="deepseek"      ① 成功：results 是接口原样的结构化网页结果（标题 / 摘要 / 链接）
    *   ok=true（无 mode）    ② 成功：results 为网页结果
    *   fallback=true        ①② 都失败：summary 是大模型“已有知识”（须如实标注）
    *   ok=false 且无 fallback 彻底失败（error 里给原因）
@@ -712,15 +773,39 @@ AgentLab.API = (function () {
       return Promise.resolve({ ok: false, blocked: true, query: query, summary: "", results: [], error: "搜索内容包含不适合课堂的关键词，已被安全过滤拦截。" });
     }
 
-    // ①② 并行尝试（谁先有结果用谁，①优先），总耗时 = max(①,②) + ③
-    return Promise.all([deepseekWebSearch(query), bingWikiSearch(query)]).then(function (rs) {
-      var ds = rs[0], bw = rs[1];
-      if (ds) {
-        return { ok: true, mode: "deepseek", query: query, summary: ds.text, results: ds.citations };
+    /* ①② 同时发出（②在后台跑，只为兜底），但**① 一回来就立刻返回**——
+     * 不等必应/维基的超时，否则明明 1 秒搜到，学生还要干等 8 秒。
+     * 只有 ① 没拿到结果时，才去等 ② 的现成结果。 */
+    var dsPromise = deepseekWebSearch(query);
+    var bwPromise = bingWikiSearch(query);
+
+    return dsPromise.then(function (ds) {
+      if (ds && ds.items && ds.items.length) {
+        /* ① 成功：把接口原样的结果整理成统一形状（标题 / 摘要 / 链接 / 来源）。
+         * - snippet 用接口的 summary（600~800 字，给模型读），没有才退回 snippet（100~200 字）
+         * - 保留 rerank_score 与 authority：课堂上可以讲“搜索结果也有排序与权威度”。 */
+        var mapped = ds.items.map(function (r) {
+          return {
+            title: r.title || r.url || "",
+            snippet: r.summary || r.snippet || "",
+            url: r.url || "",
+            source: "DeepSeek 搜索" + (r.site_name ? "·" + r.site_name : ""),
+            score: r.rerank_score,
+            authority: r.authority,
+            date: r.date
+          };
+        });
+        return {
+          ok: true, mode: "deepseek", query: query,
+          summary: (mapped[0] && mapped[0].snippet ? mapped[0].snippet.slice(0, 200) : ""),
+          results: mapped
+        };
       }
-      if (bw && bw.ok && bw.results && bw.results.length) return bw;
-      // ③ 两级联网来源都没拿到 → 大模型知识兜底（如实标注，不冒充搜索结果）
-      return knowledgeFallback(query);
+      return bwPromise.then(function (bw) {
+        if (bw && bw.ok && bw.results && bw.results.length) return bw;
+        // ③ 两级联网来源都没拿到 → 大模型知识兜底（如实标注，不冒充搜索结果）
+        return knowledgeFallback(query);
+      });
     }).then(function (res) {
       /* 三级都没成时，把每一级的原因写进 error——老师一眼能看出卡在哪一步 */
       if (res && res.error) {
@@ -1057,8 +1142,12 @@ AgentLab.API = (function () {
         throw new Error("图片识别失败：所有识别通道均不可用（云端密钥与 DeepSeek 主密钥均未配置有效）");
       }
       var key = (entry.keyFrom === "main") ? getSettings().key : getCloudKey();
+      /* DeepSeek 官方兜底条目走 postModel：万一账号侧还没放出最新模型名，
+       * 会自动换 config.js 里 modelFallbacks 的备用名；硅基流动各条仍走 post，
+       * 由下面的“换下一个模型”逻辑处理，避免把 DeepSeek 的模型名发到硅基流动。 */
+      var poster = (entry.keyFrom === "main") ? postModel : post;
       /* 超时上限 60 秒：课堂节奏不宜久等；配合多模型兜底 + 网络快速失败重试使用 */
-      return post(entry.url, buildBody(entry.model), { Authorization: "Bearer " + key }, 60000, "图片识别服务")
+      return poster(entry.url, buildBody(entry.model), { Authorization: "Bearer " + key }, 60000, "图片识别服务")
         .then(extractContent)
         .then(function (text) {
           return String(text || "")
@@ -1245,6 +1334,8 @@ AgentLab.API = (function () {
     disableThinking: disableThinking,
     askSmall: askSmall,
     search: search,
+    knowledgeFallbackPrompt: knowledgeFallbackPrompt,   // 「工具百宝箱」展示“知识兜底”那份提示词用
+    fetchPage: fetchPage,          // DeepSeek 官方网页抓取（POST /v1/tools/fetch）
     searchDebug: function () { return searchTrace.slice(); },
     getWeather: getWeather,
     transcribe: transcribe,

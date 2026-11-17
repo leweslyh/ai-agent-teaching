@@ -1,11 +1,16 @@
 /* ============================================================
  * lab-planner.js —— 规划器实验室（对应 L07 / L08）
  *
- * 学习顺序（18 张卡：“先说清楚 → 再拆 → 再排 → 写成清单 → 再执行 → 看边界 → 做质检 → 走一遍”）：
+ * 两课次结构（L07 / L08 各 110 分钟：理论 ~45′ + 休息 10′ + 动手 ~45′ + 收尾 10′）：
+ *   L07 理论：①认识 ②说清楚 ③拆开 ④排好 ⑤依赖并行 ⑥写成清单 ⑦两种方法 ⑧ReAct；动手：⑰任务拆解器（含方法选择）
+ *   L08 理论：⑨工具 ⑩CoT ⑪边界 ⑫TODO ⑬归因 ⑭反思 ⑮双 Agent（开场用进阶课堂过其他方法）；动手：⑰计划执行器
+ *   收尾：⑯综合演练 ⑰课堂编程 ⑱小测验 ⑲进阶课堂
+ *
+ * 学习顺序（19 张卡：“先说清楚 → 再拆 → 再排 → 写成清单 → 再执行 → 看边界 → 做质检 → 走一遍 → 亲手做”）：
  * ① 认识规划器：Agent 的思考中枢
  * ② 把任务说清楚：四要素 + 澄清三问 + 模糊/清晰两连对比【合并原「四要素」「魔法句式」】
- * ③ 法宝一·拆解：任务分解树 + 现场规划（自己拆 → 看 AI 拆）【合并】
- * ④ 法宝二·排序：步骤排排队
+ * ③ 法宝一·拆开：任务分解树 + 现场规划（自己拆 → 看 AI 拆）【合并】
+ * ④ 法宝二·排好：步骤排排队
  * ⑤ 排序进阶：步骤的依赖与并行（含并发执行）
  * ⑥ 计划要能被“执行”：清单计划 vs 一段话计划（结构化 + 解析兜底）
  * ⑦ 工具选择决策：该不该调工具、调哪一个（ReAct 的前置知识）
@@ -18,7 +23,7 @@
  * ⑭ 失败归因：第一个出错的步骤在哪（先归因，再反思）
  * ⑮ 提议者-审核者：计划生成与审查分离（含无 Key 内置示例降级；进阶课堂另有「A2A 智能体间协议」）
  * ⑯ 综合演练：从需求到完成走完整条链
- * ⑰ 小测验 ｜ 进阶原理互动课堂（15 概念）｜ 课堂小结
+ * ⑰ 课堂编程 ｜ ⑱ 小测验 ｜ ⑲ 进阶原理互动课堂（19 概念）｜ 课堂小结
  *
  * 参考：ai-agent-book 第 1/2/5/6/7/10 章（ReAct 循环 / 任务清单状态栏 / 故障恢复与熔断 /
  *      长程规划与验收标准 / 失败归因 / 过早终止与提议者-审核者）；
@@ -46,7 +51,7 @@ AgentLab.LabPlanner = (function () {
 
   /* ---------- 小测验 ---------- */
   var QUIZ = [
-    { q: "规划器的两件法宝是什么？", opts: ["拆解和排序", "说话和走路", "写字和画画"], ans: 0, why: "先把大任务拆成小步骤（拆解），再给步骤排好先后顺序（排序）。" },
+    { q: "规划器每一轮要回答哪三个问题？", opts: ["现在该做什么 / 接下来怎么做 / 做完没有", "吃了什么 / 睡了多久 / 去哪玩", "谁写的 / 什么时候写的 / 写在哪"], ans: 0, why: "规划器的本质是替 Agent 做决定：先判断现在做什么（要不要规划），再安排怎么做（拆开 / 排好 / 写成清单 / 选工具），最后判断做完没有（验收 / 停止 / 改计划）。" },
     { q: "ReAct 循环的三个环节是什么？", opts: ["吃饭、睡觉、打游戏", "思考（Reason）→ 行动（Act）→ 观察（Observe）", "输入、输出、存储"], ans: 1, why: "ReAct = Reasoning + Acting，实际循环是思考→行动→观察→再思考，直到任务完成。" },
     { q: "“先切西瓜，再端上桌，最后拿勺子”——这是在做什么？", opts: ["拆解", "排序", "记忆"], ans: 1, why: "给已经拆好的步骤排先后顺序，就是排序。顺序反了可不行！" },
     { q: "思维链（Chain-of-Thought）的核心思想是什么？", opts: ["让 AI 直接给答案", "让 AI 一步一步思考，显式输出推理过程", "让 AI 少说话"], ans: 1, why: "CoT 让模型把推理过程写出来，就像数学题写过程，能显著减少跳跃性错误。" },
@@ -133,85 +138,127 @@ AgentLab.LabPlanner = (function () {
       LP.labHead("plan", "gear", "规划器实验室", "让 AI 学会思考 · 组件篇·规划（L07–L08）") +
 
       /* 本课学习地图：先给地图、再讲细节（借鉴 ai-agent-book 每章开篇的「本章知识脉络图」）
-       * 每个节点可点 → 跳到对应卡片并高亮闪烁，兼作页内导航。 */
+       * 每个节点可点 → 跳到对应卡片并高亮闪烁，兼作页内导航。
+       * 两次课各含“理论 + 动手”两条线，地图最后一组就是两次课的 vibe coding 任务。 */
       U.sectionMap({
-        title: "从“说清楚”到“干完活”的五段路",
-        hint: "共 18 张卡片 · 点任意一格可直接跳过去",
+        title: "从“说清楚”到“干完活”，再到亲手做出来",
+        hint: "两次课 · 四课时 · 第 1 课时理论、第 2 课时动手 · 点任意一格可跳过去",
         color: "plan",
         groups: [
-          { label: "先把话说清楚", items: [
-            { t: "认识规划器", el: "pl-intro", note: "三法宝" },
+          { label: "L07 理论 · 先把话说清楚", items: [
+            { t: "认识规划器", el: "pl-intro", note: "三件本事" },
             { t: "把任务说清楚", el: "pl-cmp-q1", note: "四要素 + 澄清三问" }
           ] },
-          { label: "拆 · 排 · 写成清单", items: [
-            { t: "法宝一·拆解", el: "pl-tree" },
-            { t: "步骤排排队", el: "pl-order", note: "7 个任务" },
+          { label: "L07 理论 · 三件本事：拆 · 排 · 写成清单", items: [
+            { t: "法宝一·拆开", el: "pl-tree" },
+            { t: "法宝二·排好", el: "pl-order", note: "7 个任务" },
             { t: "依赖与并行", el: "pl-dep", note: "哪些能同时做" },
-            { t: "计划写成清单", el: "pl-planrun", note: "双轨开跑" }
+            { t: "法宝三·写成清单", el: "pl-planrun", note: "双轨开跑" }
           ] },
-          { label: "想 · 选 · 动起来", items: [
+          { label: "L07 理论 · 规划器的两种节奏", items: [
+            { t: "Plan-and-Execute vs ReAct", el: "pl-paradigm", note: "与三件本事的关系" },
+            { t: "ReAct 循环演示", el: "pl-react-rounds", note: "思考→行动→观察" }
+          ] },
+          { label: "L08 理论 · 其他方法 + 执行", items: [
+            { t: "其他规划方法（进阶）", el: "pl-adv", note: "PER / Reflexion / Router+Skill / ToT" },
             { t: "工具选择决策", el: "pl-tooldec", note: "6 场景" },
-            { t: "ReAct 循环", el: "pl-react-rounds", note: "思考→行动→观察" },
-            { t: "思维链 CoT", el: "pl-cot-q1", note: "小模型 vs 大模型" }
-          ] },
-          { label: "边界与质检", items: [
+            { t: "思维链 CoT", el: "pl-cot-q1", note: "小模型 vs 大模型" },
             { t: "循环的边界", el: "pl-tr-add", note: "轨迹 + 停止条件" },
-            { t: "任务清单 TODO", el: "pl-todo", note: "一眼看得到" },
-            { t: "两种规划范式", el: "pl-paradigm", note: "Plan-Execute vs ReAct" },
-            { t: "失败与反思", el: "pl-fail", note: "先归因再反思" },
-            { t: "失败归因", el: "pl-attrib", note: "找第一个错" },
+            { t: "任务清单 TODO", el: "pl-todo", note: "一眼看得到" }
+          ] },
+          { label: "L08 理论 · 失败与质检", items: [
+            { t: "失败归因", el: "pl-attrib", note: "先找第一个错" },
+            { t: "失败与反思", el: "pl-fail", note: "再改计划" },
             { t: "提议者-审核者", el: "pl-pr-go", note: "双 Agent" }
           ] },
-          { label: "演练与验收", items: [
+          { label: "两次课 动手段 · 亲手做出来（vibe coding）", items: [
+            { t: "L07 任务拆解器 → L08 计划执行器", el: "pl-code" }
+          ] },
+          { label: "课后 · 演练与验收", items: [
             { t: "综合演练", el: "pl-e2e-flow", note: "端到端 7 关" },
             { t: "小测验", el: "pl-quiz", note: "14 题" },
-            { t: "进阶原理课堂", el: "pl-adv", note: "15 个概念" }
+            { t: "进阶原理课堂", el: "pl-adv", note: "19 个概念" }
           ] }
         ]
       }) +
 
-      /* 卡片顺序（18 张卡，学习顺序：说清楚 → 拆 → 排 → 写成清单 → 执行 → 边界 → 质检 → 演练）：
-       *   认识规划器 ｜ 把任务说清楚（四要素 + 澄清三问 + 模糊 vs 清晰两连对比）
-       *   → 法宝一·拆解（自己拆 + 看 AI 拆）｜ 法宝二·排序（排排队 → 依赖与并行）
-       *   → 计划要能被“执行”（清单计划 vs 一段话计划）→ 工具选择决策
-       *   → ReAct 循环 → 思维链 CoT（承接“思考”环节）
-       *   → 循环的边界（上下文轨迹 + 停止条件 + 三形态“假完成”）→ 任务清单（TODO / 状态栏）→ 两种规划范式
-       *   → 失败与反思（含失败分类 + 计划自检）→ 失败归因（先找第一个错）→ 提议者-审核者
-       *   → 综合演练（端到端走一遍）→ 小测验 → 进阶原理互动课堂（15 概念）→ 课堂小结 */
-      /* 学习目标 */
+      /* 卡片顺序（19 张卡，学习顺序：说清楚 → 拆 → 排 → 写成清单 → 执行 → 边界 → 质检 → 演练 → 亲手做）：
+       *   L07：认识 → 说清楚 → 拆开 → 排好 → 依赖与并行 → 写成清单 → 两种方法（Plan-and-Execute vs ReAct）→ ReAct 演示
+       *   L08：工具选择 → 思维链 → 循环边界 → 任务清单 → 失败归因 → 反思 → 提议者-审核者
+       *   收尾：综合演练 → 课堂编程 → 小测验 → 进阶原理互动课堂（19 概念）→ 课堂小结 */
+      /* 学习目标：按两次课（四课时）组织，每次课都写明“理论线 + 动手线”。
+       * 与感知器 L05/L06 同构：第一次课“能调用”，第二次课“在调用之上加一层能力”。 */
       '<div class="lesson-goal card-plan">' +
-        '<h3>' + U.icon("target", 18) + ' 本课学习目标</h3>' +
+        '<h3>' + U.icon("target", 18) + ' 两次课 · 每次 110 分钟：理论 + 休息 10′ + 动手</h3>' +
         '<div class="goal-list">' +
-          '<div class="goal-item"><span class="goal-num">1</span>认识规划器：它是 Agent 的"思考中枢"，负责<b>理解意图 → 拆解任务 → 排序步骤 → 选择工具</b></div>' +
-          '<div class="goal-item"><span class="goal-num">2</span>会<b>把任务说清楚</b>（四要素），信息不足时先问（澄清三问）</div>' +
-          '<div class="goal-item"><span class="goal-num">3</span>掌握三大基本功：<b>拆解</b>、<b>排序</b>（依赖与并行）、<b>写成清单</b>（每步：做什么 + 用什么工具 + 完成标准）</div>' +
-          '<div class="goal-item"><span class="goal-num">4</span>会<b>想</b>（思维链 CoT）、会<b>选工具</b>、会<b>跑</b>（ReAct：思考→行动→观察），并分清 Plan-and-Execute 与 ReAct</div>' +
-          '<div class="goal-item"><span class="goal-num">5</span>懂规划的边界与质检：任务清单、停止条件、失败归因、提议者-审核者</div>' +
-          '<div class="goal-item"><span class="goal-num">6</span>在<b>综合演练</b>里走完一遍：澄清 → 拆解 → 排序 → 执行 → 反思</div>' +
+          '<div class="goal-item"><span class="goal-num">1</span><b>第一次课（L07，110 分钟）：规划器是什么，它怎么“做计划”</b><br>' +
+            '<b>理论：</b>规划器的三问（做什么 / 怎么做 / 做完没）→ 把任务说清楚 → 三件本事（拆开 / 排好 / 写成清单）→ <b>规划器的两种工作节奏</b>（一次出完 / 边做边改）：讲清它们与三件本事的关系，以及“架构是外壳、规划器是里面的角色”<br>' +
+            '<b>动手：</b>把 L05 的 ai-chat 改成<b>任务拆解器</b>，并让网页说清“这个任务该用哪种方法”——固定任务用 Plan-and-Execute，开放任务用 ReAct</div>' +
+          '<div class="goal-item"><span class="goal-num">2</span><b>第二次课（L08，110 分钟）：方法不止两种，计划还要能跑、能查错</b><br>' +
+            '<b>开场（约 10 分钟）：</b>先简单过一遍其他规划方法（PER / Reflexion / Router+Skill / ToT，用「进阶原理课堂」直接讲），只讲“它解决什么问题、什么时候用”<br>' +
+            '<b>主讲（与动手直接相关）：</b>工具选择 → 边界与停止条件 → <b>失败归因</b> → <b>失败反思</b> → <b>意图澄清</b>与<b>工作流选型</b><br>' +
+            '<b>动手：</b>在拆解器上升级<b>计划执行器</b>——逐条执行、显示观察结果、跑满 5 步自动停、失败指出第几步</div>' +
+          '<div class="goal-item"><span class="goal-num">★</span><b>每次课的四个时间块：</b>理论约 45′ → 休息 10′ → 动手约 45′ → 收尾 10′。<br>' +
+            '理论与动手在<b>同一次课</b>里，不是两堂课；页面按“理论卡 → 课堂编程”配对使用，教师按时间块取用。</div>' +
         '</div>' +
       '</div>' +
 
       /* ① 认识规划器：Agent 的思考中枢 */
-      LP.card("plan", "认识规划器：Agent 的思考中枢", "规划器（Planner）是 Agent 的一项核心<b>决策职责</b>（由大脑这个 LLM 承担）：<b>理解意图 → 拆解任务 → 排序步骤 → 选择工具</b>，并在执行中不断调整。注意：它是独立的一项职责，<b>不等于“思考模式”</b>——思考模式只是决定推理过程可不可见的能力开关。",
-        '<div class="row" style="gap:24px;justify-content:center;margin:6px 0 10px;flex-wrap:wrap">' +
-          '<div class="tf-node" style="border-color:var(--c-plan);min-width:140px">' + U.icon("target", 20) + ' 法宝一：拆解<br><small style="color:var(--c-sub);font-weight:400">大任务 → 小步骤</small></div>' +
+      LP.card("plan", "认识规划器：先在心里过一遍", "想象你要办一场班级联欢会——你不会一上来就吹气球，而是先在脑子里过一遍：要办成什么样、分几步、先做哪一步。AI 也是这样。这一章你可以这样记：<b>你是甲方，AI 请了一位项目经理</b>——你说清要什么，它负责想、负责安排。<b>这位“项目经理”，就叫规划器。</b>它的本质不是“会拆任务”，而是<b>每一轮替 Agent 做决定</b>：现在该做什么？接下来怎么做？做完没有？真正跑腿干活的是执行器。",
+        '<div class="row" style="gap:18px;justify-content:center;margin:6px 0 10px;flex-wrap:wrap">' +
+          '<div class="tf-node" style="border-color:var(--c-plan);min-width:150px">' + U.icon("target", 20) + ' ① 现在该做什么？<br><small style="color:var(--c-sub);font-weight:400">理解意图 · 判断要不要规划 · 定方向</small></div>' +
           '<div class="tf-arrow">→</div>' +
-          '<div class="tf-node" style="border-color:var(--c-plan);min-width:140px">' + U.icon("link", 20) + ' 法宝二：排序<br><small style="color:var(--c-sub);font-weight:400">排好先后顺序</small></div>' +
+          '<div class="tf-node" style="border-color:var(--c-plan);min-width:160px">' + U.icon("link", 20) + ' ② 接下来怎么做？<br><small style="color:var(--c-sub);font-weight:400">拆开 · 排好 · 写成清单 · 选工具</small></div>' +
           '<div class="tf-arrow">→</div>' +
-          /* 第三格原来是「法宝三：执行（调工具+看结果）」——这把“执行”算进了规划器的手艺里，
-           * 和本页①号卡的「选择工具」、以及小测验里的「两件法宝＝拆解和排序」都对不上，
-           * 也会让学生以为规划器能直接调用工具。改成“选工具”，并点明它只做决定、不亲自调用。 */
-          '<div class="tf-node" style="border-color:var(--c-plan);min-width:140px">' + U.icon("gear", 20) + ' 法宝三：选工具<br><small style="color:var(--c-sub);font-weight:400">只决定调哪个 · 不亲自调用</small></div>' +
+          /* 第三问补上“验收/停止/改计划”——这三件事过去被漏在“三件本事”之外，
+           * 而它们恰恰是规划器区别于“一次性生成计划”的地方。 */
+          '<div class="tf-node" style="border-color:var(--c-plan);min-width:160px">' + U.icon("check", 20) + ' ③ 做完没有？<br><small style="color:var(--c-sub);font-weight:400">验收 · 什么时候停 · 没做完/做错了就改计划</small></div>' +
         '</div>' +
-        '<div class="tip">' + U.icon("spark", 16) + ' <b>核心公式：</b>规划器不是一次性列完步骤就完事，它嵌在“思考→行动→观察”的循环里动态调整——这就是 <b>ReAct 循环</b>。注意分工：<b>“行动”这一步不由规划器做</b>，而是大脑按工具接口把参数写成调用、交给执行器去跑，结果再回流，规划器据此改计划。下面会专门演示！</div>' +
-        '<div class="tip" style="margin-top:8px">' + U.icon("book", 16) + ' <b>ai-agent-book 原文：</b>“LLM 是 Agent 的决策核心——理解意图、思考规划、做出判断。”规划器的能力来自预训练积累的世界知识，以及后训练固化的决策策略。</div>' +
-        '<div class="tip" style="margin-top:8px">' + U.icon("brain", 16) + ' <b>一句话理解“规划”：先在脑子里预演一遍，再动手。</b>规划不是把任务写长，而是把“模糊的大愿望”变成“可执行的清单”——该拆的拆开、该等的排队、该并行的同时做。执行中遇到新情况，还要回来改计划（这就是后面的 ReAct 循环）。</div>',
+        '<div class="pf-note">' + U.icon("info", 13) + ' <b>口径说明：</b>这三问是 LLM 作为“决策内核”的职责；本课把其中<b>“怎么做”</b>这一环称为<b>规划器</b>。所以规划器不是一块独立的硬件，而是大脑的一项职责。</div>' +
+        /* 权威定义区：先给“规划/规划器”的行业定义，再翻成学生话。
+         * 出处只写书名与年份，不写章节号——章节会随改版漂移，学生也不需要背。 */
+        '<div class="pf-kit-head">' + U.icon("book", 16) + ' 权威定义：规划（Planning）与规划器（Planner）</div>' +
+        '<div class="pf-demo-grid">' +
+          '<div class="pf-card">' +
+            '<div class="pf-card-head">' + U.icon("target", 16) + '<span>规划（Planning）</span>' +
+              '<span class="pf-chan">先想清楚，再动手</span></div>' +
+            '<div class="pf-flow">' +
+              '<div class="pf-step"><span class="pf-step-tag">经典 AI 的定义</span>' +
+                U.term("《人工智能：一种现代方法》", "原文：The task of coming up with a sequence of actions that will achieve a goal is called planning.<br>译：为达成一个目标、想出一串能达成它的动作，这件事就叫规划。") +
+                '：<b>为达成目标，想出一串做得到的动作。</b></div>' +
+              '<div class="pf-step"><span class="pf-step-tag">大模型时代的定义</span>' +
+                U.term("《LLM 自主智能体综述》", "原文：The planning module aims to empower the agents with such human capability, which is expected to make the agent behave more reasonably, powerfully, and reliably.<br>译：规划模块让智能体具备像人一样把复杂任务拆成更简单子任务的能力，从而表现得更合理、更强、更可靠。人还会根据外部反馈不断修改计划。") +
+                '：<b>把复杂任务拆成更简单的子任务，并随着结果修改计划。</b></div>' +
+              '<div class="pf-step"><span class="pf-step-tag">两个课程项目</span>《Hello-Agents》把规划列为智能体四大组件之一，负责<b>拆解任务</b>；《深入理解 AI Agent》第 1 章把 LLM 称为 Agent 的“决策内核”——<b>理解意图、思考规划、做出判断</b>，规划是其中的“思考”这一环。本课把这一环展开成“拆开 / 排好 / 写成清单”。</div>' +
+            '</div>' +
+            '<div class="pf-note">' + U.icon("check", 13) + ' <b>翻成一句白话：</b>规划 = 想清楚“要做什么、先做什么、做到什么算完”，而且做的过程中要按结果改。</div>' +
+          '</div>' +
+          '<div class="pf-card">' +
+            '<div class="pf-card-head">' + U.icon("gear", 16) + '<span>规划器（Planner）</span>' +
+              '<span class="pf-chan">只出计划，不动手</span></div>' +
+            '<div class="pf-flow">' +
+              '<div class="pf-step"><span class="pf-step-tag">它是什么</span>智能体里负责“做决定”的那个部分（或角色）——决定<b>现在做什么、怎么做、做完没有</b>。</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">它不是什么</span>不是执行器（真正调工具、跑腿的是执行器）；也不是“思考模式”（那只是决定要不要把想的过程写出来）。</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">它的产出</span>一份计划（Plan-and-Execute），或者“下一步该做什么”（ReAct）——<b>两种情况都算规划</b>，不是只有“列完整清单”才算。</div>' +
+            '</div>' +
+            '<div class="pf-note">' + U.icon("info", 13) + ' 所以“关掉规划器”不等于“没有规划”——只是换成规则来排步骤，计划还在，做决定的不是模型。</div>' +
+          '</div>' +
+        '</div>' +
+        U.noteFold("定义来源（给好奇的你）",
+          '<div class="pf-note">' + U.icon("book", 13) + ' Russell &amp; Norvig《人工智能：一种现代方法》；Wang 等《A Survey on LLM based Autonomous Agents》(2023)；Datawhale《Hello-Agents》；李博杰《深入理解 AI Agent》。</div>') +
+        '<div class="tip">' + U.icon("spark", 16) + ' <b>一句话记住：</b>“拆开、排好、写成清单”只是第 ② 问里的三个动作，<b>不是规划器的全部</b>——它还要判断“这件事要不要规划”、决定“什么时候停”、发现“做错了怎么改”。<br>那到底是“一次做完”还是“边做边改”？第 7 张会讲两种方法：<b>Plan-and-Execute</b> 与 <b>ReAct</b>。注意分工：“行动”不由规划器做，它只决定“下一步做什么、用哪个工具”。</div>' +
+        U.noteFold("再深入一点：为什么叫“规划”？为什么说你是甲方？",
+          '<div class="tip">' + U.icon("brain", 16) + ' <b>为什么叫“规划”：</b>规划不是把任务写长，而是把“模糊的大愿望”变成“能照着做的清单”——该拆的拆开、该等的排队、能同时做的并行。执行中遇到新情况，还要回来改计划（后面第 8 张卡的 ReAct 循环会演给你看）。</div>' +
+          '<div class="tip" style="margin-top:8px">' + U.icon("users", 16) + ' <b>记住这个身份：你是甲方，它是项目经理。</b>后面每一张卡，都是在教你怎样把活派明白、怎样验收——而不是替你干活。</div>') +
+        U.noteFold("容易混：规划器 ≠ 思考模式",
+          '<div class="tip">' + U.icon("info", 16) + ' <b>别把它和“思考模式”弄混（学过第 9 张卡再回来看）：</b>规划器是每轮都要做的一件事；思考模式只是一个开关，决定 AI 要不要把想的过程写出来。关掉它，规划照样发生，只是你看不见。</div>'),
         { id: "pl-intro" }
       ) +
 
       /* ② 把任务说清楚：四要素 + 澄清三问 + 模糊 vs 清晰（合并原「四要素」「魔法句式」两卡） */
       LP.card("plan", "实验：把任务说清楚——四要素 / 澄清三问 / 模糊 vs 清晰",
         "请规划器办事，要说清四件事；信息不足时，还要会问回去。先弄清原理，再做两次对比：同一件事「一句话」和「说清楚」差多少、逐条补齐四要素后回答怎么一步步变好。" +
+        "<b>建议先自己写一句，再点按钮对比</b>——写完再看，差别记得更牢。" +
         "（对比一需要真实模型；<b>对比二没配 Key 也能用示例演示</b>）",
         /* 区 1：原理 —— 先讲清“为什么”，再做实验 */
         '<div class="pf-kit-head">' + U.icon("target", 16) + ' 原理：四要素 = 把“猜”变成“照做”</div>' +
@@ -244,7 +291,7 @@ AgentLab.LabPlanner = (function () {
           '<div class="cmp-col"><h4><span class="stage-pill pill-exe">模糊说法</span>只说了「做什么」</h4>' +
             '<div class="cot-q" id="pl-cmp-q1"></div>' +
             '<div class="ans" id="pl-ans-vague"><span style="color:var(--c-sub)">还没有提问……</span></div></div>' +
-          '<div class="cmp-col"><h4><span class="stage-pill pill-mem">魔法句式</span>目标 + 步骤 + 顺序 + 要求</h4>' +
+          '<div class="cmp-col"><h4><span class="stage-pill pill-mem">说清楚</span>目标 + 步骤 + 顺序 + 要求</h4>' +
             '<div class="cot-q" id="pl-cmp-q2"></div>' +
             '<div class="ans" id="pl-ans-clear"><span style="color:var(--c-sub)">还没有提问……</span></div></div>' +
         '</div>' +
@@ -255,9 +302,9 @@ AgentLab.LabPlanner = (function () {
         '<div id="pl-cmp-model" style="margin-top:12px"></div>' +
         '<div id="pl-cmp-table"></div>' +
         '<div class="quiz-feedback" id="pl-cmp-fb"></div>' +
-        '<div class="tip" style="margin-top:10px">' + U.icon("book", 16) + ' <b>原理：</b>同一个模型、同一件事，只换说法——模糊说法只说了「做什么」，AI 只能用通用套话填空；魔法句式把<b>目标、步骤、顺序、每段要求</b>交代清楚，模型才能逐条落实。' +
-          '<br><b>实验条件（保证公平）：</b>两边<b>任务完全相同</b>，只有说法不同，用的是<b>同一个模型</b>、同样的输出上限。' +
-          '<br><b>玩法：</b>点「换一题」换一个任务再比一次——多比几次就会发现，“说清楚就更做得到”不是运气，是规律。</div>' +
+        '<div class="tip" style="margin-top:10px">' + U.icon("book", 16) + ' <b>原理：</b>同一个模型、同一件事，只换说法——只说「做什么」，AI 只能用通用套话填空；把<b>目标、步骤、顺序、每段要求</b>都交代清楚，它才能逐条落实。</div>' +
+        U.noteFold("实验条件与玩法（保证公平）",
+          '<div class="tip">' + U.icon("info", 16) + ' 两边<b>任务完全相同</b>，只有说法不同，用的是<b>同一个模型</b>、同样的输出上限。点「换一题」再比一次——多比几次就会发现，“说清楚就更做得到”不是运气，是规律。</div>') +
         '<div class="pf-kit-head">' + U.icon("spark", 16) + ' 对比二：逐条补齐四要素——看回答一步步变好</div>' +
         '<div class="cmp-req" id="pl-prompt-reqs"></div>' +
         '<div class="cmp-box">' +
@@ -280,7 +327,7 @@ AgentLab.LabPlanner = (function () {
         '<div class="quiz-feedback" id="pl-prompt-fb"></div>') +
 
       /* ③ 法宝一·拆解：任务分解树 + 现场规划（合并：自己拆 → 看 AI 拆） */
-      LP.card("plan", "法宝一·拆解：把大任务拆成小任务（自己拆 + 看 AI 拆）",
+      LP.card("plan", "法宝一·拆开：把大任务拆成小任务（自己拆 + 看 AI 拆）",
         "规划器的第一件事是“拆”。先弄清<b>为什么要拆、拆成什么样才算好</b>，再分两步动手：① 自己判断该拆出哪些子任务；② 让规划器现场拆一次。",
         /* 区 1：原理 —— 先讲清“为什么”，再动手拆 */
         '<div class="pf-kit-head">' + U.icon("link", 16) + ' 原理：为什么要“拆”？拆成什么样才算好？</div>' +
@@ -308,19 +355,33 @@ AgentLab.LabPlanner = (function () {
           '</div>' +
         '</div>' +
         /* 区 2：动手（组件自带标题） */
+        U.predict({
+          id: "pl-tree-guess",
+          color: "plan",
+          q: "先猜一猜：让 AI 组织一次班级读书分享会，它最容易漏掉哪一步？",
+          opts: [
+            { k: "a", t: "定主题和时长" },
+            { k: "b", t: "邀请同学报名、统计人数" },
+            { k: "c", t: "收集反馈、做复盘" }
+          ],
+          ans: "c",
+          why: "最容易被漏的是最后那步“收尾”——它不显眼，却决定下一次能不能做得更好。好分解要把这类步骤也写进清单。",
+          hint: "想想：哪一步最不像“活动当天要做的事”？"
+        }) +
         '<div id="pl-tree"></div>'+
         '<div class="pf-kit-head">' + U.icon("robot", 16) + ' 动手二：让规划器现场拆一次（真实模型）</div>' +
         '<div class="row">' +
           '<input type="text" id="pl-plan-input" placeholder="例如：组织一次班级运动会" style="flex:1">' +
           '<button class="btn btn-plan" id="pl-plan-go">' + U.icon("spark", 16) + " 开始拆解</button>" +
         '</div>' +
-        '<div class="tx-points">' +
-          '<div class="tx-point">' + U.icon("book", 15) + '<div class="tx-point-txt"><b>ai-agent-book：</b>工程上常让模型输出 <b>JSON 步骤列表</b>，程序再按列表逐一执行。</div></div>' +
-        '</div>' +
+        U.noteFold("工程上怎么用这份拆解结果",
+          '<div class="tx-points">' +
+            '<div class="tx-point">' + U.icon("book", 15) + '<div class="tx-point-txt"><b>工程做法：</b>让 AI 输出一份<b>步骤清单</b>，程序再按清单一步步交给执行器。</div></div>' +
+          '</div>') +
         '<div class="game-box" id="pl-plan-out" style="display:none"></div>') +
 
       /* ④ 法宝二·排序：步骤排排队 */
-      LP.card("plan", "游戏：步骤排排队",
+      LP.card("plan", "法宝二·排好：步骤排排队",
         "把打乱的小步骤排回正确的先后顺序。动手前先弄清<b>顺序为什么不能乱、怎么判断谁先谁后</b>——玩起来会更有感觉。共 " + TASKS.length + " 个任务，包括 AI Agent 真实任务哦！",
         /* 区 1：原理 —— 先讲清“为什么”，再动手排 */
         '<div class="pf-kit-head">' + U.icon("link", 16) + ' 原理：为什么顺序不能乱？怎么判断谁先谁后？</div>' +
@@ -348,6 +409,19 @@ AgentLab.LabPlanner = (function () {
         '</div>' +
         /* 区 2：动手游戏 */
         '<div class="pf-kit-head">' + U.icon("target", 16) + ' 动手游戏：把步骤排回正确顺序</div>' +
+        U.predict({
+          id: "pl-order-guess",
+          color: "plan",
+          q: "先猜一猜：“准备春游”的 5 步里，哪一步必须排在最前面？",
+          opts: [
+            { k: "a", t: "定好出发时间" },
+            { k: "b", t: "收拾零食和水壶" },
+            { k: "c", t: "到校门口集合" }
+          ],
+          ans: "a",
+          why: "后面几步都要用到“什么时候出发”这个信息——定了时间，才知道几点收拾、几点集合。谁被别的步骤依赖，谁就得先做。",
+          hint: "问自己一句：这一步，需要谁的产出？"
+        }) +
         '<div class="game-box" id="pl-order">' +
           '<div class="game-q"><span class="qno">任务</span><span id="pl-order-name"></span></div>' +
           '<div style="font-weight:700;margin-bottom:6px">我的顺序队（点步骤可撤回）：</div>' +
@@ -390,6 +464,19 @@ AgentLab.LabPlanner = (function () {
           '</div>' +
         '</div>' +
         /* 区 2：动手（组件自带标题） */
+        U.predict({
+          id: "pl-dep-guess",
+          color: "plan",
+          q: "先猜一猜：“准备水和零食”和“查公交线路”，哪一步必须等另一步做完？",
+          opts: [
+            { k: "a", t: "必须等：先准备东西，才有力气查线路" },
+            { k: "b", t: "互不需要对方的结果，可以同时做" },
+            { k: "c", t: "必须等：先查好线路，才知道带多少零食" }
+          ],
+          ans: "b",
+          why: "两步都不需要对方的产出，所以可以并行。只有“要用到别人结果”的步骤，才必须排队等——这就是依赖。",
+          hint: "问自己一句：这一步，需要谁的产出？"
+        }) +
         '<div id="pl-dep"></div>') +
 
       /* ⑥ 计划要能被“执行”：结构化清单 vs 一段话（承接拆解/排序，补工程落地） */
@@ -398,16 +485,17 @@ AgentLab.LabPlanner = (function () {
         /* 区 0：图示 —— 同一件事，两种写法跑起来差在哪（左图右解，与感知器原理图同一版式） */
         '<div class="ta-duo">' +
           '<div class="ta-image-wrap">' +
-            '<img src="images/plan-checklist-vs-prose.svg" alt="双轨对比图：左边一段话计划卡在第 2 步（没有完成标准），右边清单计划 4 步全部打勾完成" class="ta-image">' +
+            '<img loading="lazy" decoding="async" src="images/plan-checklist-vs-prose.svg" alt="双轨对比图：左边一段话计划卡在第 2 步（没有完成标准），右边清单计划 4 步全部打勾完成" class="ta-image">' +
             '<div class="ta-source">📐 本教学系统绘制 · 一段话计划 vs 清单计划</div>' +
           '</div>' +
           '<div class="ta-explain">' +
             '<div class="te-title">📖 差别不在“写得好不好”，在“能不能被检查”</div>' +
-            '<div class="pf-flow">' +
-              '<div class="pf-step is-bad"><span class="pf-step-tag">一段话</span>“记得带伞和水壶”——<b>说不清带什么、更说不清做没做完</b>，所以卡在“准备东西”这一步</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">清单</span>每条都写清 <b>做什么 + 用什么工具 + 完成标准</b>——“伞已装包”是一个可以被勾掉的事实</div>' +
-            '</div>' +
-            '<div class="pf-note">' + U.icon("info", 13) + ' 判断标准只有一条：<b>这一条能不能被勾掉？</b>能勾掉的才是清单，勾不掉的就还是一段话。</div>' +
+            U.noteFold("这张图怎么看：为什么清单能跑到底",
+              '<div class="pf-flow">' +
+                '<div class="pf-step is-bad"><span class="pf-step-tag">一段话</span>“记得带伞和水壶”——<b>说不清带什么、更说不清做没做完</b>，所以卡在“准备东西”这一步</div>' +
+                '<div class="pf-step"><span class="pf-step-tag">清单</span>每条都写清 <b>做什么 + 用什么工具 + 完成标准</b>——“伞已装包”是一个可以被勾掉的事实</div>' +
+              '</div>' +
+              '<div class="pf-note">' + U.icon("info", 13) + ' 判断标准只有一条：<b>这一条能不能被勾掉？</b>能勾掉的才是清单，勾不掉的就还是一段话。</div>') +
           '</div>' +
         '</div>' +
         /* 区 1：原理 —— 计划是写给“执行者”看的 */
@@ -436,13 +524,173 @@ AgentLab.LabPlanner = (function () {
         '</div>' +
         /* 区 2：动手（双轨推进） */
         '<div class="pf-kit-head">' + U.icon("spark", 16) + ' 动手实验：两栏同时开跑——哪一份计划跑得下去？</div>' +
+        U.predict({
+          id: "pl-planrun",
+          color: "plan",
+          q: "先猜一猜：同一件事，“一段话计划”和“清单计划”，哪一份程序能跑到底？",
+          opts: [
+            { k: "a", t: "清单计划——每步都写清做什么、用什么工具、怎么算做完" },
+            { k: "b", t: "一段话计划——写得越生动，程序越容易懂" },
+            { k: "c", t: "两份都能跑到底，只是快慢不同" }
+          ],
+          ans: "a",
+          why: "程序只认“能落到具体动作和参数”的写法。“按每天的时间提醒”这句话人看得懂，但每天几点、提醒几次都没说，程序只能停在半路——所以每一步都要能勾掉、能检查。",
+          hint: "想一想：这份计划最后是谁照着做？它需要知道哪些具体的字？"
+        }) +
         '<div class="game-box" id="pl-planrun"></div>' +
-        '<div class="tx-points">' +
-          '<div class="tx-point">' + U.icon("book", 15) + '<div class="tx-point-txt"><b>hello-agents：</b>工程上让规划器输出 <b>步骤列表</b>（Python 列表 / JSON），程序再按列表一步步交给执行器；解析失败要能“兜底”，不能直接崩。</div></div>' +
-          '<div class="tx-point">' + U.icon("archive", 15) + '<div class="tx-point-txt"><b>ai-agent-book：</b>计划越结构化，越好做三件事：<b>调试</b>（知道卡在哪一步）、<b>评估</b>（哪一步总出错）、<b>复用</b>（下次遇到同类任务直接拿这份清单改）。</div></div>' +
-        '</div>') +
+        U.noteFold("工程上怎么用这份清单",
+          '<div class="tx-points">' +
+            '<div class="tx-point">' + U.icon("book", 15) + '<div class="tx-point-txt"><b>工程做法：</b>让规划器输出一份<b>步骤清单</b>，程序再按清单一步步交给执行器；格式写坏了要能补救，不能直接崩。</div></div>' +
+            '<div class="tx-point">' + U.icon("archive", 15) + '<div class="tx-point-txt"><b>清单的第三个好处：</b>计划越规整，越好做三件事：<b>查错</b>（知道卡在哪一步）、<b>比较</b>（哪一步总出错）、<b>复用</b>（下次同类任务直接拿这份清单改）。</div></div>' +
+          '</div>')) +
 
-      /* ⑦ 工具选择决策（ReAct 的“行动”要先知道该不该调工具） */
+      /* ⑦ 两种规划方法：Plan-and-Execute vs ReAct（第 1 课时主讲，承接拆/排/清单） */
+      LP.card("plan", "规划器的两种工作节奏：一次出完 vs 边做边改",
+        "规划器在不同架构里有<b>两种工作节奏</b>：<b>一次出完整计划</b>（Plan-and-Execute），还是<b>每轮只出下一步</b>（ReAct）。拆开、排好、写成清单这三个动作，两种节奏都要用，区别只在“一次做完”还是“分很多次做”。架构是外壳，规划器是里面的角色——先看对照，再给下面每个任务选节奏。",
+        /* 区 0：图示 —— 两条时间线并排看（左图右解，与感知器原理图同一版式） */
+        '<div class="ta-duo">' +
+          '<div class="ta-image-wrap">' +
+            '<img loading="lazy" decoding="async" src="images/plan-paradigms.svg" alt="两种规划范式对比图：上面是 Plan-and-Execute（先写出整条计划再执行），下面是 ReAct（思考↔行动↔观察来回交替）" class="ta-image">' +
+            '<div class="ta-source">📐 本教学系统绘制 · Plan-and-Execute vs ReAct</div>' +
+          '</div>' +
+          '<div class="ta-explain">' +
+            '<div class="te-title">📖 判断只看一条：步骤会不会因为中间结果而改变？</div>' +
+            U.noteFold("这张图怎么看：一句话分清两种范式",
+              '<div class="pf-flow">' +
+                '<div class="pf-step"><span class="pf-step-tag">Plan-and-Execute</span>步骤基本固定、不容易中途变化——<b>先想全，再动手</b>（如“按流程办一件事”）</div>' +
+                '<div class="pf-step"><span class="pf-step-tag">ReAct</span>不知道下一步会遇到什么、要看结果再决定——<b>走一步看一步</b>（如“帮我查一个问题”）</div>' +
+              '</div>' +
+              '<div class="pf-note">' + U.icon("info", 13) + ' 真实系统常常<b>混着用</b>：大方向先规划，具体每一步边走边看。</div>') +
+          '</div>' +
+        '</div>' +
+        /* 核心关系：三件本事是“动作”，两种方法是“什么时候做这些动作” */
+        '<div class="pf-kit-head">' + U.icon("link", 16) + ' 先说清关系：三件本事是“动作”，两种方法是“什么时候做这些动作”</div>' +
+        '<div class="pf-demo-grid">' +
+          '<div class="pf-card">' +
+            '<div class="pf-card-head">' + U.icon("archive", 16) + '<span>Plan-and-Execute</span>' +
+              '<span class="pf-chan">三个动作一次做完</span></div>' +
+            '<div class="pf-flow">' +
+              '<div class="pf-step"><span class="pf-step-tag">拆开</span>先把所有步骤列完</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">排好</span>一次排清先后与依赖</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">写成清单</span>写成一份完整计划，再交给执行器</div>' +
+            '</div>' +
+            '<div class="pf-note">' + U.icon("check", 13) + ' 三个动作各做一次，<b>做完才动手</b>；计划能先给你审。</div>' +
+          '</div>' +
+          '<div class="pf-card">' +
+            '<div class="pf-card-head">' + U.icon("refresh", 16) + '<span>ReAct</span>' +
+              '<span class="pf-chan">每一轮只做一点点</span></div>' +
+            '<div class="pf-flow">' +
+              '<div class="pf-step"><span class="pf-step-tag">拆开（这一轮）</span>只想“下一步做什么”，不列完整计划</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">选工具 + 行动</span>调一个工具，拿回观察结果</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">排好 / 改清单</span>看结果再定下一步——计划是边走边长的</div>' +
+            '</div>' +
+            '<div class="pf-note">' + U.icon("check", 13) + ' 三个动作拆成很多小份，<b>做一点、看一点、再改一点</b>。</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="tip tip-info" style="margin:0 0 14px">' + U.icon("spark", 15) + ' <b>一句话分清：</b>Plan-and-Execute 是“先写完计划，再照着做”；ReAct 是“边做边想，走一步看一步”。<b>三件本事两种方法都要用</b>，区别只在“一次做完”还是“分很多次做”。</div>' +
+        /* 概念边界：严格说两者是“架构”，不是“规划器内部的算法”——学生不必背，但教师常被问到 */
+        U.noteFold("严格说：它们是“智能体架构”，不是规划器里的两种算法",
+          '<div class="tip">' + U.icon("info", 16) + ' <b>ReAct</b> 是“一个 Agent 边想边做”的<b>运行循环</b>（思考→行动→观察）；<b>Plan-and-Execute</b> 是“规划者 + 执行者”两个角色的<b>分工架构</b>。两者都是<b>智能体架构</b>层面的选择。<br>规划器是这些架构里的一个角色：在 Plan-and-Execute 里它一次出完整计划；在 ReAct 里它每轮只出“下一步”。<br>所以本课把它们放在规划这一章讲，是因为它们决定“规划这件事怎么组织”——<b>不是因为它们是规划器内部的两种算法</b>。</div>') +
+        /* 区 1：原理 —— 两种范式对照 */
+        '<div class="pf-kit-head">' + U.icon("target", 16) + ' 原理：两种范式，各有各的用武之地</div>' +
+        '<div class="pf-demo-grid">' +
+          '<div class="pf-card">' +
+            '<div class="pf-card-head">' + U.icon("archive", 16) + '<span>Plan-and-Execute</span>' +
+              '<span class="pf-chan">先计划，后执行</span></div>' +
+            '<div class="pf-flow">' +
+              '<div class="pf-step"><span class="pf-step-tag">怎么走</span>一次性列完所有步骤，再按顺序执行</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">适合</span>确定性任务：做饭流程、固定报表——步骤不会变</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">不适合</span>需要根据中间结果调整的任务</div>' +
+            '</div>' +
+            '<div class="pf-note">' + U.icon("info", 13) + ' 优点：计划可以先给你审、可检查；缺点：遇到意外不会变通。</div>' +
+          '</div>' +
+          '<div class="pf-card">' +
+            '<div class="pf-card-head">' + U.icon("refresh", 16) + '<span>ReAct</span>' +
+              '<span class="pf-chan">边想边做，动态调整</span></div>' +
+            '<div class="pf-flow">' +
+              '<div class="pf-step"><span class="pf-step-tag">怎么走</span>思考→行动→观察→再思考，每步都根据反馈调整</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">适合</span>不确定任务：搜索调研、故障排查——走一步看一步</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">不适合</span>步骤完全固定、不需要反馈的任务</div>' +
+            '</div>' +
+            '<div class="pf-note">' + U.icon("info", 13) + ' 优点：灵活、能应变；缺点：整体计划性弱，花掉的时间和费用更多。</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="tip tip-info" style="margin:0 0 14px">' + U.icon("spark", 15) + ' <b>一句话选范式：</b>任务确定、想先审计划 → Plan-and-Execute；任务不确定、要靠反馈 → ReAct。<br><b>还有个增强版：</b>“计划—执行—反思”（PER）——执行完先检查达不达标，不达标就改计划再来一轮。课上只要知道它解决什么问题，细节在「进阶原理课堂」。</div>' +
+        '<div class="pf-demo-grid">' +
+          '<div class="pf-card">' +
+            '<div class="pf-card-head">' + U.icon("happy", 16) + '<span>同一个项目经理的两种干法</span>' +
+              '<span class="pf-chan">先画图纸 vs 边走边问</span></div>' +
+            '<div class="pf-flow">' +
+              '<div class="pf-step"><span class="pf-step-tag">Plan-and-Execute = 先画图纸</span>把整张施工图画完，再照着一步一步干</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">ReAct = 边走边问</span>先干一步，看看结果，再决定下一步往哪走</div>' +
+            '</div>' +
+            '<div class="pf-note">' + U.icon("info", 13) + ' 先画图纸更稳、更好检查；边走边问更能应付意外——所以真实系统常常“先画大图，遇到意外临时改”。</div>' +
+          '</div>' +
+          '<div class="pf-card">' +
+            '<div class="pf-card-head">' + U.icon("alert", 16) + '<span>一个反直觉的发现</span>' +
+              '<span class="pf-chan">瓶颈在规划者</span></div>' +
+            '<div class="pf-flow">' +
+              '<div class="pf-step"><span class="pf-step-tag">发现</span>“规划 + 执行”分工时，<b>规划得差的那一环</b>才是整个系统的瓶颈——执行再强，也救不回一份错计划</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">结论</span>最聪明的模型、最用心的提示词，要优先留给“规划”这一步</div>' +
+            '</div>' +
+            '<div class="pf-note">' + U.icon("book", 13) + ' <b>一句话记牢：</b>计划错了，执行再强也救不回来——所以最聪明的模型要优先留给“规划”这一步。</div>' +
+            U.noteFold("什么时候才值得上“自主 Agent”",
+              '<div class="pf-note">' + U.icon("gear", 13) + ' 选型也讲“从简单到复杂”：能一次问完的，不必搭 Agent；步骤固定的，用固定流程最稳；只有会随结果改变的，才值得上自主 Agent（进阶课堂「编排选型」有练习）。</div>') +
+          '</div>' +
+        '</div>' +
+        /* 区 2：动手（组件自带标题） */
+        '<div class="game-box" id="pl-paradigm">' +
+          '<div id="pl-pg-flow"></div>' +
+        '</div>'
+      ) +
+
+      /* ⑧ 核心演示：ReAct 循环——思考→行动→观察 */
+      LP.card("plan", "核心演示：ReAct 循环——思考→行动→观察", "Agent 执行任务最常用的模式叫 <b>ReAct</b>（Reasoning + Acting，边想边做）。模型先<b>思考</b>当前该做什么，然后调用工具<b>行动</b>，再<b>观察</b>工具返回的结果并继续思考——“想→做→看”不断重复，直到任务完成。点击下面的按钮，一步步看 Agent 是怎么工作的！",
+        /* 区 0：图示 —— 一圈一圈转的 ReAct（左图右解，与感知器原理图同一版式） */
+        '<div class="ta-duo">' +
+          '<div class="ta-image-wrap">' +
+            '<img loading="lazy" decoding="async" src="images/plan-react-loop.svg" alt="ReAct 循环图：思考 Thought → 行动 Action → 观察 Observation → 再思考，够了一环出口指向交付完成" class="ta-image">' +
+            '<div class="ta-source">📐 本教学系统绘制 · ReAct 循环</div>' +
+          '</div>' +
+          '<div class="ta-explain">' +
+            '<div class="te-title">📖 一圈只推进一步——这就是它和“一口气说完”的区别</div>' +
+            U.noteFold("这张图怎么看：为什么必须有“观察”和“出口”",
+              '<div class="pf-flow">' +
+                '<div class="pf-step"><span class="pf-step-tag">为什么必须有“观察”</span>“观察”回来的<b>真数据</b>才是下一步决策的依据——没有它，模型只能靠猜</div>' +
+                '<div class="pf-step"><span class="pf-step-tag">为什么必须有“出口”</span>循环要有边界：<b>最大轮数（约 12 轮）+ 停止条件</b>——不然会一直转下去，越转越贵</div>' +
+              '</div>' +
+              '<div class="pf-note">' + U.icon("info", 13) + ' 对照着记：<b>思维链 CoT = 只“想”不“做”；ReAct = 边想边做。</b></div>' +
+              '<div class="pf-note">' + U.icon("gear", 13) + ' 分清楚谁是谁：<b>“思考 / 行动”是规划器的产出</b>，<b>“观察”是执行器的产物</b>——别把整圈 ReAct 都算成规划器。</div>') +
+          '</div>' +
+        '</div>' +
+        '<div class="game-box">' +
+          '<div style="background:var(--c-plan-light);padding:12px 16px;border-radius:10px;margin-bottom:14px;font-weight:700">' + U.icon("user", 16) + ' 用户任务：' + U.esc(REACT_DEMO.task) + '</div>' +
+          U.predict({
+            id: "pl-react-guess",
+            color: "plan",
+            q: "先猜一猜：这个任务跑到第 3 轮时，Agent 还会调用工具吗？",
+            opts: [
+              { k: "a", t: "会，一直调用到任务完成" },
+              { k: "b", t: "不会，它会给出最终回复并结束循环" },
+              { k: "c", t: "会，但换成另一个工具" }
+            ],
+            ans: "b",
+            why: "第 1 轮查天气、第 2 轮设提醒，两件事都做完了，第 3 轮就该收尾——ReAct 的“出口”是任务完成、生成最终回复，而不是一直调工具。",
+            hint: "数一数：用户交代的两件事，前两轮做完了吗？"
+          }) +
+          '<div id="pl-react-rounds"></div>' +
+          '<div class="row" style="margin-top:14px;gap:10px;flex-wrap:wrap">' +
+            '<button class="btn btn-plan" id="pl-react-next">' + U.icon("spark", 16) + ' 下一步</button>' +
+            '<button class="btn btn-ghost" id="pl-react-auto">' + U.icon("spark", 16) + ' 自动播放全部</button>' +
+            '<button class="btn btn-ghost" id="pl-react-reset">' + U.icon("refresh", 16) + ' 重置</button>' +
+            '<span id="pl-react-status" style="color:var(--c-sub);font-size:13px;align-self:center"></span>' +
+          '</div>' +
+        '</div>' +
+        U.noteFold("每一轮循环，它都记住了什么？",
+          '<div class="tip">' + U.icon("spark", 16) + ' 每一轮 ReAct 循环，Agent 的上下文（轨迹）都在增长——思考过程、工具调用、工具结果都被记录下来，供下一轮思考参考。这就是 Agent 的“工作记忆”。</div>')
+      ) +
+
+      /* ⑨ 工具选择决策（ReAct 的“行动”要先知道该不该调工具） */
       LP.card("plan", "互动：工具选择决策——什么时候调用什么工具？",
         "规划器的核心能力之一：判断<b>要不要调用工具、调用哪个、传什么参数</b>。先弄清两条判断标准，再上场选工具！",
         /* 区 1：原理 —— 该不该调 / 怎么选对 */
@@ -474,45 +722,15 @@ AgentLab.LabPlanner = (function () {
           '<div id="pl-td-flow"></div>' +
         '</div>' +
         '<div class="tip tip-info" style="margin-top:10px">' + U.icon("book", 16) + ' <b>给工具写好“说明书”：</b>模型靠工具描述（名称、用途、参数）做匹配——描述写得越清楚，选择就越准。写工具描述，也是 Agent 工程师的重要工作。</div>' +
-        '<div class="tip" style="margin-top:8px">' + U.icon("alert", 16) + ' <b>工具一多，就会选错：</b>当工具数量超过一百个，连最先进的模型也会挑错工具。工程上的对策不是“让模型更聪明”，而是把工具<b>分层整理</b>：先按大类找（查数据？做计算？发消息？），再把相关的几个交给模型挑——实测能把工具选择准确率从 <b>49% 提到 74%</b>。实在都不匹配时，宁可回答“没找到合适的工具”，也不要硬选一个。</div>' +
-        '<div class="tip tip-info" style="margin-top:8px">' + U.icon("wrench", 16) + ' <b>和「执行器」那张游戏怎么分工：</b>这张卡练的是「<b>选工具</b>」——还没动手之前，判断“要不要用工具、该用哪一类”；执行器练的是「<b>调工具</b>」——已经决定要调了，把参数填对、把结果收好。同一个工具的两个阶段，不是同一件事做两遍。</div>'
+        U.noteFold("工具多了怎么办？谁负责调工具？",
+          '<div class="tip">' + U.icon("alert", 16) + ' <b>工具一多，就会选错：</b>当工具多到一百个以上，连最先进的模型也会挑错。办法不是“让模型更聪明”，而是把工具<b>分类放好</b>：先按大类找（查数据？做计算？发消息？），再从几个里挑。实在都不匹配时，宁可回答“没找到合适的工具”，也不要硬选一个。</div>' +
+          '<div class="tip tip-info" style="margin-top:8px">' + U.icon("wrench", 16) + ' <b>三处分工别弄混：</b>规划器负责<b>决定</b>——要不要用工具、用哪一个；大脑负责<b>写单子</b>——把用户的话变成工具要的参数；执行器负责<b>跑腿</b>——真的去调用，把结果带回来。所以这张卡练“选”，执行器那张卡练“调”，不是同一件事做两遍。</div>')
       ) +
 
-      /* ⑧ 核心演示：ReAct 循环——思考→行动→观察 */
-      LP.card("plan", "核心演示：ReAct 循环——思考→行动→观察", "ai-agent-book 第 1 章：Agent 执行任务的核心模式叫 <b>ReAct</b>（Reasoning + Acting）。模型先<b>思考</b>当前该做什么，然后调用工具<b>行动</b>，再<b>观察</b>工具返回的结果并继续思考——“想→做→看”不断重复，直到任务完成。点击下面的按钮，一步步看 Agent 是怎么工作的！",
-        /* 区 0：图示 —— 一圈一圈转的 ReAct（左图右解，与感知器原理图同一版式） */
-        '<div class="ta-duo">' +
-          '<div class="ta-image-wrap">' +
-            '<img src="images/plan-react-loop.svg" alt="ReAct 循环图：思考 Thought → 行动 Action → 观察 Observation → 再思考，够了一环出口指向交付完成" class="ta-image">' +
-            '<div class="ta-source">📐 本教学系统绘制 · ReAct 循环（ai-agent-book 第 1 章）</div>' +
-          '</div>' +
-          '<div class="ta-explain">' +
-            '<div class="te-title">📖 一圈只推进一步——这就是它和“一口气说完”的区别</div>' +
-            '<div class="pf-flow">' +
-              '<div class="pf-step"><span class="pf-step-tag">为什么必须有“观察”</span>“观察”回来的<b>真数据</b>才是下一步决策的依据——没有它，模型只能靠猜</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">为什么必须有“出口”</span>循环要有边界：<b>最大轮数（约 12 轮）+ 停止条件</b>——不然会一直转下去，越转越贵</div>' +
-            '</div>' +
-            '<div class="pf-note">' + U.icon("info", 13) + ' 对照着记：<b>思维链 CoT = 只“想”不“做”；ReAct = 边想边做。</b></div>' +
-            '<div class="pf-note">' + U.icon("gear", 13) + ' 分清楚谁是谁：<b>“思考 / 行动”是规划器的产出</b>（想完就去调工具），<b>“观察”是执行器的产物</b>（工具结果回来）——别把整圈 ReAct 都算成规划器。</div>' +
-          '</div>' +
-        '</div>' +
-        '<div class="game-box">' +
-          '<div style="background:var(--c-plan-light);padding:12px 16px;border-radius:10px;margin-bottom:14px;font-weight:700">' + U.icon("user", 16) + ' 用户任务：' + U.esc(REACT_DEMO.task) + '</div>' +
-          '<div id="pl-react-rounds"></div>' +
-          '<div class="row" style="margin-top:14px;gap:10px;flex-wrap:wrap">' +
-            '<button class="btn btn-plan" id="pl-react-next">' + U.icon("spark", 16) + ' 下一步</button>' +
-            '<button class="btn btn-ghost" id="pl-react-auto">' + U.icon("spark", 16) + ' 自动播放全部</button>' +
-            '<button class="btn btn-ghost" id="pl-react-reset">' + U.icon("refresh", 16) + ' 重置</button>' +
-            '<span id="pl-react-status" style="color:var(--c-sub);font-size:13px;align-self:center"></span>' +
-          '</div>' +
-        '</div>' +
-        '<div class="tip" style="margin-top:10px">' + U.icon("spark", 16) + ' <b>关键洞察：</b>每一轮 ReAct 循环，Agent 的上下文（轨迹）都在增长——思考过程、工具调用、工具结果都被记录下来，供下一轮思考参考。这就是 Agent 的“工作记忆”！</div>'
-      ) +
-
-      /* ⑨ 思维链（CoT）：紧接着 ReAct 的“思考”环节，讲怎么想得更准 */
+      /* ⑩ 思维链（CoT）：紧接着 ReAct 的“思考”环节，讲怎么想得更准 */
       LP.card("plan", "实验：思维链（CoT）——一步一步想的力量",
         "让模型「一步一步想」而不是直接给答案——这就是<b>思维链（Chain-of-Thought, CoT）</b>。先弄清<b>为什么“分步”会更准</b>，" +
-        "再选一个模型做对比：小模型必须被提醒“写过程”，而大模型可能已经把“一步一步想”<b>内化</b>成了本能——直接问也答对。",
+        "再选一个模型做对比：小模型必须被提醒“写过程”，而大模型可能已经把“一步一步想”<b>变成本能</b>——直接问也答对。",
         /* 区 1：原理 —— 先讲清“为什么”，再做实验 */
         '<div class="pf-kit-head">' + U.icon("brain", 16) + ' 原理：为什么“一步一步想”更准？</div>' +
         '<div class="pf-demo-grid" style="grid-template-columns:1fr">' +
@@ -548,14 +766,15 @@ AgentLab.LabPlanner = (function () {
         '</div>' +
         '<div id="pl-cot-table" style="margin-top:12px"></div>' +
         '<div class="quiz-feedback" id="pl-cot-fb"></div>' +
-        '<div class="tip" style="margin-top:10px">' + U.icon("book", 16) + ' <b>原理：</b>CoT 让模型把推理过程显式输出，每一步都基于上一步——减少「跳步」错误。在数学、符号推理、决策任务上提升显著。' +
-          '<br><b>实验条件：</b>题干完全相同，只有指令不同——「直接问」那侧被限制只能输出很短一句，模拟「不假思索就报数」。' +
-          '<br><b>换模型看什么：</b>小模型（Qwen2.5-7B）要提醒它「写过程」才稳，像借助外部脚手架；换成大模型后重点看「直接问」那一侧——如果也答对了，说明「一步一步想」已经被<b>内化</b>成模型本能。' +
-          '<br><b>模型与 Key：</b>Qwen2.5-7B 走「设置 → 云端能力密钥 · 硅基流动」；DeepSeek V4 Flash 走「设置」里的 DeepSeek Key。</div>' +
+        '<div class="tip" style="margin-top:10px">' + U.icon("book", 16) + ' <b>原理：</b>CoT 让模型把推理过程写出来，每一步都基于上一步——减少「跳步」错误。数学、符号推理、做决定时提升最明显。</div>' +
+        U.noteFold("实验条件与怎么看结果",
+          '<div class="tip">' + U.icon("info", 16) + ' <b>实验条件：</b>题干完全相同，只有指令不同——「直接问」那侧被限制只能输出很短一句，模拟「不假思索就报数」。' +
+            '<br><b>换模型看什么：</b>小模型要提醒它「写过程」才稳，像扶着走；换成更聪明的模型后，重点看「直接问」那一侧——如果也答对了，说明「一步一步想」已经变成它的本能。' +
+            '<br><b>没配 Key 也能上课：</b>会自动改用示例演示，不影响看懂“两种问法的差别”。</div>') +
         '<div class="tip" style="margin-top:8px">' + U.icon("gear", 16) + ' <b>别和规划器、思考模式搅在一起：</b>CoT 只是规划器可用的一种“想清楚”的手段——<b>它不是规划器本身</b>。规划器是每轮都要做的决策职责（拆解 / 排序 / 选工具）；CoT 是让这一步想得更稳的写法。至于“思考模式”，那是大模型的<b>能力开关</b>：只决定推理过程要不要显式写出来（可见 / 不可见）——关掉它，规划照常发生，只是你看不见过程。</div>'
       ) +
 
-      /* ⑩ 循环的边界：上下文轨迹 + 停止条件 + 假完成（合并同一主题，补两个互动） */
+      /* ⑪ 循环的边界：上下文轨迹 + 停止条件 + 假完成（合并同一主题，补两个互动） */
       LP.card("plan", "循环的边界：上下文轨迹 + 停止条件 + 假完成",
         "ReAct 每转一圈，轨迹就会长一段；但循环不能无限转下去。先弄清<b>上下文 = 静态前缀 + 轨迹</b>、看轨迹怎么增长，再回答两个问题：<b>什么时候该停下来</b>？以及——<b>它说“做完了”，怎么能是真的做完了</b>？",
         /* 区 1：原理 —— 上下文的两部分 */
@@ -568,7 +787,7 @@ AgentLab.LabPlanner = (function () {
               '<div class="pf-step"><span class="pf-step-tag">系统提示词</span>角色设定、规则——“你是一个智能体小管家……”</div>' +
               '<div class="pf-step"><span class="pf-step-tag">工具定义</span>可用的工具清单——天气查询、计算器、搜索……</div>' +
             '</div>' +
-            '<div class="pf-note">' + U.icon("info", 13) + ' 每一轮都在场、内容不变——就是书桌上那本<b>规则手册</b>，永远摆在桌面上（也永远占着一份固定空间，约 800 token）：它是“永远不能丢”的那一块。</div>' +
+            '<div class="pf-note">' + U.icon("info", 13) + ' 每一轮都在场、内容不变——就是书桌上那本<b>规则手册</b>，永远摆在桌面上（也永远占着一份固定空间，大约一页纸）：它是“永远不能丢”的那一块。</div>' +
           '</div>' +
           '<div class="pf-card">' +
             '<div class="pf-card-head">' + U.icon("chat", 16) + '<span>轨迹（每轮增长）</span>' +
@@ -586,15 +805,15 @@ AgentLab.LabPlanner = (function () {
           '<div class="row" style="margin-bottom:12px;gap:8px;flex-wrap:wrap">' +
             '<button class="btn btn-plan btn-sm" id="pl-tr-add">+ 添加一轮对话</button>' +
             '<button class="btn btn-ghost btn-sm" id="pl-tr-reset">重置</button>' +
-            '<span style="color:var(--c-sub);font-size:13px;align-self:center">当前轨迹：<b id="pl-tr-count">0</b> 轮 · 约 <b id="pl-tr-tokens">0</b> token</span>' +
+            '<span style="color:var(--c-sub);font-size:13px;align-self:center">当前轨迹：<b id="pl-tr-count">0</b> 轮 · 约 <b id="pl-tr-tokens">0</b> 字</span>' +
           '</div>' +
           '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
             '<div style="flex:1;min-width:280px">' +
-              '<div style="font-weight:700;margin-bottom:6px">静态前缀（不变，约 800 token）</div>' +
+              '<div style="font-weight:700;margin-bottom:6px">静态前缀（不变，约 800 字）</div>' +
               '<div style="background:#f5f5f5;border-radius:8px;padding:10px;font-size:13px;color:var(--c-sub);line-height:1.6">' +
                 '[系统提示词] 你是一个智能体小管家…<br>' +
                 '[工具定义] 天气查询、计算器、翻译、搜索…<br>' +
-                '<span style="color:#999">（这部分每轮都一样，占用固定 token）</span>' +
+                '<span style="color:#999">（这部分每轮都一样，占固定字数）</span>' +
               '</div>' +
             '</div>' +
             '<div style="flex:2;min-width:280px">' +
@@ -605,14 +824,15 @@ AgentLab.LabPlanner = (function () {
             '</div>' +
           '</div>' +
           '<div id="pl-tr-warning" style="display:none;margin-top:10px;padding:10px 14px;background:#fff3cd;border-radius:8px;color:#856404;font-size:14px">' +
-            U.icon("alert", 16) + ' <b>上下文窗口警告！</b>轨迹已接近模型的上下文窗口上限（如 128K token）。继续增长会导致：①早期对话被截断丢失；②推理成本上升；③响应变慢。<b>工程解决方案：</b>轨迹摘要（Summarization）、滑动窗口（Sliding Window）、向量检索（RAG）——只把相关历史放进上下文。' +
+            U.icon("alert", 16) + ' <b>书桌快放不下了！</b>轨迹已经接近上限（真实的 AI 大约能记“一本几百页的书”那么多字）。再长下去会：①最早的话被挤掉，AI 开始忘事；②每一轮都更贵；③回答更慢。<b>常见的三个办法：</b>把旧对话压成一段摘要、只留最近几轮、把旧内容存到外面需要时再取回来。' +
           '</div>' +
         '</div>' +
-        '<div class="tx-points">' +
-          '<div class="tx-point">' + U.icon("scale", 15) + '<div class="tx-point-txt"><b>成本权衡：</b>轨迹越长，每一轮要“重新读一遍”的内容就越多——Token 花费和响应时间都会上涨。所以计划不是拆得越细越好、循环也不是越多越好：<b>够用就好</b>。</div></div>' +
-          '<div class="tx-point">' + U.icon("timer", 15) + '<div class="tx-point-txt"><b>和停止条件配套：</b>轨迹增长必须设上限（最多几轮 / 最多花多少），到线就收尾或转人工——这就是自主 Agent 的“预算意识”。</div></div>' +
-        '</div>' +
-        '<div class="tip" style="margin-top:10px">' + U.icon("book", 16) + ' <b>ai-agent-book 消融实验发现：</b>工具执行结果（Tool Results）是闭环控制的关键，缺失它会让 Agent“盲目”执行；历史消息防止冗余操作；思考过程在可从结果重建时可丢弃。各组件并不同等重要！</div>' +
+        U.noteFold("为什么要给循环设“预算”",
+          '<div class="tx-points">' +
+            '<div class="tx-point">' + U.icon("scale", 15) + '<div class="tx-point-txt"><b>成本权衡：</b>轨迹越长，每一轮要“重新读一遍”的内容就越多——花费和等待时间都会上涨。所以计划不是拆得越细越好、循环也不是越多越好：<b>够用就好</b>。</div></div>' +
+            '<div class="tx-point">' + U.icon("timer", 15) + '<div class="tx-point-txt"><b>和停止条件配套：</b>轨迹增长必须设上限（最多几轮 / 最多花多少），到线就收尾或转人工——这就是自主 Agent 的“预算意识”。</div></div>' +
+          '</div>') +
+        '<div class="tip" style="margin-top:10px">' + U.icon("book", 16) + ' <b>一个“拆零件”实验的发现：</b>把工具返回的结果拿掉，Agent 就会“蒙着眼睛”做事——它最不能少；把历史对话拿掉，它会重复干活；而“想过什么”如果有结果可查，反而可以不留下。可见这几样东西并不是一样重要。</div>' +
         '<div class="pf-kit-head">' + U.icon("timer", 16) + ' 第二个边界：什么时候该停？——停止条件（Stopping Criteria）</div>' +
         '<div class="pf-demo-grid">' +
           '<div class="pf-card">' +
@@ -666,7 +886,7 @@ AgentLab.LabPlanner = (function () {
         '<div class="game-box" id="pl-falsedone"></div>'
       ) +
 
-      /* ⑪ 任务清单（TODO）：把计划放在一眼能看到的地方（承接“轨迹”，ai-agent-book 第 2 章） */
+      /* ⑫ 任务清单（TODO）：把计划放在一眼能看到的地方（承接“轨迹”，ai-agent-book 第 2 章） */
       LP.card("plan", "实验：任务清单（TODO）——把计划放在一眼能看到的地方",
         "ReAct 每转一圈，轨迹都在变长，原来的计划很容易被“顶”到后面看不见。工程上的办法很朴素：把<b>待办清单</b>放在 AI 每轮都能瞥一眼的位置，做一项、划一项。先弄清原理，再看两栏同时开跑——有没有清单，差别有多大。",
         /* 区 1：原理 —— 状态栏 + 清单三要素 */
@@ -691,7 +911,8 @@ AgentLab.LabPlanner = (function () {
               '<div class="pf-step"><span class="pf-step-tag">③ 结果与下一步</span>拿到什么（"已设好 20:00 提醒"）、接下来做什么</div>' +
             '</div>' +
             '<div class="pf-note">' + U.icon("check", 13) + ' 清单还是<b>停止条件</b>的判据：清单全部打勾 + 证据齐全，才允许交付。</div>' +
-            '<div class="pf-note">' + U.icon("book", 13) + ' <b>ai-agent-book 实测（第 2 章）：</b>开启待办清单，平均 <b>15 轮</b>就把任务做完；关掉清单要 <b>21 轮</b>，而且经常会漏掉子任务。</div>' +
+            U.noteFold("有清单和没清单，差多少？",
+              '<div class="pf-note">' + U.icon("book", 13) + ' <b>一个实测对比：</b>同一类任务，开着清单能明显少走弯路、少漏步骤；关掉清单，轮数会变多，还常常漏掉子任务。（具体轮数随任务而变，不用记数字。）</div>') +
           '</div>' +
         '</div>' +
         /* 区 2：动手（双轨推进） */
@@ -699,79 +920,45 @@ AgentLab.LabPlanner = (function () {
         '<div class="game-box" id="pl-todo"></div>'
       ) +
 
-      /* ⑫ 两种规划范式：Plan-and-Execute vs ReAct */
-      LP.card("plan", "两种规划范式：Plan-and-Execute vs ReAct",
-        "同一个任务，有两种做法：<b>先列完计划再执行</b>，还是<b>边做边调整</b>？先看两种范式的对照，再给下面每个任务选最合适的。",
-        /* 区 0：图示 —— 两条时间线并排看（左图右解，与感知器原理图同一版式） */
-        '<div class="ta-duo">' +
-          '<div class="ta-image-wrap">' +
-            '<img src="images/plan-paradigms.svg" alt="两种规划范式对比图：上面是 Plan-and-Execute（先写出整条计划再执行），下面是 ReAct（思考↔行动↔观察来回交替）" class="ta-image">' +
-            '<div class="ta-source">📐 本教学系统绘制 · Plan-and-Execute vs ReAct</div>' +
-          '</div>' +
-          '<div class="ta-explain">' +
-            '<div class="te-title">📖 判断只看一条：步骤会不会因为中间结果而改变？</div>' +
-            '<div class="pf-flow">' +
-              '<div class="pf-step"><span class="pf-step-tag">Plan-and-Execute</span>步骤基本固定、不容易中途变化——<b>先想全，再动手</b>（如“按流程办一件事”）</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">ReAct</span>不知道下一步会遇到什么、要看结果再决定——<b>走一步看一步</b>（如“帮我查一个问题”）</div>' +
-            '</div>' +
-            '<div class="pf-note">' + U.icon("info", 13) + ' 真实系统常常<b>混着用</b>：大方向先规划，具体每一步边走边看。</div>' +
-          '</div>' +
-        '</div>' +
-        /* 区 1：原理 —— 两种范式对照 */
-        '<div class="pf-kit-head">' + U.icon("target", 16) + ' 原理：两种范式，各有各的用武之地</div>' +
+      /* ⑬ 失败归因：先找出“第一个出错的步骤”（ai-agent-book 第 7 章）
+       * 顺序前提：先知道错在哪，反思才有对象——所以归因放在“反思”之前。 */
+      LP.card("plan", "实验：失败归因——第一个出错的步骤在哪？",
+        "计划写得再好，执行也可能失败。失败时最响的那行报错，往往只是<b>后果</b>。先弄清“为什么要找第一个”，再到一份真实风格的执行日志里动手找一找——找到之后，下一张卡再学怎么改。",
+        /* 区 1：原理 —— 归因找的是“第一个” */
+        '<div class="pf-kit-head">' + U.icon("search", 16) + ' 原理：为什么找“第一个”，而不是“最后一个”？</div>' +
         '<div class="pf-demo-grid">' +
           '<div class="pf-card">' +
-            '<div class="pf-card-head">' + U.icon("archive", 16) + '<span>Plan-and-Execute</span>' +
-              '<span class="pf-chan">先计划，后执行</span></div>' +
+            '<div class="pf-card-head">' + U.icon("alert", 16) + '<span>改最后一行＝给症状贴创可贴</span>' +
+              '<span class="pf-chan">末次报错只是后果</span></div>' +
             '<div class="pf-flow">' +
-              '<div class="pf-step"><span class="pf-step-tag">怎么走</span>一次性列完所有步骤，再按顺序执行</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">适合</span>确定性任务：做饭流程、固定报表——步骤不会变</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">不适合</span>需要根据中间结果调整的任务</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">第一步走偏</span>某个数字算错、某步该做没做——从这一行起，后面全歪了</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">后面全是后果</span>基于错误前提继续做事：越做越像样，也越离谱</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">最后才报错</span>“发送失败”“检查不通过”——只是问题终于露头的地方</div>' +
             '</div>' +
-            '<div class="pf-note">' + U.icon("info", 13) + ' 优点：计划可以先给你审、可检查；缺点：遇到意外不会变通。</div>' +
+            '<div class="pf-note">' + U.icon("info", 13) + ' 只修最后一步，问题会换个地方再冒出来——所以归因要找<b>第一个</b>导致偏离的错误。</div>' +
           '</div>' +
           '<div class="pf-card">' +
-            '<div class="pf-card-head">' + U.icon("refresh", 16) + '<span>ReAct</span>' +
-              '<span class="pf-chan">边想边做，动态调整</span></div>' +
+            '<div class="pf-card-head">' + U.icon("target", 16) + '<span>怎么找：从前往后</span>' +
+              '<span class="pf-chan">三步 + 记四样</span></div>' +
             '<div class="pf-flow">' +
-              '<div class="pf-step"><span class="pf-step-tag">怎么走</span>思考→行动→观察→再思考，每步都根据反馈调整</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">适合</span>不确定任务：搜索调研、故障排查——走一步看一步</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">不适合</span>步骤完全固定、不需要反馈的任务</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">① 先看“对不对”</span>结果、证据、检查：哪一步之后开始“不对劲”</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">② 从第一步往下看</span>第一处和事实不符的地方，就是它——哪怕它当时没有报错</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">③ 再决定怎么改</span>只重做受影响的那几步，不一定要整条推翻（怎么改，下一张卡讲）</div>' +
             '</div>' +
-            '<div class="pf-note">' + U.icon("info", 13) + ' 优点：灵活、能应变；缺点：整体计划性弱，花掉的 token 更多。</div>' +
+            '<div class="pf-note">' + U.icon("check", 13) + ' <b>记录四样：</b>第几步 / 用了什么工具 / 证据是什么 / 根因与后果——写下来，才能变成“下次别踩的坑”。</div>' +
+            U.noteFold("最难找的一种错：没报错，但结果不对",
+              '<div class="pf-note">' + U.icon("gear", 13) + ' <b>没报错但结果不对</b>（比如数字悄悄算错）最难发现，只能靠和事实一项一项对。</div>') +
           '</div>' +
         '</div>' +
-        '<div class="tip tip-info" style="margin:0 0 14px">' + U.icon("spark", 15) + ' <b>一句话选范式：</b>任务确定、想先审计划 → Plan-and-Execute；任务不确定、要靠反馈 → ReAct。</div>' +
-        '<div class="pf-demo-grid">' +
-          '<div class="pf-card">' +
-            '<div class="pf-card-head">' + U.icon("happy", 16) + '<span>打个比方</span>' +
-              '<span class="pf-chan">侦探 vs 建筑师</span></div>' +
-            '<div class="pf-flow">' +
-              '<div class="pf-step"><span class="pf-step-tag">ReAct = 侦探</span>走一步、查一步：查到什么，再决定下一步去哪问谁</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">Plan-and-Execute = 建筑师</span>先把蓝图（计划）画完整，再按图纸施工</div>' +
-            '</div>' +
-            '<div class="pf-note">' + U.icon("info", 13) + ' 侦探更快适应意外，建筑师更稳更可检查——所以真实系统常常“先出蓝图，遇到意外临时改图”。</div>' +
-          '</div>' +
-          '<div class="pf-card">' +
-            '<div class="pf-card-head">' + U.icon("alert", 16) + '<span>一个反直觉的发现</span>' +
-              '<span class="pf-chan">瓶颈在规划者</span></div>' +
-            '<div class="pf-flow">' +
-              '<div class="pf-step"><span class="pf-step-tag">发现</span>“规划 + 执行”分工时，<b>规划得差的那一环</b>才是整个系统的瓶颈——执行再强，也救不回一份错计划</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">结论</span>最聪明的模型、最用心的提示词，要优先留给“规划”这一步</div>' +
-            '</div>' +
-            '<div class="pf-note">' + U.icon("book", 13) + ' <b>ai-agent-book 第 10 章：</b>“在 Planner-Executor 架构中，弱规划者是整个系统最关键的瓶颈。”</div>' +
-            '<div class="pf-note">' + U.icon("gear", 13) + ' 选型也讲“从简单到复杂”：能一次问完的，不必搭 Agent；步骤固定的，用固定流程最稳；只有会随结果改变的，才值得上自主 Agent（进阶课堂「编排选型」有练习）。</div>' +
-          '</div>' +
-        '</div>' +
-        /* 区 2：动手（组件自带标题） */
-        '<div class="game-box" id="pl-paradigm">' +
-          '<div id="pl-pg-flow"></div>' +
-        '</div>'
+        /* 区 2：动手（点选日志里的“第一个错”） */
+        '<div class="pf-kit-head">' + U.icon("spark", 16) + ' 动手：这份执行日志里，第一个出错的步骤是哪一行？</div>' +
+        '<div class="game-box" id="pl-attrib"></div>' +
+        '<div class="tip tip-info">' + U.icon("book", 16) + ' <b>归因是反思的前一站：</b>先定位“第一个错”，反思才有具体对象——否则反思容易变成“下次注意一点”这种空话。</div>'
       ) +
 
-      /* ⑬ 失败与反思（Reflection）+ 计划自检（合并：先反思，再看两种 Agent 的差别） */
+      /* ⑭ 失败与反思（Reflection）：找到第一个错之后，怎么改对 */
       LP.card("plan", "失败与反思（Reflection）：计划错了怎么办？",
-        "ai-agent-book 指出：自主 Agent 需要能识别失败、调整策略，而不是出错就停下来。先看清反思循环与失败分类，再做两个实验：这些失败案例你会怎么救、同一个失败两种 Agent 差在哪一步。",
+        "找到第一个出错的步骤之后，怎么把它变成经验，而不是只说一句“下次注意点”？先看清反思四步与失败分类，再做两个实验：这些失败案例你会怎么救、同一个失败两种 Agent 差在哪一步。",
         /* 区 1：原理 —— 反思循环四步 */
         '<div class="pf-kit-head">' + U.icon("refresh", 16) + ' 原理：反思循环——把错误变成经验</div>' +
         '<div class="pf-demo-grid">' +
@@ -780,7 +967,7 @@ AgentLab.LabPlanner = (function () {
               '<span class="pf-chan">识别 → 分析 → 调整 → 重试</span></div>' +
             '<div class="pf-flow">' +
               '<div class="pf-step"><span class="pf-step-tag">① 识别失败</span>发现结果不对——报错、测试失败、结果偏离目标</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">② 分析原因</span>为什么会错——假设错了？工具选错了？参数不对？</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">② 定位原因</span>用上一张卡的归因法，找到“第一个和事实不符”的地方——假设错了？工具选错了？参数不对？</div>' +
               '<div class="pf-step"><span class="pf-step-tag">③ 调整计划</span>只改出问题的那一步——不是全部推翻重来</div>' +
               '<div class="pf-step"><span class="pf-step-tag">④ 重新执行</span>带着修正后的计划再试一次</div>' +
             '</div>' +
@@ -794,9 +981,10 @@ AgentLab.LabPlanner = (function () {
               '<div class="pf-step"><span class="pf-step-tag">参数错</span>工具选对了、参数传错了（“下午 3 点”传成 3:00）——修正参数后再试一次</div>' +
               '<div class="pf-step"><span class="pf-step-tag">不可恢复</span>没权限、账号欠费、需求本身就做不到——停下来如实告诉用户，别硬试</div>' +
             '</div>' +
-            '<div class="pf-note">' + U.icon("info", 13) + ' 工程上一定会配<b>重试上限 + 降级方案 + 转人工</b>，否则 Agent 会在同一个坑里反复烧钱。</div>' +
-            '<div class="pf-note">' + U.icon("shield", 13) + ' <b>怎么知道“没进展”？两把尺子：</b>① <b>重复调用指纹</b>——同一个工具配上同样的参数，又来了一遍，就是原地打转；② <b>连续失败计数</b>——同一个动作连着失败到上限（生产经验值约 3 次）就熔断，不再硬试。就像电路短路时保险丝跳闸：停一下，比烧掉整条线好。</div>' +
-            '<div class="pf-note">' + U.icon("book", 13) + ' <b>反思也要“讲证据”：</b>反思本身不是证据——只有和环境结果对得上（试验通过、数据核对正确），才算真的经验；否则错误的心得会一直污染后面的判断。</div>' +
+            U.noteFold("工程上怎么防止“在同一个坑里反复失败”",
+              '<div class="pf-note">' + U.icon("info", 13) + ' 一定会配<b>重试上限 + 备选方案 + 转人工</b>，否则 Agent 会在同一个坑里反复烧钱。</div>' +
+              '<div class="pf-note">' + U.icon("shield", 13) + ' <b>怎么知道“没进展”？两把尺子：</b>① 同一个工具配上同样的参数又来一遍，就是原地打转；② 同一个动作连着失败到上限（大约 3 次）就先停——停一下，比硬试到底好。</div>' +
+              '<div class="pf-note">' + U.icon("book", 13) + ' <b>反思也要“讲证据”：</b>反思本身不是证据——只有和环境结果对得上（试验通过、数据核对正确），才算真的经验。</div>') +
           '</div>' +
         '</div>' +
         /* 区 2：动手 */
@@ -841,45 +1029,11 @@ AgentLab.LabPlanner = (function () {
           hint: "想想：工具已经失败了，它手里还剩什么可用的东西？"
         }) +
         '<div id="pl-reflect"></div>' +
-        '<div class="pf-note">' + U.icon("check", 13) + ' <b>小结：</b>反思不是“下次注意点”，而是<b>识别 → 分析 → 只改出问题的那一步 → 再试</b>；而且<b>反思本身不算证据</b>——要有独立可查的东西（日志、工具返回、复现步骤）才算数。</div>') +
-
-      /* ⑭ 失败归因：反思之前，先找出“第一个出错的步骤”（ai-agent-book 第 7 章） */
-      LP.card("plan", "实验：失败归因——第一个出错的步骤在哪？",
-        "要反思，先得知道<b>错在哪</b>。而失败记录里最响的那行报错，往往只是<b>后果</b>。先弄清“为什么要找第一个”，再到一份真实风格的执行日志里动手找一找。",
-        /* 区 1：原理 —— 归因找的是“第一个” */
-        '<div class="pf-kit-head">' + U.icon("search", 16) + ' 原理：为什么找“第一个”，而不是“最后一个”？</div>' +
-        '<div class="pf-demo-grid">' +
-          '<div class="pf-card">' +
-            '<div class="pf-card-head">' + U.icon("alert", 16) + '<span>改最后一行＝给症状贴创可贴</span>' +
-              '<span class="pf-chan">末次报错只是后果</span></div>' +
-            '<div class="pf-flow">' +
-              '<div class="pf-step"><span class="pf-step-tag">第一步走偏</span>某个数字算错、某步该做没做——从这一行起，后面全歪了</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">后面全是后果</span>基于错误前提继续做事：越做越像样，也越离谱</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">最后才报错</span>“发送失败”“校验不通过”——只是问题终于露头的地方</div>' +
-            '</div>' +
-            '<div class="pf-note">' + U.icon("info", 13) + ' 只修最后一步，问题会换个地方再冒出来——所以归因要找<b>第一个</b>导致偏离的错误。</div>' +
-          '</div>' +
-          '<div class="pf-card">' +
-            '<div class="pf-card-head">' + U.icon("target", 16) + '<span>怎么找：从前往后</span>' +
-              '<span class="pf-chan">三步 + 记四样</span></div>' +
-            '<div class="pf-flow">' +
-              '<div class="pf-step"><span class="pf-step-tag">① 先看“对不对”</span>结果、证据、校验：哪一步之后开始“不对劲”</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">② 从第一步往下看</span>第一处和事实不符的地方，就是它——哪怕它当时没有报错</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">③ 再决定怎么改</span>只重做受影响的那几步，不一定要整条推翻</div>' +
-            '</div>' +
-            '<div class="pf-note">' + U.icon("check", 13) + ' <b>记录四样：</b>第几步 / 用了什么工具 / 证据是什么 / 根因与后果——写下来，才能沉淀成“下次别踩的坑”。</div>' +
-            '<div class="pf-note">' + U.icon("gear", 13) + ' 工程做法：先用规则筛“一眼能认的”（格式错、结果为空、超时），再让模型在轨迹里定位第一处偏离；<b>静默失败</b>（没报错但结果不对）最需要靠事实比对找出来。</div>' +
-          '</div>' +
-        '</div>' +
-        /* 区 2：动手（点选日志里的“第一个错”） */
-        '<div class="pf-kit-head">' + U.icon("spark", 16) + ' 动手：这份执行日志里，第一个出错的步骤是哪一行？</div>' +
-        '<div class="game-box" id="pl-attrib"></div>' +
-        '<div class="tip tip-info">' + U.icon("book", 16) + ' <b>归因是反思的前一站：</b>先定位“第一个错”，反思才有具体对象——否则反思容易变成“下次注意一点”这种空话。</div>'
-      ) +
+        '<div class="pf-note">' + U.icon("check", 13) + ' <b>小结：</b>反思不是“下次注意点”，而是<b>识别 → 分析 → 只改出问题的那一步 → 再试</b>；而且<b>反思本身不算证据</b>——要有独立可查的东西（日志、工具返回、复现步骤）才算数。<br>把反思升级成“规划方法”，还有两个版本：<b>Reflexion</b>（把错误经验存进记忆，指导下一轮）和 <b>PER</b>（反思后改计划再执行）——见「进阶原理课堂」。</div>') +
 
       /* ⑮ 提议者-审核者：承接“自己看不到自己的错” */
       LP.card("plan", "进阶模式：提议者-审核者（Proposer-Reviewer）",
-        "ai-agent-book 第 1 章命名的重要模式：产出与评判由<b>两个不共享上下文的角色</b>分别承担。先弄清<b>为什么不能自审</b>，再看现场演示。<b>没配 Key 也能上课</b>——会改用内置示例，把完整的“提议 → 审核”流程演示一遍。",
+        "一个重要的协作模式：产出与评判由<b>两个不共享上下文的角色</b>分别承担。先弄清<b>为什么不能自审</b>，再看现场演示。<b>没配 Key 也能上课</b>——会改用内置示例，把完整的“提议 → 审核”流程演示一遍。",
         /* 区 1：原理 —— 为什么自审不可靠 / 怎么分工 */
         '<div class="pf-kit-head">' + U.icon("users", 16) + ' 原理：为什么“自己审自己”不可靠？</div>' +
         '<div class="pf-demo-grid">' +
@@ -919,8 +1073,9 @@ AgentLab.LabPlanner = (function () {
             '<div class="ans" id="pl-pr-review" style="min-height:160px"><span style="color:var(--c-sub)">等待审核……</span></div>' +
           '</div>' +
         '</div>' +
-        '<div class="tip" style="margin-top:10px">' + U.icon("book", 16) + ' <b>ai-agent-book 原文：</b>“它成立的前提是自审不可靠：同一个上下文中的模型难以发现自己的认知盲区。”审核者只看产物本身（渲染结果、测试输出），不看提议者的推理过程，从而提供独立视角。</div>' +
-        '<div class="tip" style="margin-top:8px">' + U.icon("microscope", 16) + ' <b>这不是猜的，是做实验得出的结论：</b>让大模型在<b>没有任何外部反馈</b>的情况下“自己审查自己再改”，准确率反而会下降；只有审核者能拿到<b>独立的证据</b>（真的跑一遍测试、真的核对数据），审查才真的有用。所以“独立视角 + 可验证的证据”，缺一不可。</div>'
+        '<div class="tip" style="margin-top:10px">' + U.icon("book", 16) + ' <b>这个模式成立的前提：</b>自己审自己不可靠——同一个上下文里的模型难以发现自己的盲区。审核者只看产物本身（渲染结果、测试输出），不看提议者的推理过程，才能给出独立判断。</div>' +
+        U.noteFold("为什么“自己审自己”不可靠？有实验证据",
+          '<div class="tip">' + U.icon("microscope", 16) + ' 让大模型在<b>没有任何外部反馈</b>的情况下“自己审查自己再改”，准确率反而会下降；只有审核者能拿到<b>独立的证据</b>（真的跑一遍测试、真的核对数据），审查才真的有用。<b>一句话：审核者不看你的思路，但必须看证据。</b></div>')
       ) +
 
       /* ⑯ 综合演练：从需求到完成，把整条链走一遍 */
@@ -931,31 +1086,123 @@ AgentLab.LabPlanner = (function () {
         '<div class="game-box" id="pl-e2e-flow"></div>'
       ) +
 
-      /* ⑰ 小测验 */
+      /* ⑰ 课堂编程：两次课的 vibe coding 任务（理论 → 动手的落点） */
+      LP.card("plan", "课堂编程：每次课的动手段，亲手做出一个网页",
+        "这张卡是<b>动手段（约 45 分钟）</b>用的：理论段讲完，就打开上次课的网页来改。两次课的动手任务是一层一层往上加：<b>第一次课</b>把 L05 的 ai-chat 改成“任务拆解器”；<b>第二次课</b>再把它升级成“计划执行器”。不要求背代码——你用自然语言说清要求，让 AI 改；你负责验收。",
+        '<div class="pf-kit-head">' + U.icon("wrench", 16) + ' 第一次课 · 动手段（L07，约 45′）· 任务拆解器：先选一种规划方法，再让 AI 输出“能照着做”的清单</div>' +
+        '<div class="pf-demo-grid">' +
+          '<div class="pf-card">' +
+            '<div class="pf-card-head">' + U.icon("check", 16) + '<span>三步做出来</span><span class="pf-chan">在 L05 ai-chat 上改</span></div>' +
+            '<div class="pf-flow">' +
+              '<div class="pf-step"><span class="pf-step-tag">① 先选方法</span>这个任务是“步骤固定”还是“边走边看”？固定 → Plan-and-Execute（一次列完）；开放 → ReAct（先列 2–3 步，做一步再补）</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">② 改提示词</span>让 AI 只输出 JSON 步骤列表：每步三个字段「做什么 / 用什么工具 / 怎么算完」</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">③ 加“计划区” + 兜底</span>渲染成 3–6 张步骤卡；模型格式写坏时不白屏，显示原文 + 提示“再试一次”</div>' +
+            '</div>' +
+            '<div class="pf-note">' + U.icon("target", 13) + ' <b>验收四条：</b>① 输入“组织一次班级读书分享会”，至少拆出 3 步；② 每步都有“工具”和“算完”两栏；③ 故意输入乱码，页面不白屏；④ 能说出你选的方法为什么适合这个任务。</div>' +
+            U.noteFold("直接可用的提示词（复制给 AI 编程助手）",
+              '<div class="tip">你是班级活动策划助手。请把用户给的任务拆成 3–6 步。<br>只输出 JSON 数组，不要任何解释。每一步三个字段：<br>step：这一步做什么；tool：用什么工具（没有就写“无”）；done：怎么算做完（要能检查）。</div>') +
+          '</div>' +
+          '<div class="pf-card">' +
+            '<div class="pf-card-head">' + U.icon("robot", 16) + '<span>对应页面哪几张卡</span><span class="pf-chan">理论 → 动手</span></div>' +
+            '<div class="pf-flow">' +
+              '<div class="pf-step"><span class="pf-step-tag">第 2 张</span>四要素：提示词里必须写清“给谁、要什么格式”</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">第 3–4 张</span>拆开、排好：JSON 里的步骤要小、要有顺序</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">第 6 张</span>写成清单：三个字段就是“能被执行”的最小结构</div>' +
+            '</div>' +
+            '<div class="pf-note">' + U.icon("info", 13) + ' 这一步的产物，就是第二次课的“原材料”——先能生成计划，才谈得上执行。</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="pf-kit-head">' + U.icon("gear", 16) + ' 第二次课 · 动手段（L08，约 45′）· 计划执行器：让计划真的跑一遍</div>' +
+        '<div class="pf-demo-grid">' +
+          '<div class="pf-card">' +
+            '<div class="pf-card-head">' + U.icon("check", 16) + '<span>三步升级</span><span class="pf-chan">在 L07 拆解器上改</span></div>' +
+            '<div class="pf-flow">' +
+              '<div class="pf-step"><span class="pf-step-tag">① 配“假工具”</span>用几个本地函数模拟：查课表、查天气、算时间、发提醒——返回写死的结果</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">② 加“执行”按钮</span>逐步显示：思考（这一步做什么）→ 调用工具 → 观察（返回了什么）</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">③ 加边界</span>最多跑 5 步就停；某步失败要标出“第几步、可能原因”，允许改那一步再跑</div>' +
+            '</div>' +
+            '<div class="pf-note">' + U.icon("target", 13) + ' <b>验收三条：</b>① 点“执行”能看到每轮的“思考→观察”；② 有一个工具故意返回“没查到”，程序能指出第几步失败；③ 跑到第 5 步自动停下并提示。</div>' +
+            U.noteFold("直接可用的提示词（复制给 AI 编程助手）",
+              '<div class="tip">在我的网页上加一个“执行”按钮：<br>1. 每一步先显示“思考：这一步要做什么”；<br>2. 再调用我写好的模拟工具（查课表 / 查天气 / 算时间 / 发提醒），把返回结果显示成“观察”；<br>3. 成功的步骤打勾；失败的步骤标红，并写明“第几步失败、可能的原因”；<br>4. 最多执行 5 步就停，并显示“已到上限”。<br>不要引入任何外部库。</div>') +
+          '</div>' +
+          '<div class="pf-card">' +
+            '<div class="pf-card-head">' + U.icon("robot", 16) + '<span>对应页面哪几张卡</span><span class="pf-chan">理论 → 动手</span></div>' +
+            '<div class="pf-flow">' +
+              '<div class="pf-step"><span class="pf-step-tag">第 8–9 张</span>选工具 + ReAct：执行按钮就是一圈“思考→行动→观察”</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">第 11 张</span>边界：5 步上限 = 硬上限；失败标红 = 不假装完成</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">第 13–14 张</span>归因与反思：指出“第几步失败”，再改那一步重跑</div>' +
+            '</div>' +
+            '<div class="pf-note">' + U.icon("info", 13) + ' 只做“展示 + 本地假工具”，不接真实 API：重点是看懂循环，不是接服务。</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="pf-kit-head">' + U.icon("alert", 16) + ' 两次课都适用：卡住了怎么办</div>' +
+        '<div class="pf-demo-grid">' +
+          '<div class="pf-card">' +
+            '<div class="pf-card-head">' + U.icon("search", 16) + '<span>一读 · 二问 · 三求助</span><span class="pf-chan">别一上来就重写</span></div>' +
+            '<div class="pf-flow">' +
+              '<div class="pf-step"><span class="pf-step-tag">一读</span>先看浏览器报错的第一行：哪个文件、第几行、什么错</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">二问</span>把报错原文 + 你刚才让它改的那句话，一起贴给 AI</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">三求助</span>还不行就回到 L05 的备份文件，从能跑的版本重来</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="pf-card">' +
+            '<div class="pf-card-head">' + U.icon("shield", 16) + '<span>安全与汇报</span><span class="pf-chan">下课前 5 分钟</span></div>' +
+            '<div class="pf-flow">' +
+              '<div class="pf-step"><span class="pf-step-tag">Key</span>只填在自己的浏览器里：不写进代码、不发群、不截图</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">汇报三句</span>我的网页能做什么 / 我改的是哪一处 / 怎么证明它成了</div>' +
+            '</div>' +
+            '<div class="pf-note">' + U.icon("info", 13) + ' 汇报只看“能演示 + 说清楚改了什么”，不评比谁写得漂亮。</div>' +
+          '</div>' +
+        '</div>',
+        { id: "pl-code" }
+      ) +
+
+      /* ⑱ 小测验 */
       LP.card("plan", "小测验：你是规划小达人吗？", "共 " + QUIZ.length + " 题，答对一题加一颗星！",
         '<div class="game-box" id="pl-quiz"><div id="pl-quiz-body"></div></div>' +
         '<div class="score-line"><span class="score-badge" id="pl-quiz-score" data-score="0">★ 0</span><button class="btn btn-ghost btn-sm" id="pl-quiz-restart">重来</button></div>'
       ) +
 
-      /* ⑱ 进阶原理互动课堂 */
-      LP.card("plan", "进阶原理互动课堂：规划器在真实 AI 系统里是什么？（ai-agent-book 第 1/2/5/6/7/10 章）",
-        "15 个真实工程概念（ai-agent-book + hello-agents）：<b>左边选概念，右边看讲解 + 动手实验</b>——每个都配「一句话 / 打个比方 / 真实系统 / 动手做 / 自检一问」。",
+      /* ⑲ 进阶原理互动课堂 */
+      LP.card("plan", "进阶原理互动课堂：规划器在真实 AI 系统里是什么？",
+        "19 个真实工程概念：<b>左边选概念，右边看讲解 + 动手实验</b>——每个都配「一句话 / 打个比方 / 真实系统 / 动手做 / 自检一问」。课上主讲 ReAct、Plan-and-Execute、反思；其余方法在这里按需展开。",
         AgentLab.Adv.panelHTML({ key: "plan", concepts: plConcepts() }), { id: "pl-adv" }) +
+
+      /* 规划病历卡：把典型“症状”和对应卡片绑在一起，供学生自查、教师讲评。
+       * 放在小结之前——先教“怎么查”，再给“结论”。 */
+      '<div class="lesson-summary card-plan">' +
+        '<h3>' + U.icon("search", 18) + ' 规划病历卡：AI 出问题时，先查这一张</h3>' +
+        '<div class="summary-points">' +
+          '<div class="sp-item"><span class="sp-icon">' + U.icon("chat", 14) + '</span><div><b>答得空泛、答非所问</b> → 多半是<b>没说清四要素</b> → 回看第 2 张</div></div>' +
+          '<div class="sp-item"><span class="sp-icon">' + U.icon("link", 14) + '</span><div><b>漏了一步</b> → 多半是<b>拆解没拆全</b>（或没写边界） → 回看第 3 张</div></div>' +
+          '<div class="sp-item"><span class="sp-icon">' + U.icon("refresh", 14) + '</span><div><b>顺序反了、做到一半卡住</b> → 多半是<b>依赖关系没看</b> → 回看第 4、5 张</div></div>' +
+          '<div class="sp-item"><span class="sp-icon">' + U.icon("check", 14) + '</span><div><b>说得挺好，就是做不到</b> → 计划还不是<b>清单</b> → 回看第 6 张</div></div>' +
+          '<div class="sp-item"><span class="sp-icon">' + U.icon("wrench", 14) + '</span><div><b>工具选错了</b> → 多半是<b>工具描述没写清、没分类</b> → 回看第 9 张</div></div>' +
+          '<div class="sp-item"><span class="sp-icon">' + U.icon("timer", 14) + '</span><div><b>一直转不停</b> → 没设<b>硬上限</b> → 回看第 11 张</div></div>' +
+          '<div class="sp-item"><span class="sp-icon">' + U.icon("alert", 14) + '</span><div><b>说“做完了”却没做完</b> → 没有<b>验收标准</b> → 回看第 11 张</div></div>' +
+          '<div class="sp-item"><span class="sp-icon">' + U.icon("search", 14) + '</span><div><b>改了还是错</b> → 只改了最后一行报错 → 回看第 13 张</div></div>' +
+        '</div>' +
+        '<div class="summary-think"><b>怎么用：</b>和同桌互查时，先说出“症状”，再一起翻到对应的那张卡找原因——别一上来就改提示词，那等于给症状贴创可贴。</div>' +
+      '</div>' +
 
       /* 课堂小结（收尾：全章总结放最下面，与其它实验室保持一致） */
       '<div class="lesson-summary card-plan">' +
         '<h3>' + U.icon("check", 18) + ' 课堂小结（L07+L08）</h3>' +
-        '<div class="summary-core"><b>核心结论：</b>规划器 = 理解意图 + 拆解任务 + 排序步骤 + 写成清单 + 选择工具，在 <b>ReAct 循环</b>（思考→行动→观察）中动态调整。高级规划还需要思维链（想清楚）、清单/状态栏（不忘记）、失败归因（先找第一个错）、双 Agent 审查（防自欺）、反思纠错（从失败中学习）。</div>' +
+        U.designCta(2, "用四要素（帮谁 / 做什么 / 做到什么程度 / 查不到怎么办）写清“它要干成什么”") +
+        '<div class="summary-core"><b>核心结论：</b>规划器负责 Agent 的决策：<b>理解意图 → 思考规划 → 做出判断</b>。本课把“思考规划”展开成<b>三件本事</b>（拆开 / 排好 / 写成清单 / 选工具），再加上“做完没有”的验收与改计划；它在 <b>ReAct 循环</b>（思考→行动→观察）中动态调整。高级规划还要：想得更准（一步一步想）、不忘事（清单/状态栏）、先找第一个错（归因）、不自欺（双 Agent 审查）、从失败中学习（反思）。<br><b>一句话带走：</b>你是甲方，它是项目经理——你负责说清和验收，它负责拆、排、写单子。<br><b>两次课第 2 课时的产出：</b>L07 做出<b>任务拆解器</b>（输入任务 → 步骤卡）；L08 升级成<b>计划执行器</b>（逐条执行 → 看思考与观察）。</div>' +
         '<div class="summary-points">' +
-          '<div class="sp-item"><span class="sp-icon">' + U.icon("target", 14) + '</span><div><b>规划器三法宝与 ReAct：</b>拆解（大任务→小步骤）、排序（排好先后顺序）、执行（调工具+看结果）；ReAct 循环=思考→行动→观察，每轮把工具结果追加到轨迹</div></div>' +
+          '<div class="sp-item"><span class="sp-icon">' + U.icon("target", 14) + '</span><div><b>规划器三件本事与 ReAct：</b>拆开（大任务→小步骤）、排好（谁先谁后、谁能同时做）、写成清单（做什么 + 用什么工具 + 怎么算做完）；ReAct 循环=思考→行动→观察，每轮把工具结果追加到轨迹。<b>规划器只做决定，真正调用工具的是执行器。</b></div></div>' +
           '<div class="sp-item"><span class="sp-icon">' + U.icon("archive", 14) + '</span><div><b>计划要能被“执行”：</b>每一步写清「做什么 + 用什么工具 + 完成标准」，程序才能解析、执行、校验；解析失败要有兜底，<b>宁可空、不可编</b>；把清单放在一眼能看到的位置（状态栏/TODO），就少重复、少漏项</div></div>' +
-          '<div class="sp-item"><span class="sp-icon">' + U.icon("gear", 14) + '</span><div><b>两种规划范式：</b>Plan-and-Execute（先计划后执行，适合确定性任务；像建筑师先画蓝图）vs ReAct（边想边做、根据观察动态调整，像侦探走一步查一步）；规划得差的那一环才是系统瓶颈；实际系统常混合使用</div></div>' +
+          '<div class="sp-item"><span class="sp-icon">' + U.icon("gear", 14) + '</span><div><b>两种规划范式：</b>Plan-and-Execute（先计划后执行，适合步骤固定的任务；像先画图纸再施工）vs ReAct（边想边做、根据观察动态调整；像边走边问路）；规划得差的那一环才是系统瓶颈；实际系统常混合使用</div></div>' +
           '<div class="sp-item"><span class="sp-icon">' + U.icon("brain", 14) + '</span><div><b>思维链与工具选择：</b>CoT 让模型显式输出推理过程，减少跳步错误；工具选择决策=理解意图→匹配工具能力→构造参数→执行→看结果；工具一多就要分层整理（描述清楚，才选得准）</div></div>' +
-          '<div class="sp-item"><span class="sp-icon">' + U.icon("search", 14) + '</span><div><b>先归因、再反思：</b>失败时先找<b>第一个</b>出错的步骤（末次报错往往只是后果），记录「第几步 / 哪个工具 / 证据 / 根因与后果」；再用反思四步（识别→分析→调整→重试）修计划，而不是给症状贴创可贴</div></div>' +
-          '<div class="sp-item"><span class="sp-icon">' + U.icon("refresh", 14) + '</span><div><b>双 Agent 与反思：</b>提议者-审核者（生成与审查分离，自审不可靠，且要有可验证的独立证据）；反思=失败后分析原因→调整策略→重新执行；上下文轨迹（=消息历史）为反思提供依据</div></div>' +
-          '<div class="sp-item"><span class="sp-icon">' + U.icon("check", 14) + '</span><div><b>清晰描述四要素：</b>请规划器办事要说清：做什么 / 给谁什么时候 / 输出什么格式 / 能用哪些工具——要素越全，计划越能直接执行</div></div>' +
-          '<div class="sp-item"><span class="sp-icon">' + U.icon("shield", 14) + '</span><div><b>边界与预算（能上线的关键）：</b>信息不足先澄清、危险操作先请示；越界或涉及隐私的子任务在<b>规划阶段</b>就要拦掉；失败先分类（可重试 / 参数错 / 不可恢复），并配“重复调用指纹 + 连续失败熔断”；给循环设<b>硬上限</b>（最多几轮 / 最多花多少）；警惕三形态“假完成”——<b>模型可以提出完成，但不能批准自己的完成</b></div></div>' +
         '</div>' +
+        U.noteFold("继续看：归因、双 Agent、四要素、边界与预算",
+          '<div class="summary-points">' +
+            '<div class="sp-item"><span class="sp-icon">' + U.icon("search", 14) + '</span><div><b>先归因、再反思：</b>失败时先找<b>第一个</b>出错的步骤（末次报错往往只是后果），记录「第几步 / 哪个工具 / 证据 / 根因与后果」；再用反思四步（识别→分析→调整→重试）修计划，而不是给症状贴创可贴</div></div>' +
+            '<div class="sp-item"><span class="sp-icon">' + U.icon("refresh", 14) + '</span><div><b>双 Agent 与反思：</b>提议者-审核者（生成与审查分离，自审不可靠，且要有可验证的独立证据）；反思=失败后分析原因→调整策略→重新执行；上下文轨迹（=消息历史）为反思提供依据</div></div>' +
+            '<div class="sp-item"><span class="sp-icon">' + U.icon("check", 14) + '</span><div><b>清晰描述四要素：</b>请规划器办事要说清：做什么 / 给谁什么时候 / 输出什么格式 / 能用哪些工具——要素越全，计划越能直接执行</div></div>' +
+            '<div class="sp-item"><span class="sp-icon">' + U.icon("shield", 14) + '</span><div><b>边界与预算（能上线的关键）：</b>信息不足先澄清、危险操作先请示；越界或涉及隐私的子任务在<b>规划阶段</b>就要拦掉；失败先分类（可重试 / 参数错 / 不可恢复），并配“重复调用指纹 + 连续失败熔断”；给循环设<b>硬上限</b>（最多几轮 / 最多花多少）；警惕三形态“假完成”——<b>模型可以提出完成，但不能批准自己的完成</b></div></div>' +
+          '</div>') +
         '<div class="summary-think"><b>课后思考：</b>请设计一个“帮我规划周末一天”的 Agent：① 把计划写成带「完成标准」的清单；② 它需要哪些工具？③ 如果它的计划执行失败了（比如餐厅关门了），怎么先找到“第一个出错的步骤”，再反思和调整？</div>' +
       '</div>';
 
@@ -987,10 +1234,10 @@ AgentLab.LabPlanner = (function () {
     /* ⑪ 任务清单（TODO）：把计划放在一眼能看到的地方 */
     bindPlTodo();
 
-    /* ⑭ 失败归因：找第一个出错的步骤 */
+    /* ⑬ 失败归因：找第一个出错的步骤 */
     bindPlAttrib();
 
-    /* ⑬ 综合演练（端到端 6 关） */
+    /* ⑯ 综合演练（端到端 7 关） */
     bindE2E();
   }
 
@@ -1074,6 +1321,8 @@ AgentLab.LabPlanner = (function () {
         if (orderState.picked[i] !== task.steps[i]) { ok = false; wrongIdx = i; break; }
       }
       var items = $("pl-order-list").querySelectorAll(".order-item");
+      /* 排完并点了「检查顺序」= 跑完一轮 → 揭晓上面的“先猜一猜” */
+      U.predictResolve("pl-order-guess");
       if (ok) {
         items.forEach(function (it) { it.classList.add("done"); });
         fb.innerHTML = '<span class="fb-ok">' + U.icon("check", 15) + " 完全正确！" + task.name + "就按这个顺序来！</span>";
@@ -1155,6 +1404,8 @@ AgentLab.LabPlanner = (function () {
         reactState.round++;
       }
       updateReActDisplay();
+      /* 循环转到最后一轮 = 跑完 → 揭晓上面的“先猜一猜” */
+      if (reactState.round >= REACT_DEMO.rounds.length) U.predictResolve("pl-react-guess");
     }
 
     $("pl-react-next").addEventListener("click", nextStep);
@@ -1361,15 +1612,15 @@ AgentLab.LabPlanner = (function () {
           tableBox.innerHTML = okAll ? AgentLab.Adv.checklistHTML({
             rows: plMagicRows(results[0].value, results[1].value, q),
             leftLabel: "模糊说法",
-            rightLabel: "魔法句式",
+            rightLabel: "说清楚",
             note: "这几项都是<b>能数出来</b>的硬指标：有没有说清要准备什么、谁负责什么、几个具体时间，有没有写「" + q.extra + "」，有没有分条。<br>" +
-              "关键看第 3、4 项——<b>你不提，AI 就不会给你</b>：光说“" + q.vague + "”，它只会讲套话（" + q.fluff + "），根本不会自己排出具体时间点，也不会主动写「" + q.extra + "」。这就是魔法句式的价值。" +
+              "关键看第 3、4 项——<b>你不提，AI 就不会给你</b>：光说“" + q.vague + "”，它只会讲套话（" + q.fluff + "），根本不会自己排出具体时间点，也不会主动写「" + q.extra + "」。这就是把话说清楚的价值。" +
               "<br>点「换一题」换一个任务再比一次：任务换了，“说清楚就更做得到”这条规律不会变。"
           }) : "";
         }
         if (fb) {
           fb.innerHTML = okAll
-            ? '<span class="fb-ok">' + U.icon("happy", 16) + " 魔法句式 = 目标 + 步骤 + 顺序。这三样说清楚，AI 给出的就是“能直接照做”的安排。点「换一题」可以换个任务再比一次。</span>" +
+            ? '<span class="fb-ok">' + U.icon("happy", 16) + " 把话说清楚 = 目标 + 步骤 + 顺序。这三样交代明白，AI 给出的就是“能直接照做”的安排。点「换一题」可以换个任务再比一次。</span>" +
               (useSmall
                 ? '<div class="fb-ok" style="margin-top:8px">' + U.icon("check", 15) +
                   " 当前用的是<b>硅基流动的小模型</b>（" + U.esc(((AgentLab.CONFIG.cotModel || {}).label || "小模型")) + "），对“说没说清楚”更敏感。</div>"
@@ -1440,6 +1691,7 @@ AgentLab.LabPlanner = (function () {
     var PARADIGM_OPTS = ["Plan-and-Execute", "ReAct", "两种都可以"];
     AgentLab.Quiz.mount({
       host: "pl-pg-flow",
+      card: "pl-paradigm",   /* 回看：本卡顶部的两种规划范式对照 */
       color: "plan",
       name: "规划范式小达人",
       shuffle: true,
@@ -1543,7 +1795,7 @@ AgentLab.LabPlanner = (function () {
     if (!box) return;
     opt = opt || {};
     var cfg = (AgentLab.CONFIG && AgentLab.CONFIG.cotModel) || {};
-    var bigModel = (AgentLab.CONFIG && AgentLab.CONFIG.model) || "deepseek-v4-flash";
+    var bigModel = (AgentLab.CONFIG && AgentLab.CONFIG.model) || "deepseek-flash";
     var hasCloud = !!(AgentLab.API.hasCloudKey && AgentLab.API.hasCloudKey());
     var pick = (opt.pick === "small" || opt.pick === "big") ? opt.pick : null;   // 手动指定
     var useSmall = pick ? pick === "small" : hasCloud;                            // 未指定 → 按可用性自动
@@ -1577,14 +1829,14 @@ AgentLab.LabPlanner = (function () {
     var qi = 0;
     function curQ() { return COT_BANK[qi]; }
 
-    /* 当前实际会用哪个模型："small"（Qwen2.5-7B）/ "big"（DeepSeek V4 Flash）。
+    /* 当前实际会用哪个模型："small"（Qwen2.5-7B）/ "big"（DeepSeek V4.1 Flash）。
      * 手动指定优先；没指定时按 Key 可用性自动选。 */
     function effPick() {
       if (cotPick === "small" || cotPick === "big") return cotPick;
       return (AgentLab.API.hasCloudKey && AgentLab.API.hasCloudKey()) ? "small" : "big";
     }
     function modelName(p) {
-      return p === "small" ? "Qwen2.5-7B（小模型）" : "DeepSeek V4 Flash（大模型）";
+      return p === "small" ? "Qwen2.5-7B（小模型）" : "DeepSeek V4.1 Flash（大模型）";
     }
 
     /* 清空上一轮的答案 / 检查表 / 反馈（换题、换模型都要清，
@@ -1596,7 +1848,7 @@ AgentLab.LabPlanner = (function () {
       if ($("pl-cot-fb")) $("pl-cot-fb").innerHTML = "";
     }
 
-    /* 模型选择按钮：Qwen2.5-7B（小） / DeepSeek V4 Flash（大）——
+    /* 模型选择按钮：Qwen2.5-7B（小） / DeepSeek V4.1 Flash（大）——
      * 再点一次已选中的那个 = 取消手动选择，回到“自动”（有云端 Key 用小模型）。 */
     function drawModels() {
       var box = $("pl-cot-models");
@@ -1607,7 +1859,7 @@ AgentLab.LabPlanner = (function () {
       var items = [
         { id: "small", name: "Qwen2.5-7B", tag: "小模型", ok: hasCloud,
           tip: "7B 小参数模型：不提醒它写过程，就容易跳步出错（CoT 的对比更明显）" },
-        { id: "big", name: "DeepSeek V4 Flash", tag: "大模型", ok: hasBig,
+        { id: "big", name: "DeepSeek V4.1 Flash", tag: "大模型", ok: hasBig,
           tip: "大参数模型：推理能力更强，可能已经把“一步一步想”内化成了本能" }
       ];
       box.innerHTML = items.map(function (o) {
@@ -1748,15 +2000,15 @@ AgentLab.LabPlanner = (function () {
           if (eff === "small") {
             verdict = cotR > cotL
               ? "同一道题、同一个 AI，只是问法不同：思维链那一边做到 " + cotR + " / " + rows.length +
-                " 项，直接问只做到 " + cotL + " / " + rows.length + " 项。小模型自己不会“在心里想”——把过程写出来，等于给它一根外部的“脚手架”。"
+                " 项，直接问只做到 " + cotL + " / " + rows.length + " 项。小模型自己不会“在心里想”——把过程写出来，等于在旁边扶着它一步一步走。"
               : "同一道题、同一个 AI，这次两边差不多（" + cotL + " : " + cotR + "）。点「换一题」再试一道——多试几次就会发现，让 AI 写过程的那一边更稳。";
           } else if (dirOk && cotOk) {
             verdict = "★ 大模型两种问法都答对了（" + cotL + " : " + cotR + "）。这可不是题目太简单——" +
-              "而是「一步一步想」已经被 <b>内化</b>：模型见过海量推理过程，推理变成了它的本能，不提醒也会自己先想。" +
-              "把模型切回小模型再跑一次，就能看出“脚手架”原来有多重要。";
+              "而是「一步一步想」已经<b>变成了它的本能</b>：模型见过海量推理过程，不提醒也会自己先想。" +
+              "把模型切回小模型再跑一次，就能看出“扶着走”原来有多重要。";
           } else if (!dirOk && cotOk) {
             verdict = "大模型这边：直接问只做到 " + cotL + " / " + rows.length + "，思维链做到 " + cotR + " / " + rows.length +
-              " ——即使是大模型，不写过程也会跳步。说明“内化”不等于万能，复杂题仍然需要 CoT。";
+              " ——即使是大模型，不写过程也会跳步。说明“变成本能”也不等于万能，复杂题仍然需要一步一步想。";
           } else {
             verdict = "大模型这次两边差不多（" + cotL + " : " + cotR + "）。点「换一题」再试一道，或换回小模型对比看看。";
           }
@@ -1784,16 +2036,16 @@ AgentLab.LabPlanner = (function () {
                 : "") +
               ((reasoning("direct") || reasoning("cot"))
                 ? '<div class="fb-ok" style="margin-top:8px">' + U.icon("spark", 15) +
-                  " <b>“内化”的直接证据：</b>接口返回了模型内部的 reasoning 内容——它嘴上只说一个答案，心里却先自己算了一遍。CoT 已经从“提示技巧”变成了模型的本能。</div>"
+                  " <b>“变成本能”的直接证据：</b>接口返回了模型内部的思考内容——它嘴上只说一个答案，心里却先自己算了一遍。一步一步想，已经从“提示技巧”变成了模型的本能。</div>"
                 : "") +
               (eff === "small"
                 ? '<div class="fb-ok" style="margin-top:8px">' + U.icon("check", 15) +
                   " 当前用的是<b>小模型 " + U.esc(((AgentLab.CONFIG.cotModel || {}).label || "Qwen2.5-7B")) + "</b>：" +
-                  "不提醒它写过程更容易翻车，CoT 的作用看得最清楚。想验证“能力内化”，切到右边的<b>大模型</b>，重点看「直接问」那一侧还答不答对。</div>"
+                  "不提醒它写过程更容易翻车，一步一步想的作用看得最清楚。想验证“它是不是变聪明了”，切到右边的<b>大模型</b>，重点看「直接问」那一侧还答不答对。</div>"
                 : '<div class="fb-' + (dirOk ? "ok" : "no") + '" style="margin-top:8px">' + U.icon(dirOk ? "check" : "info", 15) +
                   (dirOk
-                    ? " 当前用的是<b>大模型 DeepSeek V4 Flash</b>：注意「直接问答案」那一侧——它<b>也答对了</b>。不用提醒就会先想一遍，这就是 CoT 被<b>内化</b>（模型智商提升）的样子。切回小模型对比，差别立刻出来。</div>"
-                    : " 当前用的是<b>大模型 DeepSeek V4 Flash</b>：它能力更强，但复杂题仍可能跳步——这正是 CoT 依然有用的证据。</div>"))
+                    ? " 当前用的是<b>大模型</b>：注意「直接问答案」那一侧——它<b>也答对了</b>。不用提醒就会先想一遍，这就是“一步一步想”<b>变成本能</b>的样子。切回小模型对比，差别立刻出来。</div>"
+                    : " 当前用的是<b>大模型</b>：它能力更强，但复杂题仍可能跳步——这正是“一步一步想”依然有用的证据。</div>"))
             : "";
         }
       } catch (e) {
@@ -1814,6 +2066,7 @@ AgentLab.LabPlanner = (function () {
   function bindToolDec() {
     AgentLab.Quiz.mount({
       host: "pl-td-flow",
+      card: "pl-tooldec",   /* 回看：工具选择决策演示 */
       color: "plan",
       name: "工具决策小达人",
       shuffle: true,
@@ -1897,6 +2150,7 @@ AgentLab.LabPlanner = (function () {
   function bindFail() {
     AgentLab.Quiz.mount({
       host: "pl-fl-flow",
+      card: "pl-fail",   /* 回看：失败与反思的现场演示 */
       color: "plan",
       name: "反思小达人",
       questions: FAIL_CASES.map(function (c) {
@@ -1941,10 +2195,10 @@ AgentLab.LabPlanner = (function () {
     var totalTokens = 0;
     for (var i = 0; i < trajState.round; i++) {
       var r = TRAJECTORY_ROUNDS[i];
-      var roundTokens = r.user.length * 2 + r.assistant.length * 2 + r.tool.length * 2 + r.final.length * 2;
+      var roundTokens = r.user.length + r.assistant.length + r.tool.length + r.final.length;
       totalTokens += roundTokens;
       html += '<div style="margin-bottom:10px;padding:8px;border-left:3px solid var(--c-plan);border-radius:0 6px 6px 0;background:#fafafa">' +
-        '<div style="font-size:12px;color:var(--c-plan);font-weight:700;margin-bottom:4px">第 ' + (i + 1) + ' 轮（约 ' + roundTokens + ' token）</div>' +
+        '<div style="font-size:12px;color:var(--c-plan);font-weight:700;margin-bottom:4px">第 ' + (i + 1) + ' 轮（约 ' + roundTokens + ' 字）</div>' +
         '<div style="font-size:13px;line-height:1.6">' +
           '<div><b>👤 用户：</b>' + U.esc(r.user) + '</div>' +
           '<div><b>🤖 思考：</b>' + U.esc(r.assistant) + '</div>' +
@@ -1998,6 +2252,7 @@ AgentLab.LabPlanner = (function () {
   function bindQuiz() {
     AgentLab.Quiz.mount({
       host: "pl-quiz-body",
+      card: "sec-map-planner",   /* 章末综合小测（14 题覆盖整课）→ 回看本课学习地图 */
       color: "plan",
       name: "规划小达人",
       star: "pl-quiz-score",
@@ -2008,7 +2263,7 @@ AgentLab.LabPlanner = (function () {
   }
 
   /* ============================================================
-   * ⑬ 综合演练：从一个模糊需求到任务完成（端到端 6 关）—— 对应卡片「综合演练」
+   * ⑯ 综合演练：从一个模糊需求到任务完成（端到端 7 关）—— 对应卡片「综合演练」
    * 同一个任务按「说清楚 → 拆解 → 排序 → 执行 → 反思 → 质检」推进；
    * shuffle:false 保证关卡顺序与全流程一致（与小测验的随机出题区分）。
    * ============================================================ */
@@ -2068,12 +2323,12 @@ AgentLab.LabPlanner = (function () {
       pre: "第 6 关 · 突发失败｜执行到一半：原定要用的投影仪被别的班借走了",
       q: "一个“会反思”的 Agent 应该怎么做？",
       opts: [
-        "先用独立审核者找到“第一个出错的步骤”，再只调整那一步（换设备或改节目形式）→ 再执行一次",
+        "翻开执行记录，从第一步往下核对，找到第一处和事实不符的地方（比如“确认场地与设备”这一步本来就没做），只重做受影响的那几步 → 再执行一次",
         "停在这里，把问题直接丢回给用户",
         "把最后的报错改一改，让它看起来没出错"
       ],
       ans: 0,
-      why: "先归因、再反思：从第一步往下找“第一处偏离”（比如“确认场地与设备”这一步本来就没做），只修受影响的那几步；改最后一行报错，等于给症状贴创可贴。"
+      why: "先归因、再反思：归因不是“再问一个 AI”，而是拿执行记录和事实一项一项对——找到第一处偏离，只修受影响的那几步。改最后一行报错，等于给症状贴创可贴。"
     },
     {
       pre: "第 7 关 · 交付前质检｜计划已经排好了，准备开始执行",
@@ -2091,6 +2346,7 @@ AgentLab.LabPlanner = (function () {
   function bindE2E() {
     AgentLab.Quiz.mount({
       host: "pl-e2e-flow",
+      card: "sec-map-planner",   /* 全流程小达人（跨全课）→ 回看本课学习地图 */
       color: "plan",
       name: "全流程小达人",
       shuffle: false,
@@ -2100,7 +2356,7 @@ AgentLab.LabPlanner = (function () {
   }
 
   /* ============================================================
-   * 进阶原理互动课堂（规划器）：11 个概念
+   * 进阶原理互动课堂（规划器）：19 个概念
    * 结构与交互由共享引擎 js/adv-classroom.js 渲染，这里只放内容数据
    * ============================================================ */
   var PL_ADV = [
@@ -2129,12 +2385,44 @@ AgentLab.LabPlanner = (function () {
       links: [{ t: "思维链实验", el: "pl-cot-go" }]
     },
     {
-      id: "paradigm", icon: "gear", nav: "两种规划范式", name: "Plan-and-Execute vs ReAct", en: "PLANNING PARADIGMS",
+      id: "paradigm", icon: "gear", nav: "两种规划方法", name: "Plan-and-Execute vs ReAct", en: "PLANNING PARADIGMS",
       tip: "先列完整计划再执行，还是边想边做？——取决于任务的“确定性”。",
       analogy: "像出行：走固定路线的班车可以提前把时刻表排好（<b>Plan-and-Execute</b>）；自驾找路则要边走边看导航调整（<b>ReAct</b>）。",
-      real: "Plan-and-Execute 一次性产出步骤列表后逐步执行：Token 可控、便于审计，但中途变化不会自己改；ReAct 每步都能根据观察调整：适应不确定环境，但容易绕远、消耗更高。<b>实际系统常混合使用</b>——先出计划，执行中允许修订。",
+      real: "Plan-and-Execute 一次性产出步骤列表后逐步执行：<b>花费可控、便于审计、能人工改</b>，但中途变化不会自己改；ReAct 每步都能根据观察调整：<b>适应不确定环境</b>，但容易绕远、花费更高。<b>实际系统常混合使用</b>——先出大计划，执行中遇到意外再改。<br>选型只看一句：<b>步骤会不会因为中间结果而改变？</b>会 → ReAct；不会 → Plan-and-Execute。<br>落地细节见下面两条：「先计划后执行」与「计划—执行—反思」。",
       quiz: { q: "“每月固定格式的销售报表生成”和“排查网站为什么打不开”，分别适合哪种范式？", a: "前者适合 Plan-and-Execute（步骤、数据源都固定，一次规划重复执行最省）；后者适合 ReAct（原因不确定，需要逐步测试、根据结果缩小范围）。口诀：步骤会不会因为中间结果而改变。" },
       links: [{ t: "两种规划范式对比", el: "pl-paradigm" }]
+    },
+    {
+      id: "planexec", icon: "archive", nav: "先计划后执行", name: "Plan-and-Execute（规划器—执行器）", en: "PLANNER · EXECUTOR",
+      tip: "先一次性写出完整计划（步骤清单 / 依赖图），再交给执行器逐条做；中途出问题，就触发“重规划”。",
+      analogy: "先写完整任务清单，再一条一条做；遇到大坑，只改清单上出问题的那一条，不用整份重写。",
+      real: "工程上常见组合：<b>强模型做规划器，便宜的小模型做执行器</b>——贵的地方只花一次。计划是结构化的（步骤清单 / 依赖图），所以能审计、能人工修改、能让没有依赖的步骤并行执行。<br><b>适合：</b>周报生成、报销处理、实验数据分析、材料整理这类步骤稳定的任务。<br><b>代价：</b>现实和预想不一样时，原计划会“过时”——所以要配一个 <b>Replanner（重规划）</b>：只改出问题的那几步。",
+      quiz: { q: "为什么工程上常让“强模型做规划、小模型做执行”？", a: "因为计划错一步，后面全错——最该花算力的地方是“规划”；而按计划逐条执行相对简单，用小模型就够。这样既保住质量，又把成本压下来。" },
+      links: [{ t: "两种规划范式对比", el: "pl-paradigm" }]
+    },
+    {
+      id: "per", icon: "refresh", nav: "计划—执行—反思", name: "Plan-Execute-Reflect（PER）", en: "PLAN · EXECUTE · REFLECT",
+      tip: "在“先计划后执行”外面再加一圈：执行完先评估达不达标，不达标就改计划再来一轮。",
+      analogy: "写完计划书、照着做完，再检查一遍；不合格就改计划重做，而不是硬着头皮交。",
+      real: "企业生产里最常用的增强版：<b>计划 → 执行 → 反思评估 → 修订计划 → 再执行</b>，直到达标或用完预算。<br><b>适合：</b>对结果质量要求高的任务——文档审查、报告撰写、科研数据处理。<br><b>代价：</b>每轮多一次评估调用，慢一些、贵一些；所以要设“最多改几轮”，避免反复改不完。",
+      quiz: { q: "PER 比单纯的 Plan-and-Execute 多了哪一环？", a: "多了“反思评估 + 按评估改计划”这一环。Plan-and-Execute 执行完就交付；PER 会先问“达标了吗”，不达标就改计划再跑一轮。" },
+      links: [{ t: "失败与反思", el: "pl-fail" }, { t: "两种规划范式", el: "pl-paradigm" }]
+    },
+    {
+      id: "reflexion", icon: "brain", nav: "Reflexion 反思式规划", name: "Reflexion：把错误变成经验", en: "REFLEXION",
+      tip: "做完一轮，专门让一个“反思”角色批改这次执行，把错误经验记进记忆，指导下一轮——它通常叠在 ReAct 或 Plan-Execute 上，不单独当主规划。",
+      analogy: "做完作业自己批改错题，记在错题本上；下次做计划时先翻一眼，避开同类的坑。",
+      real: "和 PER 的区别：<b>PER 在执行过程中评估并改计划；Reflexion 更像“事后复盘 + 经验入库”</b>——把“这次错在哪、下次怎么避开”写成一条经验，存进长期记忆。<br><b>适合：</b>代码 Agent、写作 Agent 这类需要反复重试、越做越准的任务。<br><b>注意：</b>反思本身不算证据——经验必须和真实结果对得上，否则错误的心得会一直污染后面的判断。",
+      quiz: { q: "“这次失败了，下次注意点”算不算一条合格的 Reflexion 经验？", a: "不算。合格的反思要写清“哪一步、什么现象、什么原因、下次具体怎么做”，而且能被下一次的真实结果验证。只说“注意点”，下一轮还是会踩同一个坑。" },
+      links: [{ t: "失败与反思", el: "pl-fail" }, { t: "失败归因", el: "pl-attrib" }]
+    },
+    {
+      id: "methods", icon: "box", nav: "其他规划方法", name: "其他规划方法：什么时候才用得上", en: "OTHER PLANNERS",
+      tip: "Self-Consistency、ToT/GoT、Router+Skill、LLM+PDDL 各有专长；多数不是默认选项，而是特定场景的“专用工具”。",
+      analogy: "像工具箱里的专用工具：不是每天都用，但特定活儿离不开——用错了只会更慢更贵。",
+      real: "<b>Self-Consistency：</b>同一题采样多条路径，投票选最可靠的结果——适合数学、逻辑校验；代价是成倍花费。<br><b>ToT / GoT：</b>每步生成多个候选、评估后剪枝（GoT 还能合并想法）——适合解谜、复杂推理；生产环境很少默认开，太贵太慢。<br><b>Router + Skill：</b>先用“分诊台”判断任务类型，直接送到预先写好的技能里——企业客服、工单最稳，因为不让模型从零自由规划。<br><b>LLM + PDDL：</b>模型把话翻译成规则，传统规划器算出动作序列——机器人、工业控制用；环境一变就容易失效。",
+      quiz: { q: "公司客服 Agent 最常用哪一种？", a: "Router + Skill：先把问题分到“退换货 / 查询订单 / 投诉”等固定技能里，每个技能的步骤提前写好。这样稳定、延迟低、不容易胡编——代价是新增业务要人工补技能。" },
+      links: [{ t: "两种规划范式", el: "pl-paradigm" }, { t: "工具选择决策", el: "pl-tooldec" }]
     },
     {
       id: "proposer", icon: "users", nav: "提议者-审核者", name: "提议者-审核者（Proposer-Reviewer）", en: "PROPOSER-REVIEWER",
@@ -2145,8 +2433,8 @@ AgentLab.LabPlanner = (function () {
       links: [{ t: "提议者-审核者演示", el: "pl-pr-propose" }]
     },
     {
-      id: "reflect", icon: "refresh", nav: "反思 Reflection", name: "反思（Reflection）", en: "REFLECTION",
-      tip: "从失败里学：识别失败原因 → 调整策略 → 再试——这是从“会完成任务”到“能可靠工作”的关键一步。",
+      id: "reflect", icon: "refresh", nav: "失败后的反思", name: "失败反思（Reflection）", en: "REFLECTION",
+      tip: "从失败里学：识别失败原因 → 调整策略 → 再试——这是从“会完成任务”到“能可靠工作”的关键一步。<br>和上面「Reflexion」的分工：这里管<b>这一次怎么补救</b>；Reflexion 管<b>把经验存起来，让下一轮别再犯</b>。",
       analogy: "像考试考砸了：只知道分数没用，要复盘“是粗心，还是知识点不会”，下次才能改。",
       real: "工程做法：把失败信号（报错、校验不通过、结果为空）<b>显式回传</b>给模型，让它输出「失败原因 + 修改后的计划」；同时设重试上限与降级策略，避免无限重试。更进阶的系统会把失败案例沉淀进长期记忆，下次直接避开同样的坑。",
       quiz: { q: "Agent 执行失败时，最不该做的是什么？", a: "最不该“假装成功”——用编造的结果糊过去（幻觉）。正确顺序是：如实报告失败 → 说明卡在哪一步 → 给出可选的补救方案（换工具 / 换参数 / 询问用户）。" },
@@ -2196,7 +2484,7 @@ AgentLab.LabPlanner = (function () {
       id: "todo", icon: "archive", nav: "任务清单 · 状态栏", name: "任务清单（TODO）与状态栏", en: "TODO / STATUS BAR",
       tip: "把待办清单放在每轮都能“瞥一眼”的位置：做一项、划一项——不忘记原始诉求，也不重复劳动。",
       analogy: "像手机顶部的<b>状态栏</b>：不用点进去，扫一眼就知道时间、电量、信号。Agent 也需要一块“现在做到哪了”的状态栏——待办清单就在干这件事。",
-      real: "做法：把清单每项写成「<b>做什么 + 状态</b>（待办 / 进行中 / 已完成 / 已取消）<b>+ 结果与下一步</b>」，并把它<b>放在轨迹末尾</b>——对话越久，最早的原始诉求越容易被挤到后面，放在末尾才能“每轮都看得到”。模型通过“重写清单 / 更新某一项状态”两个动作维护它。<br><b>实测（ai-agent-book 第 2 章）：</b>开启清单平均 <b>15 轮</b>完成，关掉清单要 <b>21 轮</b>，还经常漏子任务。清单同时是<b>停止条件</b>的判据：全部打勾 + 证据齐全，才允许交付。",
+      real: "做法：把清单每项写成「<b>做什么 + 状态</b>（待办 / 进行中 / 已完成 / 已取消）<b>+ 结果与下一步</b>」，并把它<b>放在轨迹末尾</b>——对话越久，最早的原始诉求越容易被挤到后面，放在末尾才能“每轮都看得到”。模型通过“重写清单 / 更新某一项状态”两个动作维护它。<br><b>一个实测对比：</b>开着清单能明显少走弯路、少漏子任务；关掉清单，轮数会变多，还经常漏步骤（具体轮数随任务而变，不用记）。清单同时是<b>停止条件</b>的判据：全部打勾 + 证据齐全，才允许交付。",
       quiz: { q: "清单里每一项至少要写清哪几样东西？", a: "三样：① 做什么（一句话目标）② 什么状态（待办 / 进行中 / 已完成 / 已取消）③ 结果与下一步。只写“要做的事”不写状态，就看不出进度；不写结果，就无法判断这一步到底做完没有。" },
       links: [{ t: "任务清单实验（有没有清单）", el: "pl-todo" }, { t: "上下文轨迹演示", el: "pl-tr-list" }]
     },
@@ -2229,6 +2517,7 @@ AgentLab.LabPlanner = (function () {
   /* 概念 id → 交互类型（同类交互在多个板块复用） */
   var PL_TYPE = {
     react: "pipeline", decomp: "sorter", cot: "decider", paradigm: "matcher", proposer: "sandbox",
+    planexec: "pipeline", per: "pipeline", reflexion: "picker", methods: "matcher",
     reflect: "picker", ctx: "squeezer", toolpick: "picker", harness: "switchboard", stop: "tuner",
     clarify: "decider", todo: "race", attrib: "annotator", orch: "matcher", a2a: "pipeline"
   };
@@ -2534,7 +2823,7 @@ AgentLab.LabPlanner = (function () {
         }
       ],
       summary: "<b>结论：</b>要求一多，没有清单就容易漏——“只留计算类”“做成复习卡”都是很容易被忘掉的细节；有了清单，每轮都会把要求重新看一遍。<br>" +
-        "<b>实测（ai-agent-book 第 2 章）：</b>开启清单平均 15 轮完成，关掉清单要 21 轮且常漏子任务。",
+        "<b>一个实测对比：</b>开着清单能明显少走弯路、少漏子任务；关掉清单，轮数会变多（具体轮数随任务而变，不用记）。",
       quiz: {
         q: "清单为什么要放在“每轮都能看到”的位置？",
         opts: ["因为对话越久，最早的原始要求越会被挤到后面，容易忘", "因为写得越靠前越好看", "因为放在最后会自动消失"],
@@ -2612,6 +2901,98 @@ AgentLab.LabPlanner = (function () {
         hint: "想想“对方看不到我的聊天记录”这件事。",
         revealAt: 2
       }
+    },
+    /* ---- 规划方法扩展（进阶课堂）：Plan-and-Execute / PER / Reflexion / 其他方法 ---- */
+    planexec: {
+      title: "动手实验：Plan-and-Execute 跑一遍", hint: "先猜后放", icon: "archive",
+      playLabel: "自动播放一遍", stepLabel: "单步推进", resetLabel: "重来",
+      logTitle: "执行日志（谁在做什么）",
+      stages: [
+        { id: "plan", name: "规划", icon: "brain", en: "Planner", io: "强模型一次写出完整计划：① 查课表 ② 排值日时间 ③ 建 10 条提醒" },
+        { id: "e1", name: "执行①", icon: "wrench", en: "Executor", io: "照第 ① 条调「课表查询」，拿到一周课表" },
+        { id: "e2", name: "执行②", icon: "wrench", en: "Executor", io: "按课表排出每天的值日时间" },
+        { id: "bad", name: "遇到异常", icon: "alert", en: "Exception", io: "第 ③ 条调用「提醒」失败：时间格式不对（“放学前”没法直接传）" },
+        { id: "replan", name: "重规划", icon: "refresh", en: "Replanner", io: "只改第 ③ 条：把“放学前”改成 16:30，再继续" },
+        { id: "done", name: "交付", icon: "check", en: "Final", io: "清单全部打勾，交付结果" }
+      ],
+      guess: {
+        q: "先猜一猜：执行到第 ③ 条时工具报错，Plan-and-Execute 会怎么处理？",
+        opts: [
+          { k: "all", t: "整份计划作废，从头重来" },
+          { k: "part", t: "只改出问题的那一条（重规划）" },
+          { k: "fake", t: "不管报错，直接说已完成" }
+        ],
+        ans: "part",
+        why: "Plan-and-Execute 的关键优势就是“计划可改”：出问题只改受影响的那几步（重规划），前面的成果不用推翻。整份重来太浪费；假装完成就是“假完成”。",
+        hint: "想想“前面的步骤已经做完了”这件事。",
+        revealAt: 3
+      }
+    },
+    per: {
+      title: "动手实验：计划—执行—反思 转一圈", hint: "先猜后放", icon: "refresh",
+      playLabel: "自动播放一遍", stepLabel: "单步推进", resetLabel: "重来",
+      logTitle: "每轮在做什么",
+      stages: [
+        { id: "p1", name: "计划", icon: "archive", en: "Plan", io: "先排出一版计划：查资料 → 写初稿 → 校对" },
+        { id: "e1", name: "执行", icon: "wrench", en: "Execute", io: "按计划做完，交出一版初稿" },
+        { id: "r1", name: "反思评估", icon: "search", en: "Reflect", io: "对照标准检查：结论有证据吗？格式对吗？→ 发现 2 处不达标" },
+        { id: "p2", name: "改计划", icon: "refresh", en: "Replan", io: "只加两步：补一条数据来源、把结论写得更具体" },
+        { id: "e2", name: "再执行", icon: "wrench", en: "Re-Execute", io: "按新计划补做，重新交一版" },
+        { id: "ok", name: "达标交付", icon: "check", en: "Deliver", io: "这次检查通过，交付" }
+      ],
+      guess: {
+        q: "先猜一猜：PER 里“反思”这一步，主要看什么？",
+        opts: [
+          { k: "self", t: "看自己做得辛不辛苦" },
+          { k: "std", t: "对照标准看达不达标" },
+          { k: "speed", t: "看谁做得最快" }
+        ],
+        ans: "std",
+        why: "反思评估要有“尺子”：对照事先写好的完成标准（有证据吗、格式对吗、要求齐吗），才知道要不要改计划。只看“辛不辛苦”就变成了自我感动。",
+        hint: "想想“达标”这两个字。",
+        revealAt: 2
+      }
+    },
+    reflexion: {
+      title: "动手实验：这次失败，哪些做法属于 Reflexion？", hint: "多选后检查", icon: "brain",
+      taskLabel: "执行记录：",
+      task: "用户问“明天北京天气”，天气工具报 500；Agent 编了一句“明天晴，25℃”，用户按这个结果出门，被雨淋了。",
+      checkLabel: "检查我选的",
+      empty: "先点选你认为属于 Reflexion 的做法，再点「检查我选的」。",
+      passHtml: "Reflexion 的重点：<b>把这次错误写成一条经验存起来</b>，下一轮规划前先用它。",
+      failHtml: "提示：Reflexion 不是“改一下这次的结果”，而是“让下一轮不再犯”。",
+      items: [
+        { id: "x1", label: "记下：工具失败时不许编造，只能如实说“没查到”", ok: true, why: "这是可复用的经验——下次任何工具失败都适用。" },
+        { id: "x2", label: "记下：调用天气前先确认“明天”是哪一天", ok: true, why: "具体到“哪一步、怎么改”，下一轮才能直接照着做。" },
+        { id: "x3", label: "把这次的温度从 25℃ 改成 26℃ 再发一次", ok: false, why: "这只是改这次的结果，没有形成经验，下一轮还会编。" },
+        { id: "x4", label: "换一个更贵的模型，不做复盘", ok: false, why: "换模型不解决“失败后编造”的行为模式。" },
+        { id: "x5", label: "把这次执行日志删掉，免得难看", ok: false, why: "删掉证据，就等于放弃学习——下次还会踩同一个坑。" }
+      ]
+    },
+    methods: {
+      color: "plan",
+      title: "动手实验：这四种方法，各自适合什么任务？", hint: "左右配对", icon: "box",
+      leftTitle: "① 先点一种方法：",
+      rightTitle: "② 再点它最适合的任务：",
+      left: [
+        { id: "sc", label: "Self-Consistency（多路径投票）", icon: "check", why: "数学、逻辑校验：答案能验证，多采样几次投票最稳；代价是花费成倍。" },
+        { id: "tot", label: "ToT / GoT（思维树 / 思维图）", icon: "search", why: "解谜、复杂推理、原型验证：要多路探索；生产环境少用，太贵太慢。" },
+        { id: "router", label: "Router + Skill（路由 + 预制技能）", icon: "send", why: "企业客服、工单：任务类型固定，路由到提前写好的技能最稳、最省。" },
+        { id: "pddl", label: "LLM + PDDL（符号规划）", icon: "robot", why: "机器人、工业控制：环境规则明确，动作必须严格可验证。" }
+      ],
+      right: [
+        { id: "math", label: "数学题、逻辑校验", icon: "calc" },
+        { id: "puzzle", label: "解谜、复杂推理（做原型）", icon: "search" },
+        { id: "service", label: "客服、工单、固定业务", icon: "chat" },
+        { id: "robot", label: "机器人、工业设备控制", icon: "robot" }
+      ],
+      pairs: { sc: "math", tot: "puzzle", router: "service", pddl: "robot" },
+      checkLabel: "检查我配的方法",
+      resetLabel: "重来",
+      empty: "先点左边一种方法，再点右边它适合的任务。",
+      pickTip: "先点方法，再点任务",
+      failHtml: "提示：先问一句——这个任务的答案能不能验证？任务类型是不是固定的？",
+      passHtml: "选型口诀：<b>答案可验证 → 多路投票；要多路探索 → ToT；业务固定 → 路由 + 技能；规则明确 → 符号规划。</b>"
     }
   };
 
@@ -2657,6 +3038,9 @@ AgentLab.LabPlanner = (function () {
     };
     host.innerHTML = AgentLab.Adv.types.picker.demoHTML(d);
     AgentLab.Adv.types.picker.bind(host, d);
+    /* 点一次「检查我拆的子任务」= 跑完一轮 → 揭晓上面的“先猜一猜” */
+    var chk = host.querySelector('[data-a="check"]');
+    if (chk) chk.addEventListener("click", function () { U.predictResolve("pl-tree-guess"); });
   }
 
   /* ---------- 新增实验 B：步骤的依赖与并行（排序判定） ---------- */
@@ -2684,6 +3068,16 @@ AgentLab.LabPlanner = (function () {
     };
     host.innerHTML = AgentLab.Adv.types.sorter.demoHTML(d);
     AgentLab.Adv.types.sorter.bind(host, d);
+    /* 排序组件没有完成回调：每次点步骤后看一眼“完成区”是否已亮出，
+     * 亮出即代表排完 → 揭晓上面的“先猜一猜”（predictResolve 幂等，只展开一次）。 */
+    host.addEventListener("click", function () {
+      setTimeout(function () {
+        var done = host.querySelector('[data-a="done"]');
+        if (done && done.style.display !== "none" && done.textContent) {
+          U.predictResolve("pl-dep-guess");
+        }
+      }, 260);
+    });
   }
 
   /* ---------- ⑥ 计划要能被“执行”：双轨推进（清单计划 vs 一段话计划） ----------
@@ -2724,6 +3118,8 @@ AgentLab.LabPlanner = (function () {
     ],
     summary: "<b>结论：</b>两栏做的事一模一样，差别只在于“写给谁看”——程序读不懂“按每天的时间提醒”，计划就停在半路。<br>" +
       "所以每一步都要写清三样：<b>做什么 + 用什么工具 + 完成标准</b>；模型把格式写坏时还要能解析兜底、如实说明——<b>宁可空，不可编</b>。",
+    /* 两栏都走完 = 跑完一轮 → 揭晓上面的“先猜一猜” */
+    onDone: function () { U.predictResolve("pl-planrun"); },
     quiz: {
       q: "计划为什么必须写成“清单”（结构化）？",
       opts: ["清单的每一步都能被程序读懂、执行、检查", "清单看起来更整齐好看", "一段话太长了，模型写不完"],
@@ -2775,7 +3171,8 @@ AgentLab.LabPlanner = (function () {
   /* ---------- ⑪ 任务清单（TODO）：双轨推进（有清单 vs 没清单） ----------
    * 教学点（ai-agent-book 第 2 章「Agent 状态栏」）：
    *   把待办清单放在每轮都能“瞥一眼”的位置（轨迹末尾），防止忘记原始诉求、重复劳动、漏子任务；
-   *   实测：开启清单平均 15 轮完成，关闭清单要 21 轮且常漏项；清单全打勾 + 证据齐全才允许交付。 */
+   *   实测：开启清单能明显少走弯路、少漏项（具体轮数随任务而变，页面不写死数字）；
+   *   清单全打勾 + 证据齐全才允许交付。 */
   var TODO_RUN_DEMO = {
     color: "plan",
     title: "动手实验：同一件事，有没有清单差多少？",
@@ -2811,7 +3208,7 @@ AgentLab.LabPlanner = (function () {
       }
     ],
     summary: "<b>结论：</b>右边做的事和左边一样多，但它每轮都“瞥一眼”清单——所以没忘记原始诉求，也没重复查。<br>" +
-      "<b>真实测评：</b>开启清单平均 <b>15 轮</b>做完，关掉清单要 <b>21 轮</b>，还经常漏掉子任务（ai-agent-book 第 2 章）。清单同时是<b>停止条件</b>的判据：全部打勾 + 证据齐全，才能交付。",
+      "<b>真实测评：</b>开着清单能明显少走弯路、少漏子任务；关掉清单，轮数会变多（具体轮数随任务而变，不用记）。清单同时是<b>停止条件</b>的判据：全部打勾 + 证据齐全，才能交付。",
     quiz: {
       q: "任务清单（TODO）最像下面哪样东西？",
       opts: ["手机顶部的状态栏：一眼看到还剩什么、现在做到哪", "考试的草稿纸：写完就扔", "贴在墙上的奖状：只用来展示"],
@@ -2896,6 +3293,8 @@ AgentLab.LabPlanner = (function () {
       guardTitle: "② 反思能力：",
       guardLabelOn: "已开启反思（识别失败 → 调整计划 → 再试）",
       guardLabelOff: "关闭反思（照原计划硬走，直接把结果给用户）",
+      /* 换场景或扳开关 = 跑完一轮 → 揭晓上面的“先猜一猜” */
+      onDone: function () { U.predictResolve("pl-reflect"); },
       contentTitle: "Agent 面对的情况：",
       dataLabel: "① 真实现场（失败信号）：",
       injectLabel: "② 它原本打算给用户的输出：",

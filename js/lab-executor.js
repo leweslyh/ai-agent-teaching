@@ -1,16 +1,19 @@
 /* ============================================================
- * lab-executor.js —— 执行器实验室（对应 L11 / L12）
- * 19 模块（教学主线：讲一张练一张，实验卡紧跟对应知识卡）：
- *   认识执行器 → 工具五分类 → 实验：有工具vs没工具 → Function Calling机制
- *   → 实验：参数组装 → 工具描述与选择 → 实验：描述调参 → 选工具游戏
- *   → 工具百宝箱 → 工具幻觉与约束（含四道防线实验，原两张卡已合并）
- *   → 实验：工具不能“偷偷改”参数（参数保真与静默失败）
- *   → 实验：失败了能不能重试？（幂等与两段式确认）
- *   → 实验：AI 写的代码在哪跑？（代码执行与沙盒）
- *   → 多工具协作 → 实验：预测工具链 → MCP协议 → 实验：该不该上MCP
- *   → 小测验 → 进阶原理课堂（13 概念）+ 课堂小结
+ * lab-executor.js —— 执行器实验室（L11 / L12，共 4 课时）
+ *
+ * 21 张卡。**源码顺序 ≠ 上课顺序**：本文件按“讲一张、练一张”书写（修改时不必
+ * 在几百行字符串里搬内容），上课顺序由本文件末尾的 PLAN 统一重排为 4 课时：
+ *   第 1 课时 先给它一双手：认识执行器 → 工具百宝箱（先玩）→ 有工具vs没工具 → 工具分类
+ *              → 工具从哪来
+ *   第 2 课时 它怎么把事办成：Function Calling → 填参数 → 工具描述 → 描述调参 → 选工具
+ *   第 3 课时 它会出错：故障注入台（先看事故）→ 幻觉与四道防线 → 参数保真 → 重试与幂等
+ *   第 4 课时 敢放手：代码沙盒 → 多工具协作 → 预测工具链 → MCP → 该不该上MCP
+ *              → 小测验 → 进阶原理课堂（选做）
+ * 重排只搬 DOM 节点、不复制卡片内容；PLAN 里任何一张卡匹配不上就整体放弃重排
+ * （保底保持源码顺序，页面功能不受影响）。numberCards() 在 main.js 里晚于 render
+ * 执行，所以圈码会自动跟着新顺序走。
  * 卡片编号全部自动生成（numberCards 按栏目内顺序补圈码）
- * 参考 ai-agent-book chapter4（工具五分类 / 工具描述 / 参数保真 / 代码执行沙盒 / MCP /
+ * 参考 ai-agent-book chapter4（工具分类 / 工具描述 / 参数保真 / 代码执行沙盒 / MCP /
  *      协作工具）、chapter5（故障与错误恢复：重试上限 / 熔断 / 幂等 / 结构化错误回喂）、
  *      chapter1（防呆设计与 ACI）；
  *      hello-agents 第十二章（BFCL 工具调用评测）、Extra05（MCP 与 Skill 的 token 账本）。
@@ -22,19 +25,353 @@ AgentLab.LabExecutor = (function () {
   var U = AgentLab.UI;
   var $ = U.$;
 
+  /* 工具分类（做什么）：read 读 / compute 算 / act 做 / dispatch 派。
+   * 另有一个不属于“做什么”的标签：scheduled（到点自己动）。
+   * 口径见本文件「工具分类」卡：先问“碰不碰外面的东西”，再问“什么时候开始做”。 */
   var TOOLS = [
-    { id: "weather", icon: "cloud", name: "天气查询工具", desc: "查询某个城市某天的天气，返回温度、降水、风力。", category: "perception" },
-    { id: "calc", icon: "calc", name: "计算器工具", desc: "快速算四则运算（加减乘除与括号），比如 25 × 4 + 10；折扣、百分数、平均数交给「数学计算工具」。", category: "execution" },
-    { id: "remind", icon: "bell", name: "提醒工具", desc: "帮同学记下“要带什么、要做什么”，到时间提醒。", category: "execution" },
-    { id: "classInfo", icon: "book", name: "课表查询工具", desc: "从班级知识库查出我们班的课表、值日和通知。", category: "perception" },
-    { id: "search", icon: "search", name: "联网搜索工具", desc: "上网搜索真实资料，比如“搜一下恐龙是什么”或“查查珠穆朗玛峰有多高”。", category: "perception" },
-    { id: "translate", icon: "lang", name: "翻译工具", desc: "中英互译，比如“苹果用英语怎么说”或“把 hello 翻译成中文”。", category: "execution" },
-    { id: "convert", icon: "ruler", name: "单位换算工具", desc: "长度、重量、温度等换算，比如“5米等于多少厘米”或“35摄氏度等于多少华氏度”。", category: "execution" },
-    { id: "datetime", icon: "clock", name: "时间日期工具", desc: "查现在几点、今天几号、星期几，还能推算“三天后是几号”“下周五是几号”。", category: "perception" },
-    { id: "shape", icon: "shape", name: "图形计算工具", desc: "算面积、周长、体积：正方形、长方形、三角形、梯形、圆、长方体……", category: "execution" },
-    { id: "math", icon: "percent", name: "数学计算工具", desc: "算百分数、折扣、平均数，比如“60的30%是多少”“200元打8折”。", category: "execution" },
-    { id: "timer", icon: "timer", name: "计时器工具", desc: "倒计时、番茄钟，比如“帮我计时25分钟”——到点真的会提醒。", category: "execution" }
+    { id: "weather", icon: "cloud", name: "天气查询工具", desc: "查询某个城市某天的天气，返回温度、降水、风力。", category: "read" },
+    { id: "calc", icon: "calc", name: "计算器工具", desc: "快速算四则运算（加减乘除与括号），比如 25 × 4 + 10；折扣、百分数、平均数交给「数学计算工具」。", category: "compute" },
+    { id: "remind", icon: "bell", name: "提醒工具", desc: "帮同学记下“要带什么、要做什么”，到时间提醒。", category: "act", tag: "scheduled" },
+    { id: "classInfo", icon: "book", name: "课表查询工具", desc: "从班级知识库查出我们班的课表、值日和通知。", category: "read" },
+    { id: "search", icon: "search", name: "联网搜索工具", desc: "由 DeepSeek 服务端联网搜索真实资料，需要时还会抓取网页正文，比如“搜一下恐龙是什么”或“打开这个网页看看写了什么”。", category: "read" },
+    { id: "translate", icon: "lang", name: "翻译工具", desc: "中英互译，比如“苹果用英语怎么说”或“把 hello 翻译成中文”。", category: "compute" },
+    { id: "convert", icon: "ruler", name: "单位换算工具", desc: "长度、重量、温度等换算，比如“5米等于多少厘米”或“35摄氏度等于多少华氏度”。", category: "compute" },
+    { id: "datetime", icon: "clock", name: "时间日期工具", desc: "查现在几点、今天几号、星期几，还能推算“三天后是几号”“下周五是几号”。", category: "read" },
+    { id: "shape", icon: "shape", name: "图形计算工具", desc: "算面积、周长、体积：正方形、长方形、三角形、梯形、圆、长方体……", category: "compute" },
+    { id: "math", icon: "percent", name: "数学计算工具", desc: "算百分数、折扣、平均数，比如“60的30%是多少”“200元打8折”。", category: "compute" },
+    { id: "timer", icon: "timer", name: "计时器工具", desc: "倒计时、番茄钟，比如“帮我计时25分钟”——到点真的会提醒。", category: "act", tag: "scheduled" }
   ];
+
+  /* ============================================================
+   * 工具百宝箱「试一试」：每件工具各自一块图形界面
+   * ------------------------------------------------------------
+   * 不是“给一句话看结果”，而是每件工具都有像样的控件：
+   * 城市 + 日期、算式 + 小键盘、单位下拉、图形参数、倒计时条……
+   * 学生先在界面上把参数填好，再点「运行这个工具」。
+   * 真正的执行统一走 AgentLab.Agent.tryTool（与智能体跑一轮同一份实现），
+   * 界面只负责“把参数收齐、把结果摆清楚”。
+   * ============================================================ */
+
+  /* --- 控件零件：全部带 data-f / data-chip，取值统一走下面三个读值函数 --- */
+  function tbxFld(id, label, k, opt) {
+    opt = opt || {};
+    var key = id + "-" + k;
+    var head = '<label class="tbx-fld"><span>' + label + "</span>";
+    if (opt.type === "select") {
+      return head + '<select data-f="' + key + '">' +
+        (opt.options || []).map(function (o) {
+          var v = typeof o === "string" ? o : o.v;
+          var t = typeof o === "string" ? o : o.t;
+          return '<option value="' + U.esc(v) + '"' + (v === opt.value ? " selected" : "") + ">" + U.esc(t) + "</option>";
+        }).join("") + "</select></label>";
+    }
+    var isNum = opt.type === "number";
+    return head + '<input type="' + (isNum ? "number" : "text") + '" data-f="' + key + '"' +
+      ' value="' + U.esc(opt.value == null ? "" : String(opt.value)) + '"' +
+      (isNum ? ' inputmode="decimal"' : "") +
+      (opt.ph ? ' placeholder="' + U.esc(opt.ph) + '"' : "") + "></label>";
+  }
+
+  function tbxChips(id, label, k, opts, val, repaint) {
+    return '<div class="tbx-fld"><span>' + label + '</span><div class="tbx-chiprow">' +
+      (opts || []).map(function (o) {
+        var v = typeof o === "string" ? o : o.v;
+        var t = typeof o === "string" ? o : o.t;
+        return '<button type="button" class="tbx-chip' + (v === val ? " is-on" : "") + '"' +
+          ' data-chip="' + id + "-" + k + '" data-group="' + id + "-" + k + '"' +
+          ' data-val="' + U.esc(v) + '"' + (repaint ? ' data-repaint="1"' : "") + ">" + U.esc(t) + "</button>";
+      }).join("") + "</div></div>";
+  }
+
+  function tbxVal(panel, id, k) {
+    var el = panel.querySelector('[data-f="' + id + "-" + k + '"]');
+    return el ? String(el.value == null ? "" : el.value).trim() : "";
+  }
+  function tbxNum(panel, id, k) {
+    var n = parseFloat(tbxVal(panel, id, k));
+    return isNaN(n) ? 0 : n;
+  }
+  function tbxChip(id, k) {
+    /* 按“这块面板”查，而不是整页查：#pg-toolbox 里已经不放试用面板了（弹窗挂在 body 下） */
+    var panel = document.getElementById("tbx-try-" + id);
+    var el = panel && panel.querySelector('[data-chip="' + id + "-" + k + '"].is-on');
+    return el ? el.getAttribute("data-val") : "";
+  }
+
+  /* 时间戳 → “11月5日 21:40:12”：把工具解析出的响铃时间写成人能核对的样子 */
+  function stampOf(at) {
+    var d = new Date(at);
+    if (!at || isNaN(d.getTime())) return "";
+    var p = function (n) { return (n < 10 ? "0" : "") + n; };
+    return (d.getMonth() + 1) + "月" + d.getDate() + "日 " +
+      p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+  }
+
+  /* --- 单位换算：下拉里只放“本系统真的会算”的单位（与 agent.js 的换算表一致） --- */
+  var UNIT_GROUPS = [
+    { k: "length", t: "长度", units: ["千米", "米", "分米", "厘米", "毫米"] },
+    { k: "weight", t: "重量", units: ["吨", "千克", "克", "斤"] },
+    { k: "area", t: "面积", units: ["平方千米", "公顷", "平方米", "平方分米", "平方厘米"] },
+    { k: "volume", t: "体积", units: ["升", "毫升"] },
+    { k: "speed", t: "速度", units: ["千米每小时", "米每秒"] },
+    { k: "temp", t: "温度", units: ["摄氏度", "华氏度"] }
+  ];
+  function unitGroup(k) {
+    for (var i = 0; i < UNIT_GROUPS.length; i++) if (UNIT_GROUPS[i].k === k) return UNIT_GROUPS[i];
+    return UNIT_GROUPS[0];
+  }
+
+  /* --- 图形计算：选什么图形，就只问这个图形要的参数 --- */
+  var SHAPES = {
+    square: { t: "正方形", ins: [["边长（厘米）", "a"]], nums: ["a"],
+      ask: function (v) { return "边长" + v.a + "厘米的正方形面积是多少？"; } },
+    rect: { t: "长方形", ins: [["长（厘米）", "w"], ["宽（厘米）", "h"]], nums: ["w", "h"],
+      ask: function (v) { return "长" + v.w + "厘米、宽" + v.h + "厘米的长方形面积是多少？"; } },
+    triangle: { t: "三角形", ins: [["底（厘米）", "b"], ["高（厘米）", "h"]], nums: ["b", "h"],
+      ask: function (v) { return "底" + v.b + "厘米、高" + v.h + "厘米的三角形面积是多少？"; } },
+    circle: { t: "圆", ins: [["半径（厘米）", "r"]], nums: ["r"],
+      ask: function (v) { return "半径" + v.r + "厘米的圆，面积和周长是多少？"; } },
+    cube: { t: "正方体", ins: [["棱长（厘米）", "a"]], nums: ["a"],
+      ask: function (v) { return "棱长" + v.a + "厘米的正方体，体积和表面积是多少？"; } },
+    cuboid: { t: "长方体", ins: [["长（厘米）", "l"], ["宽（厘米）", "w"], ["高（厘米）", "h"]], nums: ["l", "w", "h"],
+      ask: function (v) { return "长" + v.l + "、宽" + v.w + "、高" + v.h + "厘米的长方体体积是多少？"; } },
+    parallelogram: { t: "平行四边形", ins: [["底（厘米）", "b"], ["高（厘米）", "h"]], nums: ["b", "h"],
+      ask: function (v) { return "底" + v.b + "厘米、高" + v.h + "厘米的平行四边形面积是多少？"; } },
+    trapezoid: { t: "梯形", ins: [["上底（厘米）", "up"], ["下底（厘米）", "dn"], ["高（厘米）", "h"]], nums: ["up", "dn", "h"],
+      ask: function (v) { return "上底" + v.up + "、下底" + v.dn + "、高" + v.h + "厘米的梯形面积是多少？"; } }
+  };
+
+  /* --- 数学计算：换一种算法，就换一组参数 --- */
+  var MATH_KINDS = {
+    percent: { t: "百分数", ins: [["总数", "base", "60"], ["百分之几（%）", "rate", "30"]],
+      ask: function (v) { return v.base + "的" + v.rate + "%是多少？"; },
+      params: function (v) { return { kind: "percent", base: parseFloat(v.base), rate: parseFloat(v.rate) }; } },
+    discount: { t: "折扣", ins: [["原价（元）", "base", "200"], ["打几折", "rate", "8"]],
+      ask: function (v) { return v.base + "元打" + v.rate + "折要付多少钱？"; },
+      params: function (v) { return { kind: "discount", base: parseFloat(v.base), rate: parseFloat(v.rate) }; } },
+    average: { t: "平均数", ins: [["几个数（逗号或空格分开）", "nums", "60, 70, 80"]],
+      ask: function (v) { return v.nums + " 的平均数是多少？"; },
+      params: function (v) {
+        return {
+          kind: "average",
+          nums: String(v.nums).split(/[,，\s]+/).map(parseFloat).filter(function (n) { return !isNaN(n); })
+        };
+      } }
+  };
+
+  var CLASS_ASKS = {
+    all: "班级信息", schedule: "课程表", duty: "值日安排", notice: "最近的通知", teacher: "班主任是谁"
+  };
+
+  /* --- 说明：这次试用和真实对话哪里不一样（不糊弄学生） --- */
+  var TRY_NOTE = {
+    remind: "选「10 秒后（演示）」再运行，真的会到点响铃；提醒只在当前页面开着时有效。",
+    classInfo: "它读的是「记忆器实验室」里的班级知识库——小本子是空的就查不到。",
+    search: "联网搜索要花几秒；没配 DeepSeek Key 或断网时会自动降级（并如实说明）。",
+    translate: "翻译要调用大模型，需要先在右上角「设置」里填 DeepSeek Key。",
+    timer: "这里的倒计时是真的；「智能体实验室」对话里的倒计时条也走同一套秒数。"
+  };
+
+  /* --- 每件工具的界面：body() 画控件，read() 把控件收成「参数 + 一句原话」 --- */
+  var TRY_UI = {
+    weather: {
+      body: function (id) {
+        return tbxFld(id, "城市", "city", { value: "北京", ph: "例如 北京 / 杭州" }) +
+          tbxChips(id, "哪一天", "dateKey", ["今天", "明天", "后天", "周末", "下周"], "明天");
+      },
+      read: function (panel, id) {
+        var city = tbxVal(panel, id, "city") || "北京";
+        var d = tbxChip(id, "dateKey") || "今天";
+        return { params: { city: city, dateKey: d }, text: d + city + "天气怎么样？" };
+      }
+    },
+    calc: {
+      body: function (id) {
+        var keys = ["7", "8", "9", "÷", "4", "5", "6", "×", "1", "2", "3", "-", "0", ".", "(", ")"];
+        return tbxFld(id, "算式", "expr", { value: "25×4+10", ph: "例如 25×4+10" }) +
+          '<div class="tbx-keypad">' +
+            keys.map(function (k) {
+              return '<button type="button" class="tbx-key" data-kp="' + k + '" data-kpid="' + id + '">' + k + "</button>";
+            }).join("") +
+            '<button type="button" class="tbx-key is-fn" data-kp="back" data-kpid="' + id + '">⌫</button>' +
+            '<button type="button" class="tbx-key is-fn" data-kp="clear" data-kpid="' + id + '">C</button>' +
+            '<button type="button" class="tbx-key is-run" data-kp="run" data-kpid="' + id + '">=</button>' +
+          "</div>" +
+          '<div class="tbx-khint">点小键盘拼算式，按 = 就直接运行</div>';
+      },
+      read: function (panel, id) {
+        var e = tbxVal(panel, id, "expr")
+          .replace(/×/g, "*").replace(/÷/g, "/").replace(/[−–]/g, "-");
+        return { params: { expr: e || "0" }, text: e + " 等于多少？" };
+      }
+    },
+    remind: {
+      body: function (id) {
+        return tbxFld(id, "提醒内容", "what", { value: "带美术工具", ph: "例如 带美术工具" }) +
+          tbxChips(id, "什么时候", "when", [
+            { v: "10秒后", t: "10 秒后（演示）" }, "明天", "后天", "这周五"
+          ], "10秒后") +
+          /* 时间必须能自己填：只给四个预设，学生想设“20 分钟后”“17:30”“明天早上 7:30”就设不了。
+           * 填了这一格就以它为准，和真实对话一样——时间从“原话”里读，不进参数。 */
+          tbxFld(id, "或者自己填时间（填了就按这里算）", "whenText",
+            { ph: "例如 20分钟后 / 17:30 / 明天早上7:30" });
+      },
+      read: function (panel, id) {
+        var what = tbxVal(panel, id, "what") || "带美术工具";
+        var custom = tbxVal(panel, id, "whenText");
+        /* 英文单位（30s / 5min / 1h）单独写时要补一个“后”，拼出来才是
+         * 「提醒我30s后…」这种能被解析的句子（parseDuration 只认带“后/内”的英文单位）。 */
+        if (/^[0-9]+(\.[0-9]+)?\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours)$/i.test(custom)) {
+          custom += "后";
+        }
+        var when = custom || tbxChip(id, "when") || "";
+        /* 参数里只放“提醒什么”；“什么时候”由原话带过去——
+         * 和真实对话里一样：模型给内容，时间从同学的原话里读。 */
+        return { params: { text: what }, text: "提醒我" + when + what };
+      }
+    },
+    classInfo: {
+      body: function (id) {
+        return tbxChips(id, "想查什么", "type", [
+          { v: "all", t: "全部" }, { v: "schedule", t: "课程表" }, { v: "duty", t: "值日" },
+          { v: "notice", t: "通知" }, { v: "teacher", t: "班主任" }
+        ], "all");
+      },
+      read: function (panel, id) {
+        var t = tbxChip(id, "type") || "all";
+        return { params: { type: t }, text: "查一下我们班的" + (CLASS_ASKS[t] || "班级信息") };
+      }
+    },
+    search: {
+      body: function (id) {
+        return tbxFld(id, "搜索词", "query", { value: "天空为什么是蓝色的" }) +
+          tbxFld(id, "或者：网页地址（填了就抓这一页）", "url", { ph: "https://…" });
+      },
+      read: function (panel, id) {
+        var q = tbxVal(panel, id, "query") || "长颈鹿";
+        var u = tbxVal(panel, id, "url");
+        return u
+          ? { params: { url: u, query: q }, text: "打开 " + u + " 看看写了什么" }
+          : { params: { query: q }, text: "搜一下：" + q };
+      }
+    },
+    translate: {
+      body: function (id) {
+        return tbxFld(id, "要翻译的内容", "text", { value: "科学" }) +
+          tbxChips(id, "方向", "dir", [{ v: "en", t: "中 → 英" }, { v: "zh", t: "英 → 中" }], "en");
+      },
+      read: function (panel, id) {
+        var text = tbxVal(panel, id, "text") || "科学";
+        var dir = tbxChip(id, "dir") || "en";
+        return {
+          params: { text: text, target: dir },
+          text: dir === "en" ? "“" + text + "”用英语怎么说？" : "把“" + text + "”翻译成中文"
+        };
+      }
+    },
+    convert: {
+      body: function (id) {
+        return tbxChips(id, "哪一类", "cat",
+          UNIT_GROUPS.map(function (g) { return { v: g.k, t: g.t }; }), "length", true) +
+          tbxFld(id, "数值", "value", { type: "number", value: "3" }) +
+          '<div class="tbx-dyn" id="tbx-dyn-' + id + '"></div>';
+      },
+      dyn: function (id) {
+        var g = unitGroup(tbxChip(id, "cat") || "length");
+        return '<div class="tbx-fld-pair">' +
+          tbxFld(id, "从", "from", { type: "select", options: g.units, value: g.units[0] }) +
+          tbxFld(id, "到", "to", { type: "select", options: g.units, value: g.units[1] || g.units[0] }) +
+          "</div>";
+      },
+      read: function (panel, id) {
+        var v = tbxNum(panel, id, "value");
+        var from = tbxVal(panel, id, "from") || "千米";
+        var to = tbxVal(panel, id, "to") || "米";
+        return { params: { value: v, from: from, to: to }, text: v + from + "等于多少" + to + "？" };
+      }
+    },
+    datetime: {
+      body: function (id) {
+        return tbxChips(id, "想知道什么", "ask", [
+          { v: "现在几点了？", t: "现在几点" },
+          { v: "今天几号？", t: "今天几号" },
+          { v: "今天是星期几？", t: "今天星期几" },
+          { v: "三天后是几号？", t: "三天后是几号" },
+          { v: "下周五是几号？", t: "下周五是几号" }
+        ], "现在几点了？");
+      },
+      read: function (panel, id) {
+        var ask = tbxChip(id, "ask") || "现在几点了？";
+        return { params: { text: ask }, text: ask };
+      }
+    },
+    shape: {
+      body: function (id) {
+        return tbxChips(id, "什么图形", "shape",
+          Object.keys(SHAPES).map(function (k) { return { v: k, t: SHAPES[k].t }; }), "square", true) +
+          '<div class="tbx-dyn" id="tbx-dyn-' + id + '"></div>';
+      },
+      dyn: function (id) {
+        var s = SHAPES[tbxChip(id, "shape") || "square"];
+        return '<div class="tbx-fld-pair">' + s.ins.map(function (f) {
+          return tbxFld(id, f[0], f[1], { type: "number", value: "4" });
+        }).join("") + "</div>";
+      },
+      read: function (panel, id) {
+        var key = tbxChip(id, "shape") || "square";
+        var s = SHAPES[key];
+        var v = {};
+        s.nums.forEach(function (k) { v[k] = tbxNum(panel, id, k); });
+        return {
+          params: { shape: key, nums: s.nums.map(function (k) { return v[k]; }) },
+          text: s.ask(v)
+        };
+      }
+    },
+    math: {
+      body: function (id) {
+        return tbxChips(id, "算什么", "kind",
+          Object.keys(MATH_KINDS).map(function (k) { return { v: k, t: MATH_KINDS[k].t }; }), "percent", true) +
+          '<div class="tbx-dyn" id="tbx-dyn-' + id + '"></div>';
+      },
+      dyn: function (id) {
+        var kind = MATH_KINDS[tbxChip(id, "kind") || "percent"];
+        return '<div class="tbx-fld-pair">' + kind.ins.map(function (f) {
+          return tbxFld(id, f[0], f[1], { value: f[2] });
+        }).join("") + "</div>";
+      },
+      read: function (panel, id) {
+        var k = tbxChip(id, "kind") || "percent";
+        var kind = MATH_KINDS[k];
+        var v = {};
+        kind.ins.forEach(function (f) { v[f[1]] = tbxVal(panel, id, f[1]); });
+        return { params: kind.params(v), text: kind.ask(v) };
+      }
+    },
+    timer: {
+      body: function (id) {
+        return tbxChips(id, "计多久", "mins", [
+          { v: "10", t: "10 秒（演示）" },
+          { v: "300", t: "5 分钟" },
+          { v: "600", t: "10 分钟" },
+          { v: "900", t: "15 分钟" },
+          { v: "1500", t: "25 分钟" },
+          { v: "2700", t: "45 分钟" }
+        ], "1500") +
+          tbxFld(id, "或者自己填（分钟）", "custom", { type: "number", ph: "例如 15" }) +
+          '<div class="tbx-count" id="tbx-count-' + id + '"></div>';
+      },
+      read: function (panel, id) {
+        var custom = tbxNum(panel, id, "custom");
+        var secs = custom > 0 ? Math.round(custom * 60) : parseInt(tbxChip(id, "mins") || "1500", 10);
+        var label = secs < 60 ? (secs + "秒") : (Math.round(secs / 60) + "分钟");
+        return {
+          params: { seconds: secs, label: label, pomodoro: secs === 1500 },
+          text: "帮我计时" + label
+        };
+      }
+    }
+  };
 
   var MATCH = [
     { q: "明天会下雨吗？", ans: "weather" },
@@ -53,16 +390,16 @@ AgentLab.LabExecutor = (function () {
   // 小测验
   var QUIZ = [
     { q: "执行器在智能体中扮演什么角色？", opts: ["大脑，负责思考", "眼睛，负责看", "手，负责调用外部能力完成任务", "小本子，负责记忆"], ans: 2, why: "执行器就是 AI 的“手”——大语言模型自己不会实时查、不会真操作，执行器通过调用天气、计算、搜索等外部工具，把事真正办成。" },
-    { q: "ai-agent-book 把工具分成几类？", opts: ["3类：感知、执行、协作", "5类：感知、执行、协作、事件触发、用户沟通", "2类：输入、输出", "4类：搜索、计算、控制、通信"], ans: 1, why: "ai-agent-book chapter4:7 — 工具五分类：①感知工具（获取信息）②执行工具（改变世界）③协作工具（与其他 Agent 分工）④事件触发工具（外部输入驱动）⑤用户沟通工具（主动与用户连接）。" },
-    { q: "“查天气”“联网搜索”属于哪类工具？", opts: ["感知工具（获取信息）", "执行工具（改变世界）", "协作工具（与其他 Agent 分工）", "事件触发工具"], ans: 0, why: "ai-agent-book chapter4 — 感知工具负责获取信息：搜索引擎、文件系统、API、天气查询等。它们不改变世界，只是让 AI“看到”更多信息。" },
-    { q: "“发消息”“下单”“设置提醒”属于哪类工具？", opts: ["感知工具", "执行工具（改变世界）", "协作工具", "用户沟通工具"], ans: 1, why: "ai-agent-book chapter4 — 执行工具负责改变世界：代码执行、文件操作、系统命令、发消息、下单等。它们真正对外部世界产生影响。" },
-    { q: "“每天早上 7:30 自动提醒今天谁值日”属于哪种方式？", opts: ["用户每次自己提问触发", "事件触发工具：定时到点，自动执行", "记忆器自动回答", "执行器坏了"], ans: 1, why: "ai-agent-book chapter4 — 事件触发工具由外部事件驱动：定时任务到点、收到新邮件、Webhook 回调。它让 Agent 不需要用户每次提问也能主动做事——这是从“被动回答”走向“主动服务”的关键一步。" },
+    { q: "“联网搜索资料”“帮我把作业提交到班级群”“每周一早上 8 点自动把本周课表发到群里”——按本课的分类，这三件事分别是什么？", opts: ["读 → 做 → 再贴一个「到点自己动」的标签", "做 → 读 → 派", "读 → 派 → 做", "算 → 做 → 读"], ans: 0, why: "先看“它做了什么”：搜索是把信息读进来 → <b>读</b>；提交作业让系统里真的多了一条记录 → <b>做</b>；自动发课表这件事本身也是“做”，只是由时间触发，所以再贴一个<b>「到点自己动」的标签</b>——标签回答“什么时候做”，不是第五类。" },
+    { q: "“查天气”“联网搜索”属于哪类工具？", opts: ["读（把信息拿进来，世界不变）", "算（只加工手上已有的东西）", "做（让外面真的发生变化）", "派（把活交给别的 Agent 或人）"], ans: 0, why: "它们只是把外部信息读回来，没有改变任何东西——属于<b>读</b>。“读”不等于“没用”：Agent 答得对不对，先取决于它读到了什么。" },
+    { q: "“发消息”“下单”“设置提醒”属于哪类工具？", opts: ["读", "算", "做（让外面真的发生变化）", "派"], ans: 2, why: "它们都会在外面留下后果：群里多一条消息、账户少一笔钱、闹钟真的会响——属于<b>做</b>。这一类风险最高，所以要加确认、权限与日志。" },
+    { q: "“每天早上 7:30 自动提醒今天谁值日”——这里的“到点自己动”是什么？", opts: ["第五类工具", "一个触发标签：说明它什么时候开始做", "一种记忆", "一种模型"], ans: 1, why: "“到点自己动”回答的是<b>什么时候做</b>，不是<b>做什么</b>：这件事的类别仍然是“做”（它真的会响铃、发消息），只是由时间触发。把“谁发起”当成类别，才会出现“同一个提醒既像执行、又像事件触发”的混乱。" },
     { q: "Function Calling（函数调用）的工作机制是什么？", opts: ["AI 直接执行代码", "AI 输出一段 JSON 指令（工具名 + 参数，如 weather_query、city: '北京'），由程序去执行真正的工具", "AI 用自然语言告诉用户怎么做", "AI 调用浏览器插件"], ans: 1, why: "真实系统里，模型不是“动手”，而是输出一段结构化的 JSON 指令，指定要调用的工具名和参数，由 Harness 层的程序去执行真正的工具，再把结果返回给模型。" },
-    { q: "MCP（模型上下文协议）的作用是什么？", opts: ["一种新的编程语言", "让智能体标准化地接上各种工具，相当于“工具的 USB 接口”", "一种数据库格式", "一种模型训练方法"], ans: 1, why: "ai-agent-book chapter4:100 — MCP（Model Context Protocol）是业界提出的标准化工具接入协议，相当于“工具的 USB 接口”——一个协议接遍所有工具，不需要为每个工具单独写适配代码。" },
-    { q: "工具描述（Tool Description）为什么重要？", opts: ["让工具名字更好看", "告诉 AI 这个工具能干什么、需要什么参数，AI 才能正确选择和调用工具", "让工具运行更快", "用于工具分类"], ans: 1, why: "ai-agent-book chapter4:70 — 工具描述是 AI 选择工具的依据。好的描述包含：工具功能、参数说明、返回值格式。描述不清楚，AI 就可能选错工具或传错参数（导致幻觉）。" },
+    { q: "MCP（模型上下文协议）的作用是什么？", opts: ["一种新的编程语言", "让智能体标准化地接上各种工具，相当于“工具的 USB 接口”", "一种数据库格式", "一种模型训练方法"], ans: 1, why: "MCP（Model Context Protocol）是业界提出的标准化工具接入协议，相当于“工具的 USB 接口”——一个协议接遍所有工具，不需要为每个工具单独写适配代码。" },
+    { q: "工具描述（Tool Description）为什么重要？", opts: ["让工具名字更好看", "告诉 AI 这个工具能干什么、需要什么参数，AI 才能正确选择和调用工具", "让工具运行更快", "用于工具分类"], ans: 1, why: "工具描述是 AI 选择工具的依据。好的描述包含：工具功能、参数说明、返回值格式。描述不清楚，AI 就可能选错工具或传错参数（导致幻觉）。" },
     { q: "“工具幻觉”指的是什么？", opts: ["工具运行出错", "模型编造不存在的工具或参数，或者编造工具返回结果", "工具返回了错误数据", "用户误用工具"], ans: 1, why: "模型可能“编造”不存在的工具名或参数（如调用一个根本没有的工具），或者在工具还没返回时就编造结果。生产系统用工具白名单、参数强校验、等待回填和结果验证四道防线来防止幻觉。" },
     { q: "“帮我规划明天的行程：先查天气，再查路线，最后设提醒”需要用到什么？", opts: ["单个工具", "多工具协作（一个任务依次调用多个工具）", "不需要工具", "只需要记忆器"], ans: 1, why: "复杂任务通常需要多工具协作：规划器拆解任务→依次调用天气工具、路线工具、提醒工具→每步结果追加到上下文→最后综合回答。这就是 ReAct 循环中工具的链式调用。" },
-    { q: "生产系统防止工具幻觉的措施不包括以下哪个？", opts: ["工具白名单（只允许调用列表中的工具）", "参数校验（检查参数是否符合工具要求）", "结果验证（检查工具返回结果是否合理）", "让 AI 自由编造工具名以提高灵活性"], ans: 3, why: "生产系统用四道防线约束工具调用：白名单（防编工具）、参数强校验（防编参数）、等待回填（防编结果）、结果验证（防坏数据）。让 AI 自由编造会增加幻觉风险，不是防幻觉措施。" },
+    { q: "下面哪一句是防止工具幻觉的<b>正确</b>做法？", opts: ["让 AI 自由编造工具名，这样更灵活", "只暴露白名单里的工具，参数按 schema 强校验", "工具还没返回，就先按经验给个答案", "工具返回什么都直接转给用户"], ans: 1, why: "白名单挡住“编工具”，参数强校验挡住“编参数”，等待回填挡住“编结果”，结果验证挡住“坏数据”。四道防线全部在程序侧——不靠模型自觉。" },
     { q: "智能体请求“删除张三的作业文件”，最稳妥的处理方式是？", opts: ["立刻直接删除，越快越好", "检查权限 → 转人工确认 → 确认后才执行，并记审计日志", "让模型反复确认三遍再删", "把文件先发给模型看一遍再删"], ans: 1, why: "删除不可撤销，属于高危操作。除了白名单和参数校验，还要人工确认（先问老师）并留下审计日志——模型可以提请求，但不能自己决定要不要执行。治理强度 = 操作的不可逆程度 × 影响范围。" },
     { q: "工具“静默截断”指的是什么？为什么它比直接报错更危险？", opts: ["工具只返回了前 20 条，却没说明还有 100 条——Agent 会以为这就是全部，从而算出错误结论", "工具返回得太慢", "工具自动把参数改成了别的值", "工具报错后没有重试"], ans: 0, why: "报错至少会被发现，静默截断却让 Agent“看到了不完整的数据还以为完整”。正确做法是显式说明（“已显示第 1-20 行，共 120 行”）并把完整结果留在可再次读取的地方。" },
     { q: "同一个动作超时了，为什么不能一律“再试一次”？", opts: ["因为有些动作不能重复做（发通知、交班费、下单）——重试可能做两遍，要先判断是否可重试，并给动作带上“幂等键”", "因为重试一定会失败", "因为重试不需要花钱", "因为模型不喜欢重试"], ans: 0, why: "重试安全的前提是“幂等”：重复执行同一个请求，结果只生效一次（像按两次电梯按钮不会来两部电梯）。对不可重复的动作，要么带幂等键，要么改成“先确认、再执行”两段式。" },
@@ -114,140 +451,216 @@ AgentLab.LabExecutor = (function () {
     return out;
   }
 
+  /* ============================================================
+   * 4 课时排布（PLAN）
+   * ------------------------------------------------------------
+   * 源码按“讲一张、练一张”书写，上课顺序按 4 课时走。这里只做一件事：
+   * 按 PLAN 的顺序，把已经渲染好的 .card 节点重新插到 .lesson-summary 之前，
+   * 并在每组前插入一条课时分隔条。
+   * 为什么不在源码里搬块：卡片是上百行字符串拼接，来回搬容易漏行，
+   * 两份内容日后必然漂移。搬节点只有一份内容；圈码由 numberCards 在 main.js
+   * 里晚于 render 执行，所以会自动跟着新顺序重排。
+   * 保底：任何一张卡在 PLAN 里找不到，或排完还剩卡没登记，就整体放弃重排，
+   * 保持源码顺序（页面功能不受影响，只是顺序退回旧版）。
+   * ============================================================ */
+  var PLAN = [
+    { part: "第 1 课时 · 先给它一双手", min: "40 分钟",
+      keys: ["认识执行器", "工具百宝箱", "有工具 vs 没工具", "工具分类", "工具从哪来"] },
+    { part: "第 2 课时 · 它怎么把事办成", min: "40 分钟",
+      keys: ["Function Calling 机制", "给这次调用填参数", "工具描述与选择", "工具描述写多细", "该调用哪个工具"] },
+    { part: "第 3 课时 · 它会出错", min: "40 分钟",
+      keys: ["故障注入台", "工具幻觉与约束", "偷偷改", "失败了能不能重试"] },
+    { part: "第 4 课时 · 敢放手", min: "40 分钟",
+      keys: ["代码在哪跑", "多工具协作", "预测多工具链式调用", "MCP 协议", "该不该上 MCP", "小测验", "进阶原理互动课堂"] }
+  ];
+
+  /* 故障注入的“关页兜底还原”：只在模块加载时注册一次监听（render 可能被再次调用，
+   * 绑定在节点上的监听器会随节点一起消失，绑在 window 上的不会）。 */
+  var injectRestore = null;
+  window.addEventListener("beforeunload", function () {
+    if (injectRestore) { try { injectRestore(); } catch (e) { } }
+  });
+
+  function applyPlan(sec) {
+    var tail = sec.querySelector(".lesson-summary");
+    if (!tail) return;
+    var pool = Array.prototype.filter.call(sec.children, function (el) {
+      return el.classList && el.classList.contains("card");
+    });
+    if (!pool.length) return;
+
+    var seq = [];
+    PLAN.forEach(function (p) {
+      var bar = document.createElement("div");
+      bar.className = "lesson-part";
+      bar.innerHTML = '<span class="lp-name">' + p.part + '</span>' +
+        '<span class="lp-min">约 ' + p.min + '</span>';
+      seq.push(bar);
+      p.keys.forEach(function (key) {
+        for (var i = 0; i < pool.length; i++) {
+          var h2 = pool[i].querySelector("h2");
+          if (h2 && h2.textContent.indexOf(key) >= 0) {
+            seq.push(pool[i]);
+            pool.splice(i, 1);
+            return;
+          }
+        }
+      });
+    });
+
+    if (pool.length) return;   /* 有卡没登记 → 不重排，宁可旧顺序也不丢内容 */
+    seq.forEach(function (node) { sec.insertBefore(node, tail); });
+  }
+
   /* ---------- 渲染 ---------- */
   function render() {
     var LP = AgentLab.LabPerception;
     var sec = $("sec-executor");
     sec.innerHTML =
-      LP.labHead("exe", "hand", "执行器实验室", "让 AI 动手干活 · 组件篇·工具（L11–L12）") +
+      LP.labHead("exe", "hand", "执行器实验室", "让 AI 动手干活 · 4 课时 · 组件篇·工具（L11–L12）") +
 
-      /* 本课学习地图：先给地图、再讲细节（借鉴 ai-agent-book 每章开篇的「本章知识脉络图」）
-       * 每个节点可点 → 跳到对应卡片并高亮闪烁，兼作页内导航。 */
+      /* 大屏课堂版入口：第七课（执行器）与第八课（工具调用）各一页，左右并排。
+       * 为什么放这里：这两课都挂在这条线上，老师备完第七课，第八课就在旁边，不用另找入口。
+       * 版式：和全站卡片同一套（白底 + 细描边 + 柔和阴影），只留「第几课 / 标题 / 三个关键词 / 按钮」；
+       * 关卡数挪到右上角小标里——原来那句一长串箭头说明，投屏上根本读不完。 */
+      '<div class="lesson-entry-row">' +
+        '<div class="lesson-entry">' +
+          '<div class="le-top"><span class="le-icon">' + U.icon("hand", 20) + '</span>' +
+            '<span class="le-no">第七课</span>' +
+            '<span class="le-count">6 关</span></div>' +
+          '<b>执行器小课堂</b>' +
+          '<span class="le-desc">执行器是什么 → 工具有哪些 → 它怎么自己挑工具。</span>' +
+          '<a class="le-btn" href="lesson-executor.html">打开课堂版<span class="le-arrow">→</span></a>' +
+        '</div>' +
+        '<div class="lesson-entry le-tool">' +
+          '<div class="le-top"><span class="le-icon">' + U.icon("wrench", 20) + '</span>' +
+            '<span class="le-no">第八课</span>' +
+            '<span class="le-count">10 关</span></div>' +
+          '<b>工具调用小课堂</b>' +
+          '<span class="le-desc">接口长什么样 → 四步法怎么调 → 出错怎么查。</span>' +
+          '<a class="le-btn" href="lesson-tools.html">打开课堂版<span class="le-arrow">→</span></a>' +
+        '</div>' +
+      '</div>' +
+
+      /* 本课学习地图：4 课时主线。每个节点可点 → 跳到对应卡片并高亮闪烁，兼作页内导航。
+       * 说明：sectionMap 只渲染 t / el / tag / opt（旧的 title/hint/note 已不再输出），
+       * 所以课时与时长写在 group.label 和 it.tag 里，不再留会误导的“共 N 张卡片”小字。 */
       U.sectionMap({
-        title: "本课学习地图：从“能动手”到“敢放手”的五段路",
-        hint: "共 19 张卡片 · 点任意一格可直接跳过去",
+        head: "本课学习地图 · 4 课时",
         color: "exe",
         groups: [
-          { label: "认识与配齐", items: [
-            { t: "认识执行器", el: "exe-intro", note: "AI 的手" },
-            { t: "工具五分类", el: "exe-cat-map", note: "11 个工具" },
-            { t: "工具百宝箱", el: "pg-toolbox", note: "开关 11 种工具" }
+          { label: "第 1 课时 · 先给它一双手（40′）", items: [
+            { t: "认识执行器", el: "exe-intro", tag: "8′" },
+            { t: "工具百宝箱", el: "pg-toolbox", tag: "9′" },
+            { t: "有工具 vs 没工具", el: "pg-notool", tag: "7′" },
+            { t: "工具分类：读·算·做·派", el: "exe-cat-map", tag: "7′" },
+            { t: "工具从哪来", el: "exe-tool-source", tag: "9′" }
           ] },
-          { label: "怎么调用工具", items: [
-            { t: "有工具 vs 没工具", el: "pg-notool", note: "真实对照" },
-            { t: "Function Calling", el: "exe-fc-flow", note: "四步流程" },
-            { t: "填参数组装器", el: "exe-args", note: "谁来填参数" },
-            { t: "工具描述写多细", el: "exe-desc", note: "72%→90%" },
-            { t: "该调用哪个工具", el: "pg-toolgame", note: "11 题连线" }
+          { label: "第 2 课时 · 它怎么把事办成（40′）", items: [
+            { t: "Function Calling", el: "exe-fc-flow", tag: "10′" },
+            { t: "填参数组装器", el: "exe-args", tag: "8′" },
+            { t: "工具描述与选择", el: "exe-desc-principle", tag: "8′" },
+            { t: "描述写多细", el: "exe-desc", tag: "8′" },
+            { t: "该调用哪个工具", el: "pg-toolgame", tag: "6′" }
           ] },
-          { label: "安全 · 保真 · 重试 · 沙盒", items: [
-            { t: "工具幻觉与四道防线", el: "exe-guard", note: "四类风险" },
-            { t: "参数保真与静默失败", el: "exe-fidelity", note: "不能瞒着改" },
-            { t: "幂等与重试", el: "exe-idem", note: "做两遍会怎样" },
-            { t: "代码执行与沙盒", el: "exe-sandbox", note: "四件事" }
+          { label: "第 3 课时 · 它会出错（40′）", items: [
+            { t: "故障注入台", el: "exe-inject", tag: "10′" },
+            { t: "幻觉与四道防线", el: "exe-guard", tag: "10′" },
+            { t: "参数保真", el: "exe-fidelity", tag: "10′" },
+            { t: "重试与幂等", el: "exe-idem", tag: "10′" }
           ] },
-          { label: "协作与协议", items: [
-            { t: "多工具协作", el: "exe-mt-flow", note: "链式调用" },
-            { t: "预测工具链", el: "exe-chain", note: "先猜后放" },
-            { t: "MCP 协议", el: "exe-mcp-card", note: "工具的 USB 接口" },
-            { t: "该不该上 MCP", el: "exe-mcp", note: "场景判断" }
-          ] },
-          { label: "验收与进阶", items: [
-            { t: "小测验", el: "exe-quiz", note: "15 题" },
-            { t: "进阶原理课堂", el: "exe-adv", note: "13 个概念" }
+          { label: "第 4 课时 · 敢放手（40′）", items: [
+            { t: "代码与沙盒", el: "exe-sandbox", tag: "10′" },
+            { t: "多工具协作", el: "exe-mt-flow", tag: "6′" },
+            { t: "预测工具链", el: "exe-chain", tag: "6′" },
+            { t: "MCP 协议", el: "exe-mcp-card", tag: "6′" },
+            { t: "该不该上 MCP", el: "exe-mcp", tag: "5′" },
+            { t: "小测验", el: "exe-quiz", tag: "7′" },
+            { t: "进阶课堂", el: "exe-adv", tag: "选做", opt: true }
           ] }
         ]
       }) +
 
-      /* 学习目标 */
+      /* 学习目标：按 4 课时写成“我能…”（可观察、可验收），最后一条是学生产出 */
       '<div class="lesson-goal card-exe">' +
-        '<h3>' + U.icon("target", 18) + ' 本课学习目标</h3>' +
+        '<h3>' + U.icon("target", 18) + ' 本课学习目标（4 课时）</h3>' +
         '<div class="goal-list">' +
-          '<div class="goal-item"><span class="goal-num">1</span>理解执行器是 AI 的“手”：大模型自己查不了、做不了，执行器通过调用外部能力把事办成；掌握“有工具 vs 没工具”的区别</div>' +
-          '<div class="goal-item"><span class="goal-num">2</span>了解工具五分类（感知/执行/协作/事件触发/用户沟通），能判断天气、搜索、计算、提醒等工具属于哪类</div>' +
-          '<div class="goal-item"><span class="goal-num">3</span>理解 Function Calling 机制（模型输出 JSON 指令 → 程序执行工具 → 结果返回）与工具描述的作用；了解 MCP 协议（工具的 USB 接口）</div>' +
-          '<div class="goal-item"><span class="goal-num">4</span>建立工具安全意识：认识工具幻觉风险（编造工具/参数/结果）与生产系统的四道防线（白名单、参数强校验、等待回填、结果验证），高危操作要人工确认</div>' +
-          '<div class="goal-item"><span class="goal-num">5</span>知道工具必须“<b>保真</b>”：不许偷偷改参数、不许偷偷截断结果——静默失败比报错更危险</div>' +
-          '<div class="goal-item"><span class="goal-num">6</span>会判断“这一步能不能重试”：区分可重试与不可重试，认识<b>幂等</b>与“先确认再执行”，知道 AI 写的代码要关进<b>沙盒</b></div>' +
+          '<div class="goal-item"><span class="goal-num">1</span><b>第 1 课时｜我能分清“岗位”和“家伙”</b>：说出执行器与工具的关系；关掉一个工具后，讲清小管家少做了什么、为什么就答不上来；把 11 个工具按“读 / 算 / 做 / 派”归好，并说清哪些还要贴「到点自己动」。</div>' +
+          '<div class="goal-item"><span class="goal-num">2</span><b>第 2 课时｜我能说清一次调用怎么完成</b>：排出“用户 → AI 大脑 → 程序 → 工具 → 回填”的顺序；说出填参数要过哪三关；用四要素判断一份工具描述写得好不好。</div>' +
+          '<div class="goal-item"><span class="goal-num">3</span><b>第 3 课时｜我能看出它哪里出了错</b>：在一次坏掉的调用里找出“工具偷偷改了却没说”的地方；判断一个动作能不能放心重试，并说出为什么。</div>' +
+          '<div class="goal-item"><span class="goal-num">4</span><b>第 4 课时｜我敢放手让它做</b>：说出沙盒管住的四件事；用“规模 + 复用”判断一个小项目该不该上 MCP；遇到代码执行，先想到关进沙盒。</div>' +
+          '<div class="goal-item"><span class="goal-num">★</span><b>本课产出</b>：给班级小助手挑 5 个工具，各写一句“给 AI 看的说明书”，并标出哪些动作不能重试（设计单第 3 步）。</div>' +
         '</div>' +
       '</div>' +
 
       /* 认识执行器 */
-      LP.card("exe", "认识执行器：AI 的“手”", "大模型自己不会查天气、不会算数——执行器（<b>工具</b>）就是 AI 的「手」，把事真正办成。",
+      LP.card("exe", "认识执行器：AI 的“手”",
+        "大模型会想、会说，但不会真的去查、去做。执行器就是智能体里<b>负责动手的部件</b>；它手里的每样本领，叫一个<b>工具</b>。",
         '<div class="transform-flow">' +
           '<div class="tf-node">' + U.icon("brain", 20) + ' AI 大脑（想）</div>' +
           '<div class="tf-arrow">+</div>' +
-          '<div class="tf-node" style="border-color:var(--c-exe)">' + U.icon("hand", 20) + ' 执行器·工具（做）</div>' +
+          '<div class="tf-node" style="border-color:var(--c-exe)">' + U.icon("hand", 20) + ' 执行器（做）</div>' +
           '<div class="tf-arrow">=</div>' +
           '<div class="tf-out">“查得到、算得出、搜得到、真办事”</div>' +
         '</div>' +
-        '<div class="tip">' + U.icon("spark", 16) + ' 关键本领：<b>工具调用</b>是智能体区别于普通聊天机器人的关键之一——没工具只能“纸上谈兵”，有工具才能“真刀真枪”。工具越多，能办的事越多；但也不是越多越好——工具太多容易挑花眼，按需要配齐最合适（进阶课堂「工具五分类」里有细讲）。</div>', { id: "exe-intro" }
+        '<div class="pf-note" style="margin-top:10px">' + U.icon("info", 13) + ' <b>一句话分清：执行器是“岗位”，工具是“家伙”。</b>天气查询、计算器、提醒……都是它手边的工具。</div>' +
+        '<div class="tip">' + U.icon("spark", 16) + ' <b>工具调用</b>，是智能体区别于聊天机器人的关键：能查、能算、能真的办事。接下来先看它手边有哪些工具、怎么分类。</div>', { id: "exe-intro" }
       ) +
 
-      /* 工具五分类 */
-      LP.card("exe", "工具五分类（ai-agent-book chapter4:7）",
-        "ai-agent-book 把工具分成五大类，每类有不同的职责。先看清五类的定义与例子，再点下面的工具，看它属于哪一类。",
-        /* 原来的「区 0：图示 + 分不清时先问两个问题」左图右解整块已按需求删除，
-         * 直接进五类的定义与例子，再点下面的工具做归类练习；
-         * 配套图 images/exe-tool-taxonomy.svg 已一并删除。 */
+      /* 工具分类（放在百宝箱与对照实验之后：先玩过，再分类）
+       * 口径：四类“做什么”（读 / 算 / 做 / 派）+ 一个“什么时候做”的标签（到点自己动）。
+       * 为什么不用书里的五类做主线：原来的五类把“作用对象”（读/写）和“谁发起”
+       * （事件触发 / 用户沟通）放在同一层，同一个“提醒”能同时落进三个类，学生只能背；
+       * 而且本系统只有两类实例，另外三类只能靠虚构例子练。四类只看“它做了什么”，
+       * 标签只看“什么时候开始做”，每个工具因此只有一个类。 */
+      LP.card("exe", "工具分类：读、算、做、派",
+        "一件工具 = <b>名字 + 参数 + 返回</b>（例：<code>get_weather</code> + 城市、日期 → 天气）。",
         '<div class="tool-categories" id="exe-cat-cards">' +
-          '<div class="tc-item tc-perception">' +
-            '<div class="tc-head"><span class="tc-icon">' + U.icon("eye", 18) + '</span><b>感知工具</b><span class="tc-tag">获取信息</span></div>' +
-            '<div class="tc-desc">让 AI“看到”更多信息，不改变世界</div>' +
-            '<div class="tc-tools"><b>本系统中的：</b>天气查询、课表查询、联网搜索、时间日期<br><b>真实系统里的：</b>搜索引擎、读文件、查数据库、调 API——把信息“读进来”，不改变世界</div>' +
+          '<div class="tc-item tc-read">' +
+            '<div class="tc-head"><span class="tc-icon">' + U.icon("eye", 18) + '</span><b>读</b><span class="tc-tag">信息进来</span></div>' +
+            '<div class="tc-desc">把外面的信息拿进来，世界不变</div>' +
+            '<div class="tc-tools"><b>本系统：</b>天气、课表、搜索、时间日期<br><b>真实系统：</b>搜索引擎、读文件</div>' +
           '</div>' +
-          '<div class="tc-item tc-execution">' +
-            '<div class="tc-head"><span class="tc-icon">' + U.icon("hand", 18) + '</span><b>执行工具</b><span class="tc-tag">改变世界</span></div>' +
-            '<div class="tc-desc">真正对外部世界产生影响</div>' +
-            '<div class="tc-tools"><b>本系统中的：</b>计算器、提醒、翻译、单位换算、图形计算、数学计算、计时器<br><b>真实系统里的：</b>发消息、下单付款、写文件、执行代码、控制设备——真正让世界发生变化</div>' +
+          '<div class="tc-item tc-compute">' +
+            '<div class="tc-head"><span class="tc-icon">' + U.icon("calc", 18) + '</span><b>算</b><span class="tc-tag">内部加工</span></div>' +
+            '<div class="tc-desc">只加工手上已有的东西，外面不变</div>' +
+            '<div class="tc-tools"><b>本系统：</b>计算器、换算、图形、数学、翻译<br><b>真实系统：</b>代码计算、格式转换</div>' +
           '</div>' +
-          '<div class="tc-item tc-collab">' +
-            '<div class="tc-head"><span class="tc-icon">' + U.icon("users", 18) + '</span><b>协作工具</b><span class="tc-tag">分工协作</span></div>' +
-            '<div class="tc-desc">委托子 Agent、请求人类确认，与其他智能体分工</div>' +
-            '<div class="tc-tools"><b>例子：</b>复杂任务拆给多个子 Agent 并行处理，或在关键步骤请求用户确认</div>' +
+          '<div class="tc-item tc-act">' +
+            '<div class="tc-head"><span class="tc-icon">' + U.icon("hand", 18) + '</span><b>做</b><span class="tc-tag">改变世界</span></div>' +
+            '<div class="tc-desc">让外面真的发生变化，包括给人发消息</div>' +
+            '<div class="tc-tools"><b>本系统：</b>提醒、计时器<br><b>真实系统：</b>发消息、下单、写文件</div>' +
           '</div>' +
-          '<div class="tc-item tc-event">' +
-            '<div class="tc-head"><span class="tc-icon">' + U.icon("bell", 18) + '</span><b>事件触发工具</b><span class="tc-tag">外部驱动</span></div>' +
-            '<div class="tc-desc">由外部事件驱动，不是用户主动触发</div>' +
-            '<div class="tc-tools"><b>例子：</b>收到新邮件、定时任务到点、Webhook 回调、传感器数据变化</div>' +
-          '</div>' +
-          '<div class="tc-item tc-user">' +
-            '<div class="tc-head"><span class="tc-icon">' + U.icon("happy", 18) + '</span><b>用户沟通工具</b><span class="tc-tag">主动连接</span></div>' +
-            '<div class="tc-desc">主动与用户连接，不是只在用户提问时才回应</div>' +
-            '<div class="tc-tools"><b>例子：</b>发文字消息、语音通话、邮件通知、推送提醒</div>' +
+          '<div class="tc-item tc-dispatch">' +
+            '<div class="tc-head"><span class="tc-icon">' + U.icon("users", 18) + '</span><b>派</b><span class="tc-tag">交给别人</span></div>' +
+            '<div class="tc-desc">把活交给别的 Agent 或人</div>' +
+            '<div class="tc-tools"><b>本系统：</b>暂无<br><b>真实系统：</b>子 Agent、请人确认</div>' +
           '</div>' +
         '</div>' +
-        /* 互动：工具地图 —— 兑现副标题“看看工具分别属于哪类” */
-        '<div class="pf-kit-head">' + U.icon("target", 16) + ' 点一点：我们系统里的工具属于哪一类？</div>' +
-        '<div class="tc-map" id="exe-cat-map">' +
-          TOOLS.map(function (t) {
-            return '<button type="button" class="tc-chip" data-cat="' + (t.category || "execution") + '">' +
-              U.icon(t.icon, 14) + t.name + '</button>';
-          }).join("") +
-        '</div>' +
-        '<div class="tc-tipline" id="exe-cat-tip">' + U.icon("spark", 14) + ' 点上面任意一个工具，对应的类别卡会亮起来。</div>' +
-        '<div class="tip tip-info" style="margin-top:12px">' + U.icon("book", 16) + ' <b>ai-agent-book 发现：</b>感知工具和执行工具是最基础的两类——先用感知工具“看到”信息，再用执行工具“做出”行动。协作、事件触发、用户沟通是更高级的工具形态，让 Agent 从“被动响应”走向“主动协作”。</div>'
+        /* 8 个例子的验收练习（matcher） */
+        '<div class="pf-kit-head" style="margin-top:14px">' + U.icon("wrench", 16) + ' 验收：8 个例子各属哪一类？</div>' +
+        /* 不再套 .game-box：每行自己有边框，再套一层虚线框反而显脏 */
+        '<div id="exe-cat-practice"></div>'
       ) +
 
       /* 实验：有工具 vs 没工具：原理 → 双栏对比实验 */
       LP.card("exe", "实验：有工具 vs 没工具",
-        "同一个问题“明天穿什么？”，分别问两个 AI——一个没装工具、一个装了天气工具。先弄清<b>差别出在哪</b>，再动手各问一次，两边回答并排对照。",
-        /* 区 1：原理 —— 大模型的三个“做不到” */
-        '<div class="pf-kit-head">' + U.icon("hand", 16) + ' 原理：没有工具的 AI，只能“纸上谈兵”</div>' +
-        '<div class="pf-demo-grid" style="grid-template-columns:1fr">' +
-          '<div class="pf-card">' +
-            '<div class="pf-card-head">' + U.icon("alert", 16) + '<span>大模型的三个“做不到”</span>' +
-              '<span class="pf-chan">为什么必须有工具</span></div>' +
-            '<div class="pf-flow">' +
-              '<div class="pf-step"><span class="pf-step-tag">查不到</span>知识有截止日期——实时天气、今天几号，它根本不知道</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">算不准</span>复杂计算、单位换算容易出错——它是在“猜下一个字”</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">动不了</span>发消息、设提醒、改文件——只能说，不能做</div>' +
-            '</div>' +
-            '<div class="pf-note">' + U.icon("info", 13) + ' 于是它只有两条路：如实说“不知道”，或者……编一个（这就是幻觉）。</div>' +
+        "同一个问题“明天穿什么？”，问两个 AI：一个没装工具，一个装了天气工具。",
+        /* 原理收进按钮后面：先做对比，想追问“为什么”时再展开。
+         * 重排后是三块并排的“做不到”，比原来的三段竖排更好扫读。 */
+        '<button type="button" class="pf-reveal-btn" id="pg-why-toggle" aria-expanded="false" aria-controls="pg-tool-why">' +
+          U.icon("alert", 15) + '<span class="pf-reveal-txt">先看原理：没有工具，AI 会怎样？</span>' +
+        "</button>" +
+        '<div class="tool-why" id="pg-tool-why" hidden>' +
+          '<div class="tool-why-grid">' +
+            '<div class="tool-why-item"><b>' + U.icon("cloud", 16) + '查不到</b><span>知识有截止日期：今天的天气、今天的新闻，它不知道。</span></div>' +
+            '<div class="tool-why-item"><b>' + U.icon("calc", 16) + '算不准</b><span>复杂计算、单位换算容易错——它在“猜下一个字”。</span></div>' +
+            '<div class="tool-why-item"><b>' + U.icon("hand", 16) + '动不了</b><span>发消息、设提醒、改文件——只能说，不能做。</span></div>' +
           '</div>' +
+          '<div class="tool-why-foot">所以它只有两条路：如实说“不知道”，或者编一个——这就是“幻觉”。</div>' +
         '</div>' +
         /* 区 2：双栏对比 —— 两边结果并排，可反复问 */
-        '<div class="pf-kit-head">' + U.icon("target", 16) + ' 动手对比：同一个问题，各问一次，并排看结果</div>' +
+        '<div class="pf-kit-head">' + U.icon("target", 16) + ' 动手对比：各问一次，看看差别</div>' +
         '<div class="row" style="margin-bottom:10px">' +
           '<button class="btn btn-gray" id="pg-notool">' + U.icon("xmark", 16) + ' 问没有工具的 AI</button>' +
           '<button class="btn btn-exe" id="pg-withtool">' + U.icon("cloud", 16) + ' 问有天气工具的 AI</button>' +
@@ -266,9 +679,40 @@ AgentLab.LabExecutor = (function () {
         '<div class="quiz-feedback" id="pg-tool-fb"></div>'
       ) +
 
+      /* 工具从哪来：自己写 vs 调外部（放在对比之后、Function Calling 之前）
+       * 五年级只需要记住两条路：自己写（函数→登记→点名就调）、调外部（地址→钥匙→请求→收结果）。 */
+      LP.card("exe", "工具从哪来：自己写，还是调外部？",
+        "工具不是天上掉下来的：要么你自己写一个，要么去调用别人做好的服务。",
+        '<div class="pf-demo-grid">' +
+          '<div class="pf-card">' +
+            '<div class="pf-card-head">' + U.icon("wrench", 16) + '<span>自己写的工具</span>' +
+              '<span class="pf-chan">三步</span></div>' +
+            '<div class="pf-flow">' +
+              '<div class="pf-step"><span class="pf-step-tag">① 写函数</span>用几行代码算出一个结果，比如 <code>area(长, 宽)</code>。</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">② 登记</span>把名字、参数、返回写成一份“说明书”，交给模型看。</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">③ 点名就调</span>模型说“用 area，长 4 宽 3”，你的代码直接执行，<b>不联网</b>。</div>' +
+            '</div>' +
+            '<div class="pf-note">' + U.icon("info", 13) + ' 例：计算器、单位换算、图形计算——都是程序里自己写好的。</div>' +
+          '</div>' +
+          '<div class="pf-card">' +
+            '<div class="pf-card-head">' + U.icon("cloud", 16) + '<span>调用外部工具</span>' +
+              '<span class="pf-chan">四步</span></div>' +
+            '<div class="pf-flow">' +
+              '<div class="pf-step"><span class="pf-step-tag">① 拼地址</span>找到服务的网址，比如天气服务的 <code>api.open-meteo.com</code>。</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">② 带钥匙</span>有的服务要 Key；天气这个不要，搜索要。</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">③ 发请求</span>把参数装进去：城市 = 北京，时间 = 明天。</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">④ 收结果</span>收到一段 JSON，取出“晴，15~25°C”。</div>' +
+            '</div>' +
+            '<div class="pf-note">' + U.icon("info", 13) + ' 例：天气查询、网页搜索——都是别人做好的服务，我们只是去“点单”。</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="tip">' + U.icon("spark", 16) + ' <b>一句话记住：</b>自己写 = <b>函数 + 说明书 + 点名就调</b>；调外部 = <b>地址 + 钥匙 + 参数 + 收结果</b>。</div>',
+        { id: "exe-tool-source" }
+      ) +
+
       /* Function Calling 机制：原理（两个角色）→ 分步接力演示 */
       LP.card("exe", "Function Calling 机制：AI 怎么“调用”工具？",
-        "真实系统里，AI 不是直接“动手”，而是输出一段结构化的 JSON 指令，由程序去执行真正的工具。先弄清<b>两个角色怎么分工</b>，再分步看一次完整接力。",
+        "AI 不直接动手：它写一段 JSON（调哪个工具、传什么参数），由程序去执行，再把结果送回来。",
         /* 原来的「区 0：四步流程图 + 先把角色分清楚」左图右解整块已按需求删除，
          * 直接进「原理：决策方 / 执行方」，再分步看一次完整接力；
          * 配套图 images/exe-function-calling.svg 已一并删除。 */
@@ -285,60 +729,50 @@ AgentLab.LabExecutor = (function () {
             '<div class="pf-note">' + U.icon("info", 13) + ' 它没有能力真的去查天气——只能写一张“委托单”。</div>' +
           '</div>' +
           '<div class="pf-card">' +
-            '<div class="pf-card-head">' + U.icon("gear", 16) + '<span>程序 Harness（执行方）</span>' +
+            '<div class="pf-card-head">' + U.icon("gear", 16) + '<span>程序（执行方）</span>' +
               '<span class="pf-chan">只办事情</span></div>' +
             '<div class="pf-flow">' +
               '<div class="pf-step"><span class="pf-step-tag">执行</span>收到 JSON，校验参数，调用真实的 API / 工具</div>' +
               '<div class="pf-step"><span class="pf-step-tag">回填</span>把结果送回模型，由模型组织成人话</div>' +
             '</div>' +
-            '<div class="pf-note">' + U.icon("info", 13) + ' 它就是模型的“手”：<b>模型负责决策，程序负责执行</b>。</div>' +
+            '<div class="pf-note">' + U.icon("info", 13) + ' 程序就是智能体的<b>执行器</b>：模型负责决策，程序负责执行。</div>' +
           '</div>' +
         '</div>' +
-        /* 区 2：分步接力演示（左 = AI 大脑 / 右 = 程序，体现两个角色交替） */
-        '<div class="pf-kit-head">' + U.icon("spark", 16) + ' 分步接力：问一次天气，看两个角色怎么交接</div>' +
-        '<div class="game-box">' +
-          '<div class="row" style="gap:8px;flex-wrap:wrap;align-items:center">' +
-            '<button class="btn btn-exe btn-sm" id="exe-fc-next">' + U.icon("spark", 15) + ' 下一步</button>' +
-            '<button class="btn btn-ghost btn-sm" id="exe-fc-auto">自动播放</button>' +
-            '<button class="btn btn-ghost btn-sm" id="exe-fc-reset">' + U.icon("refresh", 15) + ' 重来</button>' +
-            '<span id="exe-fc-progress" style="color:var(--c-sub);font-size:13px;margin-left:auto">第 0 / 4 步</span>' +
-          '</div>' +
-          '<div class="fcr-flow" id="exe-fc-flow">' +
-            /* ① 用户提问（居中） */
-            '<div class="fcr-step is-user" data-fc="1">' +
-              '<div class="fcr-head"><span class="fcr-badge">①</span><span class="fcr-who">用户</span></div>' +
-              '<div class="fcr-msg">北京明天天气怎么样？</div>' +
-            '</div>' +
-            '<div class="fcr-link" data-fc="1"><span>↓</span><b>提问</b></div>' +
-            /* ② AI 大脑：输出 JSON（左） */
-            '<div class="fcr-step is-ai" data-fc="2">' +
-              '<div class="fcr-head"><span class="fcr-badge">②</span><span class="fcr-who">AI 大脑</span>' +
-                '<span class="fcr-role">决策：调什么工具、传什么参数</span></div>' +
-              '<div class="fcr-desc">看懂问题，先把“明天”换算成具体日期，再输出一段 JSON 指令：</div>' +
-              '<div class="fcr-json">{ "tool": "weather_query",<br>&nbsp;&nbsp;"arguments": { "city": "北京", "date": "2026-10-12" } }</div>' +
-            '</div>' +
-            '<div class="fcr-link is-flow" data-fc="2"><span>↓</span><b>JSON 指令（模型 → 程序）</b></div>' +
-            /* ③ 程序执行（右） */
-            '<div class="fcr-step is-prog" data-fc="3">' +
-              '<div class="fcr-head"><span class="fcr-badge">③</span><span class="fcr-who">程序 Harness</span>' +
-                '<span class="fcr-role">执行：真调 API、回填结果</span></div>' +
-              '<div class="fcr-desc">校验参数后，调用真实的天气 API：</div>' +
-              '<div class="fcr-term">$ 调用 weather_query(city=北京, date=2026-10-12)<br>$ 返回：晴，15~25°C，微风</div>' +
-            '</div>' +
-            '<div class="fcr-link is-flow" data-fc="3"><span>↑</span><b>工具结果（程序 → 模型）</b></div>' +
-            /* ④ AI 大脑组织回答（左） */
-            '<div class="fcr-step is-ai" data-fc="4">' +
-              '<div class="fcr-head"><span class="fcr-badge">④</span><span class="fcr-who">AI 大脑</span>' +
-                '<span class="fcr-role">组织回答：基于真实结果说话</span></div>' +
-              '<div class="fcr-desc">工具结果追加到上下文，模型据此组织回答：</div>' +
-              '<div class="fcr-msg">北京明天晴天，气温 15 到 25 度，微风，适合穿薄外套哦！</div>' +
-            '</div>' +
-          '</div>' +
+        /* 区 2：一次完整接力 —— 四张子卡片 2×2 蛇形排列，箭头即信息流向 */
+        '<div class="pf-kit-head">' + U.icon("spark", 16) + ' 一次完整接力：问一次天气，看两个角色怎么交接</div>' +
+        '<div class="fcq">' +
+          '<ol class="fcq-grid" id="exe-fc-flow">' +
+            /* ① 用户提问：整条链路的起点 */
+            '<li class="fcq-card is-user fcq-to-right">' +
+              '<div class="fcq-head"><span class="fcq-no">1</span><span class="fcq-role">用户</span><span class="fcq-desc">提出需求</span></div>' +
+              '<div class="fcq-quote">北京明天天气怎么样？</div>' +
+              '<p class="fcq-note">话里有两个参数：<b>城市 = 北京</b>、<b>时间 = 明天</b>。</p>' +
+              '<p class="fcq-note">但没说调哪个工具——交给 AI 大脑翻译。</p>' +
+            '</li>' +
+            /* ② AI 大脑：把原话翻译成委托单 */
+            '<li class="fcq-card is-ai fcq-to-down">' +
+              '<div class="fcq-head"><span class="fcq-no">2</span><span class="fcq-role">AI 大脑</span><span class="fcq-desc">决策方 · 收到用户原话</span></div>' +
+              '<p class="fcq-note">把“明天”换成具体日期，写一条 JSON：</p>' +
+              '<pre class="fcq-code">{\n  "tool": "weather_query",\n  "arguments": { "city": "北京", "date": "2026-10-12" }\n}</pre>' +
+              '<p class="fcq-note is-bottom">它查不了天气，只能写这张“委托单”。</p>' +
+            '</li>' +
+            /* ③ 程序：照着委托单真去执行 */
+            '<li class="fcq-card is-prog fcq-to-left">' +
+              '<div class="fcq-head"><span class="fcq-no">3</span><span class="fcq-role">程序</span><span class="fcq-desc">执行方 · 收到委托单</span></div>' +
+              '<p class="fcq-note">校验参数，调用真实的天气接口：</p>' +
+              '<pre class="fcq-code">$ weather_query(city="北京", date="2026-10-12")\n→ 晴，15~25°C，微风</pre>' +
+              '<p class="fcq-note is-bottom">结果原样送回，不作解释。</p>' +
+            '</li>' +
+            /* ④ AI 大脑：把工具结果说成人话 */
+            '<li class="fcq-card is-ai">' +
+              '<div class="fcq-head"><span class="fcq-no">4</span><span class="fcq-role">AI 大脑</span><span class="fcq-desc">收到工具结果 · 组织回答</span></div>' +
+              '<div class="fcq-answer">北京明天晴，15~25℃，微风，适合穿薄外套。</div>' +
+              '<p class="fcq-note is-bottom">结果回到上下文，模型把它说成人话。</p>' +
+            '</li>' +
+          '</ol>' +
         '</div>' +
-        '<div class="tip tip-info" style="margin-top:12px">' + U.icon("info", 15) + ' <b>关键点：</b>模型负责“决策”、程序负责“执行”，JSON 就是两者之间的“委托单”。注意箭头方向——<b>指令向下传，结果向上回</b>，一来一回才完成一次工具调用。下面紧跟着「给这次调用填参数」实验，可以亲手组装一次参数。</div>' +
         /* 请求 ↔ 响应：复用感知器的 apiCall 类型（同一套视觉语言，出现在两个不同场景） */
         '<div class="pf-kit-head" style="margin-top:16px">' + U.icon("cloud", 16) + ' 真实里长什么样：一次工具调用的「请求 ↔ 响应」</div>' +
-        '<div class="tip tip-info" style="margin:0 0 12px">' + U.icon("book", 15) + ' 这和感知器「怎么调用大模型」用的是<b>同一个</b>请求 ↔ 响应面板——同一个视觉语言，看两种不同的调用。切换模式时留意：<b>请求体只改了 tools 一处，回来的东西就完全不一样</b>。</div>' +
         '<div id="exe-fc-io"></div>'
       ) +
 
@@ -398,34 +832,33 @@ AgentLab.LabExecutor = (function () {
             '<div class="td-field"><b>场景：</b>纯四则运算时用；折扣、百分数、平均数交给「数学计算工具」</div>' +
           '</div>' +
         '</div>' +
-        '<div class="tip tip-warn" style="margin-top:12px">' + U.icon("alert", 16) + ' <b>如果工具描述写得不好：</b>比如只写“工具1”、不写功能和使用场景，AI 就不知道该什么时候调用它，可能选错工具或传错参数（导致幻觉）。下面紧跟着「工具描述写多细才够」实验，可以亲手调一调。</div>'
+        '<div class="tip tip-warn" style="margin-top:12px">' + U.icon("alert", 16) + ' <b>如果工具描述写得不好：</b>比如只写“工具1”、不写功能和使用场景，AI 就不知道该什么时候调用它，可能选错工具或传错参数（导致幻觉）。下面紧跟着「工具描述写多细才够」实验，可以亲手调一调。</div>',
+        { id: "exe-desc-principle" }
       ) +
 
       /* 实验：工具描述写多细才够（紧跟工具描述） */
       LP.card("exe", "实验：工具描述写多细才够？（准确率调参）",
-        "工具描述是模型选工具的唯一依据。先弄清<b>一份合格描述要写清哪四样</b>，再拖滑条看准确率怎么变——过简会混淆，过详又会淹没关系。",
-        /* 区 1：原理 —— 四要素 + 两种掉分写法 */
-        '<div class="pf-kit-head">' + U.icon("pen", 16) + ' 原理：工具描述 = 写给模型看的“说明书”</div>' +
+        "上一张已经知道四要素是哪四样，这一张只做一件事：拖滑条，看准确率什么时候到顶、什么时候开始掉。",
+        /* 区 1：不再重复四要素清单（上一张卡已逐条讲过），只留“为什么会掉分” */
+        '<div class="pf-kit-head">' + U.icon("pen", 16) + ' 原理：说明书缺一样，模型就得猜</div>' +
         '<div class="pf-demo-grid">' +
           '<div class="pf-card">' +
-            '<div class="pf-card-head">' + U.icon("check", 16) + '<span>写全四要素就够</span>' +
-              '<span class="pf-chan">功能 / 参数 / 返回 / 场景</span></div>' +
+            '<div class="pf-card-head">' + U.icon("check", 16) + '<span>四要素齐了就到顶</span>' +
+              '<span class="pf-chan">约 90%</span></div>' +
             '<div class="pf-flow">' +
-              '<div class="pf-step"><span class="pf-step-tag">功能</span>这个工具是干什么的（一句话说清）</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">参数</span>要传什么、什么类型、哪些必填</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">返回</span>会拿回什么结果</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">场景</span>什么时候该用它（和其他工具怎么区分）</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">缺一样</span>模型只能靠猜——猜错就是<b>选错工具</b>，或者把参数填成它想象的样子</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">齐了</span>准确率到顶；再往上堆字，只会把必填项和取值要求淹没掉</div>' +
             '</div>' +
-            '<div class="pf-note">' + U.icon("info", 13) + ' 四要素齐了，选择准确率就到顶。</div>' +
+            '<div class="pf-note">' + U.icon("info", 13) + ' 下面滑条的峰值就在“四要素写全”这一段，记住它出现的位置，比记住数字有用。</div>' +
           '</div>' +
           '<div class="pf-card">' +
             '<div class="pf-card-head">' + U.icon("alert", 16) + '<span>两种写法都会掉分</span>' +
               '<span class="pf-chan">太简 / 太冗</span></div>' +
             '<div class="pf-flow">' +
               '<div class="pf-step"><span class="pf-step-tag">太简</span>只写个名字（do_stuff）——模型分不清用哪个、该传什么</div>' +
-              '<div class="pf-step"><span class="pf-step-tag">太冗</span>大段说明占预算，还把关键信息（必填、枚举值）淹没掉</div>' +
+              '<div class="pf-step"><span class="pf-step-tag">太冗</span>大段说明占地方，还把关键信息（必填、能填哪些值）淹没掉</div>' +
             '</div>' +
-            '<div class="pf-note">' + U.icon("info", 13) + ' 给工具写好描述，是 Agent 工程师的核心工作之一。</div>' +
+            '<div class="pf-note">' + U.icon("info", 13) + ' 给工具写好描述，是智能体工程师的核心工作之一。</div>' +
           '</div>' +
         '</div>' +
         '<div class="tip" style="margin-top:10px">' + U.icon("microscope", 16) + ' <b>两个可以量化的结论：</b>① 描述里附上 <b>1~5 个真实的调用示例</b>，工具选择准确率能从约 <b>72% 提到 90%</b>——示例比形容词管用；② 边界要写清（“不能做什么”），否则模型会自行猜测，把不该用它的时候也调用它。</div>' +
@@ -456,38 +889,68 @@ AgentLab.LabExecutor = (function () {
         '</div>'
       ) +
 
-      /* 工具百宝箱：按五分类分组 + 能力计数（关闭立即生效于智能体实验室） */
+      /* 工具百宝箱：按“读 / 算 / 做”分组 + 能力计数（关闭立即生效于智能体实验室） */
       LP.card("exe", "工具百宝箱：开关工具试试",
-        "小管家身上装着 " + TOOLS.length + " 种工具（本系统只装了两类工具，所以分成两组）。关掉一个，它的本领就少一样——开关会立即作用于「智能体实验室」，可以随时去验证。",
+        "",
         '<div class="tbx-bar">' +
           '<span class="tbx-count" id="pg-toolbox-count">' + U.icon("hand", 15) + ' 已开启 <b>…</b> 项能力</span>' +
-          '<span class="tbx-note">关闭后立即生效于「智能体实验室」</span>' +
+          '<span class="tbx-note">开关立即生效 · 点工具名可试用</span>' +
         '</div>' +
         '<div id="pg-toolbox" class="tbx-grid">' +
-          [["perception", "感知工具", "eye", "获取信息"],
-           ["execution", "执行工具", "hand", "改变世界"]].map(function (cat) {
-            var list = TOOLS.filter(function (t) { return (t.category || "execution") === cat[0]; });
+          [["read", "读 · 信息拿进来", "eye", "4 件"],
+           ["compute", "算 · 只加工不碰外面", "calc", "5 件"],
+           ["act", "做 · 让外面真的变", "hand", "2 件"]].map(function (cat) {
+            var list = TOOLS.filter(function (t) { return (t.category || "act") === cat[0]; });
             return '<div class="tbx-group">' +
               '<div class="tbx-group-head">' + U.icon(cat[2], 15) + '<b>' + cat[1] + '</b><span>' + cat[3] + '</span></div>' +
               list.map(function (t) {
-                return '<div class="toggle-row">' +
-                  '<span class="t-label">' + U.icon(t.icon, 20) + '<span class="t-txt"><b>' + t.name + '</b><small style="color:var(--c-sub);font-weight:400">' + t.desc + "</small></span></span>" +
+                var ui = TRY_UI[t.id];
+                var note = TRY_NOTE[t.id];
+                return '<div class="toggle-row" data-tryrow="' + t.id + '">' +
+                  '<button type="button" class="t-label tbx-try-open" data-try="' + t.id + '" aria-expanded="false" aria-haspopup="dialog" title="点一下，打开试用窗口">' +
+                    U.icon(t.icon, 20) +
+                    '<span class="t-txt"><b>' + t.name + '<span class="tbx-try-chip">▶ 试一试</span></b>' +
+                    '<small style="color:var(--c-sub);font-weight:400">' + t.desc + "</small></span>" +
+                  "</button>" +
                   '<label class="switch"><input type="checkbox" data-tool="' + t.id + '"><span class="slider"></span></label>' +
+                  "</div>" +
+                  '<div class="tbx-modal" id="tbx-try-' + t.id + '" hidden>' +
+                    '<div class="tbx-modal-mask" data-try-close="' + t.id + '"></div>' +
+                    '<div class="tbx-modal-card" role="dialog" aria-modal="true" aria-labelledby="tbx-modal-title-' + t.id + '">' +
+                      '<div class="tbx-modal-head">' +
+                        '<b id="tbx-modal-title-' + t.id + '">试用：' + t.name + "</b>" +
+                        '<button type="button" class="tbx-modal-x" data-try-close="' + t.id + '" aria-label="关闭试用窗口">' +
+                          U.icon("xmark", 16) + "</button>" +
+                      "</div>" +
+                      '<div class="tbx-modal-body">' +
+                        '<div class="tbx-try-lead">自己把参数填一填，再点「运行这个工具」</div>' +
+                        '<div class="tbx-ui" data-ui="' + t.id + '">' + (ui ? ui.body(t.id) : "") + "</div>" +
+                        '<div class="tbx-try-act">' +
+                          '<button type="button" class="tbx-try-run" data-try-run="' + t.id + '">运行这个工具</button>' +
+                          '<button type="button" class="tbx-try-input-btn" data-try-input="' + t.id + '" aria-expanded="false">' +
+                            U.icon("term", 13) + ' 查看输入参数</button>' +
+                          '<span class="tbx-try-hint">运行后会给出「原话 → 参数 → 工具返回」</span>' +
+                        "</div>" +
+                        '<div class="tbx-try-input" id="tbx-input-' + t.id + '" hidden></div>' +
+                        (note ? '<div class="tbx-try-note">' + U.icon("alert", 13) + "<span>" + note + "</span></div>" : "") +
+                        '<div class="tbx-try-out" id="tbx-try-out-' + t.id + '"></div>' +
+                      "</div>" +
+                    "</div>" +
                   "</div>";
               }).join("") +
             '</div>';
           }).join("") +
         '</div>' +
         '<div class="tip">' + U.icon("target", 16) + ' 试试看：关掉“天气查询工具”，去智能体实验室问“明天穿什么？”，小管家是不是就答不上来啦？这就是“没工具只能纸上谈兵”！</div>' +
-        '<div class="tip tip-warn" style="margin-top:8px">' + U.icon("alert", 16) + ' <b>工具不是越多越好（有实测）：</b>当工具数量超过 <b>100 个</b>，连最先进的模型也会开始挑错——把 120 多个工具的说明全都塞进上下文，光工具定义就超过 <b>5 万 Token</b>，小模型甚至会出现“忘记用工具、指令都不遵守”。<br>解法不是“让模型更聪明”，而是<b>按需加载</b>：先按大类筛，再把相关的几个交给模型挑——实测准确率能从 <b>49% 提到 74%</b>。就像查工具书：没人从第一页读到最后一页，都是顺着目录查词条。</div>' +
-        '<div class="tip" style="margin-top:8px">' + U.icon("wrench", 16) + ' <b>那要不要给每件事都做一个专用工具？</b>不一定要——<b>一个通用的“代码执行”往往顶得上一堆小工具</b>（算数、改文件、处理数据都能做）。只有这四种情况才值得专门造一个：① 需要严格控制<b>安全权限</b>；② 要屏蔽不同平台/系统的差异；③ 使用<b>频率极高</b>、值得优化；④ 参数很复杂、需要专门校验。<br>反过来也要注意：通用工具“什么都能做”，就意味着它带来的风险也更大——所以它更需要沙盒（后面有专门的实验卡会讲）。</div>'
+        '<div class="tip tip-warn tip-extra" style="margin-top:8px">' + U.icon("alert", 16) + ' <b>工具不是越多越好：</b>工具一多，光把每件工具的说明书都塞进上下文，就要占掉一大块地方——相当于每次说话前，先背一遍整本工具目录；工具上百个时，连最强的模型也会挑错，小模型甚至会“忘记用工具、连指令都不遵守”。<br>解法不是“让模型更聪明”，而是<b>按需加载</b>：先按大类筛，再把相关的几件交给模型挑——同样的实验里，选对工具的准确率从大约一半提到了四分之三。就像查工具书：没人从第一页读到最后一页，都是顺着目录查词条。</div>' +
+        '<div class="tip tip-extra" style="margin-top:8px">' + U.icon("wrench", 16) + ' <b>那要不要给每件事都做一个专用工具？</b>不一定要——<b>一个通用的“代码执行”往往顶得上一堆小工具</b>（算数、改文件、处理数据都能做）。只有这四种情况才值得专门造一个：① 需要严格控制<b>安全权限</b>；② 要屏蔽不同平台/系统的差异；③ 使用<b>频率极高</b>、值得优化；④ 参数很复杂、需要专门校验。<br>反过来也要注意：通用工具“什么都能做”，就意味着它带来的风险也更大——所以它更需要沙盒（后面有专门的实验卡会讲）。</div>'
       ) +
 
       /* 工具幻觉与约束：四类风险 + 四道防线 + 动手实验（原「工具幻觉与约束」与「四道防线实验」两张卡合并）
        * 合并理由：两张卡把同一组“四类风险 ↔ 四道防线”各讲了一遍，信息重复而卡位浪费；
        *          现在一张卡走完“看清风险 → 知道谁拦 → 亲手关掉一道看漏什么”。 */
       LP.card("exe", "工具幻觉与约束：AI 会“编造”工具吗？",
-        "模型可能<b>编造</b>三种东西：不存在的工具、错误的参数、没拿到就编的结果；还可能把工具返回的<b>坏数据</b>照单全收。先看清这四类风险长什么样、各由哪道防线拦住，再<b>亲手关掉一道防线</b>，看哪类风险就漏过去了。",
+        "上一张你自己弄坏过系统——现在看它本该被谁拦住。模型可能<b>编造</b>三种东西：不存在的工具、错误的参数、没拿到就编的结果；还可能把工具返回的<b>坏数据</b>照单全收。先看清这四类风险长什么样、各由哪道防线拦住，再<b>亲手关掉一道防线</b>，看哪类风险就漏过去了。",
         '<div class="pf-kit-head">' + U.icon("alert", 16) + ' 原理：四类风险 ↔ 四道防线（一一对应）</div>' +
         '<div class="pf-demo-grid pf-cols-2">' +
           '<div class="pf-card">' +
@@ -534,7 +997,7 @@ AgentLab.LabExecutor = (function () {
             '<div class="pf-note">' + U.icon("info", 13) + ' 只丢一句“出错了”，模型只能靠猜——所以错误信息要写清“哪一步 + 为什么 + 缺什么”。</div>' +
           '</div>' +
         '</div>' +
-        '<div class="tip tip-ok" style="margin-top:12px">' + U.icon("shield", 16) + ' <b>本系统的实践：</b>你关掉某个工具后，小管家会“诚实说查不到”，而不是编造结果——这就是白名单和约束起作用的体现！AI 会犯错，Harness 负责兜底。另外，<b>高危操作</b>（删文件、群发消息）执行前必须<b>人工确认</b>，每次调用都记<b>审计日志</b>——模型可以提请求，但不能自己决定要不要执行（详见进阶课堂「工具治理」）。</div>' +
+        '<div class="tip tip-ok" style="margin-top:12px">' + U.icon("shield", 16) + ' <b>本系统的实践：</b>你关掉某个工具后，小管家会“诚实说查不到”，而不是编造结果——这就是白名单和约束起作用的体现！AI 会犯错，程序负责兜底。另外，<b>高危操作</b>（删文件、群发消息）执行前必须<b>人工确认</b>，每次调用都记<b>审计日志</b>——模型可以提请求，但不能自己决定要不要执行（详见进阶课堂「工具治理」）。</div>' +
         /* 区 2：动手（组件自带标题） */
         '<div class="pf-kit-head">' + U.icon("spark", 16) + ' 动手实验：关掉一道防线，看哪类风险漏过去</div>' +
         U.predict({
@@ -552,6 +1015,14 @@ AgentLab.LabExecutor = (function () {
         }) +
         '<div id="exe-guard"></div>' +
         '<div class="pf-note">' + U.icon("check", 13) + ' <b>小结：</b>四道防线一一对应四类风险，而且全部在<b>程序侧</b>——不靠模型自觉。再配上「结构化错误回喂（恢复率 60%→95%）」与「连续失败熔断（约 3 次）转人工」，工具调用才算稳。</div>') +
+
+      /* 故障注入台（对应评审"实验维度"第 1 条：从"看别人准备好的失败"升级为"自己把系统弄坏再修好"）
+       * 为什么紧跟四道防线：学生刚知道每道防线防什么，正好由他亲手关掉/绕开，
+       * 看事故怎么发生——先看见后果，再明白那道防线为什么必须有。
+       * 三条注入全部走真实调用路径（真跑 Agent.run），跑完自动还原，不留下坏状态。 */
+      LP.card("exe", "实验：故障注入台——这一次，由你来把系统弄坏",
+        "这张先不讲道理：<b>故障由你注入</b>，然后真的让智能体跑一句，看它会出什么事。<b>先看见事故，下一张再学四道防线。</b>注入只在这一轮生效、跑完自动还原，不会弄坏你的系统。",
+        '<div id="exe-inject"></div>') +
 
       /* 新卡：工具不能“偷偷改”参数——参数保真与静默失败（ai-agent-book chapter4:90） */
       LP.card("exe", "实验：工具不能“偷偷改”——参数保真与静默失败",
@@ -575,7 +1046,7 @@ AgentLab.LabExecutor = (function () {
               '<div class="pf-step"><span class="pf-step-tag">报错</span>Agent 立刻知道这一步没成功 → 可以重试、换工具、如实告知用户</div>' +
               '<div class="pf-step"><span class="pf-step-tag">静默失败</span>Agent 以为成功了，拿着<b>不完整或已被改过的结果</b>继续往下做——错误会一路传到最后</div>' +
             '</div>' +
-            '<div class="pf-note">' + U.icon("book", 13) + ' <b>ai-agent-book 提醒：</b>工具把参数“悄悄规整”（弯引号改直引号）或“悄悄加参数”，会让调用永远匹配不上、或旧版本必然失败——而且模型完全不知道自己被改了。</div>' +
+            '<div class="pf-note">' + U.icon("book", 13) + ' <b>工程提醒：</b>工具把参数“悄悄规整”（弯引号改直引号）或“悄悄加参数”，会让调用永远匹配不上、或旧版本必然失败——而且模型完全不知道自己被改了。</div>' +
           '</div>' +
         '</div>' +
         /* 区 2：动手（在日志里找出被偷偷动过的地方） */
@@ -684,12 +1155,12 @@ AgentLab.LabExecutor = (function () {
           '<div class="mtc-chain">' +
             '<div class="mtc-step" data-mt="1">' +
               '<span class="mtc-ic">' + U.icon("cloud", 17) + '</span>' +
-              '<div class="mtc-body"><div class="mtc-line"><b>查天气</b><span class="mtc-tag is-sense">感知工具</span></div>' +
+              '<div class="mtc-body"><div class="mtc-line"><b>查天气</b><span class="mtc-tag is-sense">读</span></div>' +
                 '<div class="mtc-out">北京明天：晴，15~25°C</div></div>' +
             '</div>' +
             '<div class="mtc-step" data-mt="2">' +
               '<span class="mtc-ic">' + U.icon("search", 17) + '</span>' +
-              '<div class="mtc-body"><div class="mtc-line"><b>搜景点</b><span class="mtc-tag is-sense">感知工具</span></div>' +
+              '<div class="mtc-body"><div class="mtc-line"><b>搜景点</b><span class="mtc-tag is-sense">读</span></div>' +
                 '<div class="mtc-out">“适合晴天去的景点” → 故宫、颐和园、天坛</div></div>' +
             '</div>' +
             '<div class="mtc-step" data-mt="3">' +
@@ -744,24 +1215,26 @@ AgentLab.LabExecutor = (function () {
           '</div>' +
         '</div>' +
         /* 区 2：动手（组件自带标题） */
+        /* 原来这里问的是“必须先拿到什么”，和下面 pipeline 自带的猜题完全重复；
+         * 改成问“哪两步可以同时做”，把“依赖决定顺序、无依赖可并行”单独练一次。 */
         U.predict({
           id: "exe-chain",
           color: "exe",
-          q: "先猜一猜：要生成“周末出行行程”，这一步必须先拿到什么？",
+          q: "先猜一猜：这条链里，哪两步其实可以同时做？",
           opts: [
-            { k: "a", t: "只要天气就够了" },
-            { k: "b", t: "只要景点就够了" },
-            { k: "c", t: "天气和景点两个都要——少一个都拼不出行程" }
+            { k: "a", t: "查天气 和 搜景点——它们互不依赖" },
+            { k: "b", t: "算门票 和 设提醒——前后必须接上" },
+            { k: "c", t: "每一步都得排队，一步也不能同时" }
           ],
-          ans: "c",
-          why: "链式调用的关键是<b>依赖关系</b>：生成行程同时依赖“天气”和“景点”两个上游结果，缺一个就只能猜。这也解释了另外两个工程细节——<b>并行前要先声明是否支持并发（默认否）</b>，以及<b>级联中止</b>：一个失败只中止依赖它的调用，不影响无关的分支。",
-          hint: "先画出这一步的输入箭头——它指向几个上游结果？"
+          ans: "a",
+          why: "查天气和搜景点互不依赖，真实系统里可以同时发起，省一半时间；算门票要用景点结果、设提醒要等行程定下来，所以必须排队。<b>顺序不是“想到哪做到哪”，而是由数据依赖推出来的。</b>",
+          hint: "问自己：哪两步之间，谁也不需要等谁的结果？"
         }) +
         '<div id="exe-chain"></div>' +
         '<div class="pf-note">' + U.icon("check", 13) + ' <b>小结：</b>链式调用看<b>依赖</b>——先画清这一步的输入指向谁；并行要先显式声明是否支持并发（默认否），失败要<b>级联中止</b>：只停掉依赖它的分支，别误伤无关的调用。</div>') +
 
       /* MCP 协议：原理（N×M vs N+M）→ 连线对比 → 五要素 */
-      LP.card("exe", "MCP 协议：工具的“USB 接口”（ai-agent-book chapter4:100）",
+      LP.card("exe", "MCP 协议：工具的“USB 接口”（ai-agent-book 第 4 章）",
         "接 100 个工具就要写 100 套适配代码？MCP 是标准化的工具接入协议——相当于「<b>工具的 USB 接口</b>」。先看清<b>没有标准 vs 有标准</b>的差别，再看它带来什么。",
         /* 原「区 0：N×M 收敛图 + 这张图真正想说的是“接口标准”的价值」左图右解整块已删除
          * ——它和下面「区 2：连线对比」讲的是同一件事（都画 N×M 与 N+M），重复；
@@ -838,8 +1311,8 @@ AgentLab.LabExecutor = (function () {
             '</div>';
           }).join("") +
         '</div>' +
-        '<div class="tip tip-info" style="margin-top:12px">' + U.icon("book", 15) + ' <b>ai-agent-book chapter4:100：</b>MCP 让 Agent 通过统一协议连接各种工具——<b>本地工具、远程工具、SaaS 工具、数据库、浏览器</b>等，就像 USB 接口让各种设备都能即插即用。下面紧跟着「该不该上 MCP」实验，用两个真实场景判断一下。</div>' +
-        '<div class="tip tip-warn" style="margin-top:8px">' + U.icon("calc", 16) + ' <b>别忘了算 Token 账：</b>接 MCP 服务器时，它的<b>全部工具说明会进到每一次会话</b>——只接 5 个服务器，就可能带来<b>上万 Token</b> 的工具定义，占掉 200K 窗口的近三分之一；社区还有案例：直接接一个 MCP 服务器，初始加载 <b>16000 Token</b>。<br>所以现在流行一层“<b>渐进式披露</b>”的做法：平时只挂一份很短的<b>目录</b>（每个技能约 <b>100 Token</b>，装 50 个也才约 5000），真正用到某个技能时，再把它<b>按需</b>加载进来——同一个案例里，初始开销从 16000 降到了 <b>500</b>。</div>' +
+        '<div class="tip tip-info" style="margin-top:12px">' + U.icon("book", 15) + ' <b>MCP 的关键一句话：</b>MCP 让 Agent 通过统一协议连接各种工具——<b>本地工具、远程工具、SaaS 工具、数据库、浏览器</b>等，就像 USB 接口让各种设备都能即插即用。下面紧跟着「该不该上 MCP」实验，用两个真实场景判断一下。</div>' +
+        '<div class="tip tip-warn" style="margin-top:8px">' + U.icon("calc", 16) + ' <b>别忘了算“说明书”的账：</b>接 MCP 服务器时，它的<b>全部工具说明会进到每一次会话</b>——只接几个服务器，说明书就能占掉上下文的一大块，相当于每次说话前先背一遍整本工具目录；背得越多，留给正事的空间越少。<br>所以现在流行一层“<b>渐进式披露</b>”：平时只挂一份很短的<b>目录</b>（每个工具一两行），真正用到哪个，再把它的完整说明<b>按需</b>调进来——就像先看目录，再翻到那一页。</div>' +
         '<div class="tip" style="margin-top:8px">' + U.icon("shield", 16) + ' <b>MCP 也带来了新的安全风险（三类）：</b>① <b>工具描述投毒</b>——描述里夹带指令，每次会话都生效；② <b>恶意或被劫持的服务器</b>——' + U.term("供应链风险", 'MCP 服务器通常是别人写的、别人部署的。你只是“接进来用”，但它的代码、它依赖的库、它背后的服务，任何一环出问题都会传导到你这里——这条“上游 → 下游”的链条就是供应链。<br>像班里订外卖：你只点了自己那份，可商家用的食材、打包的人、跑腿的人，任何一环出问题都会落到你身上。所以工程上要<b>只接可信来源、锁定版本、审一遍权限声明</b>。') + '；③ <b>' + U.term("同名工具遮蔽", '你本来就有一个 <code>send_message</code> 工具，接进来的 MCP 服务器也提供了一个<b>同名</b>工具。如果发现与注册顺序没处理好，模型以为调的是“自己的那个”，实际执行的却是别人的——调用就被悄悄“劫持”到别处了。<br>防御很直接：<b>工具名全局唯一</b>（加前缀，如 <code>mcp_xxx.send_message</code>）、<b>注册冲突时报错而不是覆盖</b>、关键操作仍然人工确认。') + '</b>——用同名工具把调用“劫持”到别处。<br>所以接 MCP 要和装 App 一样谨慎：<b>只接可信来源、看清权限声明、关键操作仍然人工确认</b>。</div>'
       ) +
 
@@ -863,36 +1336,39 @@ AgentLab.LabExecutor = (function () {
         '<div id="exe-mcp"></div>', { id: "exe-mcp-card" }) +
 
       /* 小测验 */
-      LP.card("exe", "小测验：你是工具小达人吗？", "共 " + QUIZ.length + " 题，覆盖执行器角色、工具五分类、Function Calling、工具描述、参数保真、重试与幂等、代码沙盒、MCP、工具幻觉、多工具协作与工具治理。答对一题加一颗星！",
+      LP.card("exe", "小测验：你是工具小达人吗？", "共 " + QUIZ.length + " 题，覆盖执行器角色、工具分类（读/算/做/派 + 触发标签）、Function Calling、工具描述、参数保真、重试与幂等、代码沙盒、MCP、工具幻觉、多工具协作与工具治理。答对一题加一颗星！",
         '<div class="game-box" id="exe-quiz"><div id="exe-quiz-body"></div></div>' +
         '<div class="score-line"><span class="score-badge" id="exe-quiz-score" data-score="0">★ 0</span><button class="btn btn-ghost btn-sm" id="exe-quiz-restart">重来</button></div>'
       ) +
 
       /* 进阶原理互动课堂 + 课堂小结 */
-      LP.card("exe", "进阶原理互动课堂：执行器在真实 AI 系统里是什么？（ai-agent-book 第 4/5 章 + hello-agents 第 12 章）",
-        "13 个真实工程概念（ai-agent-book + hello-agents）：<b>左边选概念，右边看讲解 + 动手实验</b>——每个都配「一句话 / 打个比方 / 真实系统 / 动手做 / 自检一问」。",
+      LP.card("exe", "进阶原理互动课堂：执行器在真实系统里是什么？（选做）",
+        "13 个真实工程概念（学有余力再看）：<b>左边选概念，右边看讲解 + 动手实验</b>——每个都配「一句话 / 打个比方 / 真实系统 / 动手做 / 自检一问」。主线四课时不依赖这一张。",
         AgentLab.Adv.panelHTML({ key: "exe", concepts: exeConcepts() }), { id: "exe-adv" }) +
 
       '<div class="lesson-summary card-exe">' +
-        '<h3>' + U.icon("check", 18) + ' 课堂小结（L11+L12）</h3>' +
-        '<div class="summary-core"><b>核心结论：</b>执行器是 AI 的“手”——大语言模型自己不会实时查、不会真操作，执行器通过调用外部能力把事真正办成。ai-agent-book 把工具分成五类（感知/执行/协作/事件触发/用户沟通），真实系统用 Function Calling 机制（模型输出 JSON 指令→程序执行工具→结果返回模型），用 MCP 协议标准化接入各种工具。但工具不是“模型说什么就执行什么”——生产系统用白名单、参数强校验、等待回填、结果验证四道防线防止工具幻觉，还要求工具<b>保真</b>（不许偷偷改参数、不许偷偷截断），重试前先判断<b>能不能重试</b>（幂等 / 两段式确认），代码执行要关进<b>沙盒</b>，高危操作人工确认并记审计日志。复杂任务需要多工具协作（链式调用），每个工具的输出成为下一轮推理的依据。</div>' +
+        '<h3>' + U.icon("check", 18) + ' 课堂小结（4 课时）</h3>' +
+        U.designCta(3, "给每个工具写一句“给 AI 看的说明书”——写得含糊，模型就会选错工具、传错参数") +
+        '<div class="summary-core"><b>核心结论：</b>执行器是智能体的“岗位”，工具是它的“家伙”——大语言模型自己不会实时查、不会真操作，执行器通过调用外部能力把事真正办成。工具按“做什么”分四类：<b>读</b>（把信息拿进来）/ <b>算</b>（只加工，不碰外面）/ <b>做</b>（让外面真的变）/ <b>派</b>（交给别的 Agent 或人）；再按“什么时候开始做”贴一个<b>「到点自己动」</b>标签。真实系统用 Function Calling 机制（模型输出 JSON 指令→程序执行工具→结果返回模型），用 MCP 协议标准化接入各种工具。但工具不是“模型说什么就执行什么”——生产系统用白名单、参数强校验、等待回填、结果验证四道防线防止工具幻觉，还要求工具<b>保真</b>（不许偷偷改参数、不许偷偷截断），重试前先判断<b>能不能重试</b>（幂等 / 两段式确认），代码执行要关进<b>沙盒</b>，高危操作人工确认并记审计日志。复杂任务需要多工具协作（链式调用），每个工具的输出成为下一轮推理的依据。</div>' +
         '<div class="summary-points">' +
-          '<div class="sp-item"><span class="sp-icon" style="background:var(--c-exe)">' + U.icon("hand", 14) + '</span><div><b>执行器角色：</b>AI 的“手”——没工具只能“纸上谈兵”，有工具才能“真刀真枪”。工具越多能办的事越多，但要按需要配齐（超过 100 个工具连强模型也会选错，按需检索能把准确率从 49% 提到 74%）</div></div>' +
-          '<div class="sp-item"><span class="sp-icon" style="background:var(--c-exe)">' + U.icon("gear", 14) + '</span><div><b>工具五分类：</b>感知（获取信息）/执行（改变世界）/协作（分工）/事件触发（外部驱动）/用户沟通（主动连接）；优先考虑通用执行器，只有四类情况才值得造专用工具</div></div>' +
+          '<div class="sp-item"><span class="sp-icon" style="background:var(--c-exe)">' + U.icon("hand", 14) + '</span><div><b>执行器与工具：</b>执行器是岗位，工具是本领——没工具只能“纸上谈兵”，有工具才能“真刀真枪”。工具越多能办的事越多，但要按需要配齐（工具上百个时连强模型也会选错，按需检索能把准确率从大约一半提到四分之三）</div></div>' +
+          '<div class="sp-item"><span class="sp-icon" style="background:var(--c-exe)">' + U.icon("gear", 14) + '</span><div><b>工具分类：</b>读（把信息拿进来）/算（只加工，不碰外面）/做（让外面真的变）/派（交给别的 Agent 或人），再按“什么时候开始做”贴「到点自己动」标签；优先考虑通用执行器，只有四类情况才值得造专用工具</div></div>' +
           '<div class="sp-item"><span class="sp-icon" style="background:var(--c-exe)">' + U.icon("keyboard", 14) + '</span><div><b>Function Calling：</b>模型输出 JSON 指令（工具名+参数）→程序执行工具→结果返回模型。模型负责决策，程序负责执行；描述里附 1~5 个真实示例，准确率可从 72% 提到 90%</div></div>' +
-          '<div class="sp-item"><span class="sp-icon" style="background:var(--c-exe)">' + U.icon("shield", 14) + '</span><div><b>安全治理：</b>白名单+参数强校验+等待回填+结果验证四道防线，防止 AI 编造工具/参数/结果或照单全收坏数据；失败要“结构化回喂”（恢复率 60%→95%）并设熔断（连续失败约 3 次就停）；高危操作人工确认、全程审计日志。AI 会犯错，Harness 负责兜底</div></div>' +
+          '<div class="sp-item"><span class="sp-icon" style="background:var(--c-exe)">' + U.icon("shield", 14) + '</span><div><b>安全治理：</b>白名单+参数强校验+等待回填+结果验证四道防线，防止 AI 编造工具/参数/结果或照单全收坏数据；失败要“结构化回喂”（有工程实测：把失败原因说清楚，恢复率大约从六成提到九成半）并设熔断（连续失败约 3 次就停）；高危操作人工确认、全程审计日志。AI 会犯错，程序负责兜底</div></div>' +
           '<div class="sp-item"><span class="sp-icon" style="background:var(--c-exe)">' + U.icon("check", 14) + '</span><div><b>工具要“保真”：</b>可以少说，不能瞒着改——静默改参数、静默截断都会让 Agent 拿着假信息做决策，比直接报错更危险</div></div>' +
           '<div class="sp-item"><span class="sp-icon" style="background:var(--c-exe)">' + U.icon("refresh", 14) + '</span><div><b>重试与沙盒：</b>可重试（查询、可覆盖的写操作）vs 不可重试（发通知、花钱、删除）；两招保平安=幂等键 + 两段式确认。AI 写的代码要进沙盒：限目录、默认断网、设超时、限输出——装个虚拟环境不等于沙盒</div></div>' +
         '</div>' +
-        '<div class="summary-think"><b>课后思考：</b>请设计一个“班级活动小助手”需要哪些工具——至少列出 5 个工具，并说明每个工具属于五分类中的哪一类、需要什么参数、返回什么结果；其中<b>哪些动作不能重复执行</b>（属于不可重试），你打算怎么保护它们？下节课分享！</div>' +
+        '<div class="summary-think"><b>课后思考：</b>请设计一个“班级活动小助手”需要哪些工具——至少列出 5 个工具，并说明每个工具属于读/算/做/派中的哪一类、要不要贴「到点自己动」标签、需要什么参数、返回什么结果；其中<b>哪些动作不能重复执行</b>（属于不可重试），你打算怎么保护它们？下节课分享！</div>' +
       '</div>';
 
+    applyPlan(sec);   /* 4 课时排布：只搬节点，见文件上方 PLAN */
+
     bindToolDemo();
-    bindFcRelay();
+    bindFcApiPanel();
     bindMtChain();
     bindToolGame();
     bindToolbox();
-    bindExeCatMap();
+    bindExeCatPractice();
     bindQuiz();
 
     /* 实验卡绑定 + 进阶原理互动课堂 */
@@ -906,6 +1382,7 @@ AgentLab.LabExecutor = (function () {
     bindExeChain();
     bindExeMcp();
     bindExeAdv();
+  bindExeInject();    /* 故障注入台：学生自己把工具弄坏，再定位 */
   }
 
   /* ---------- Function Calling 的「请求 ↔ 响应」数据（复用 adv-classroom 的 apiCall 类型） ----------
@@ -950,7 +1427,7 @@ AgentLab.LabExecutor = (function () {
         { k: "Authorization", v: "Bearer sk-你的密钥（真实请求里是完整的一串）" }
       ],
       body: {
-        model: "deepseek-v4-flash",
+        model: "deepseek-flash",
         messages: [
           { role: "system", content: "你是一个五年级数学小助手。回答要简短，只说结果和一句话理由。" },
           { role: "user", content: "小明有 50 元，买 3 支每支 12 元的笔，还剩多少元？" }
@@ -1036,51 +1513,9 @@ AgentLab.LabExecutor = (function () {
     latency: 700
   };
 
-  /* ---------- Function Calling 分步接力（逐步揭示四个步骤） ---------- */
-  function bindFcRelay() {
-    var host = $("exe-fc-flow");
-    if (!host) return;
-    var nextBtn = $("exe-fc-next");
-    var autoBtn = $("exe-fc-auto");
-    var resetBtn = $("exe-fc-reset");
-    var prog = $("exe-fc-progress");
-    var TOTAL = 4;
-    var cur = 0;
-    var timer = null;
-
-    function draw() {
-      var nodes = host.querySelectorAll("[data-fc]");
-      for (var i = 0; i < nodes.length; i++) {
-        var n = parseInt(nodes[i].getAttribute("data-fc"), 10);
-        if (n <= cur) nodes[i].classList.add("is-on");
-        else nodes[i].classList.remove("is-on");
-      }
-      if (prog) prog.textContent = "第 " + cur + " / " + TOTAL + " 步";
-      if (nextBtn) nextBtn.disabled = cur >= TOTAL;
-      if (autoBtn) autoBtn.disabled = cur >= TOTAL;
-    }
-    function stopAuto() {
-      if (timer) { clearInterval(timer); timer = null; }
-      if (autoBtn) autoBtn.textContent = "自动播放";
-    }
-    if (nextBtn) nextBtn.addEventListener("click", function () {
-      if (cur < TOTAL) { cur++; draw(); }
-    });
-    if (autoBtn) autoBtn.addEventListener("click", function () {
-      if (timer) { stopAuto(); return; }
-      if (cur >= TOTAL) return;
-      timer = setInterval(function () {
-        if (cur < TOTAL) { cur++; draw(); }
-        else stopAuto();
-      }, 950);
-      autoBtn.textContent = "暂停";
-    });
-    if (resetBtn) resetBtn.addEventListener("click", function () {
-      stopAuto(); cur = 0; draw();
-    });
-    draw();
-
-    /* 请求 ↔ 响应面板：复用共享引擎的 apiCall 类型（与感知器同一套视觉语言） */
+  /* ---------- Function Calling 的「请求 ↔ 响应」面板 ----------
+   * 四张子卡片是静态的（不逐步揭示），这里只负责下方 apiCall 面板 */
+  function bindFcApiPanel() {
     var io = $("exe-fc-io");
     if (io && AgentLab.Adv && AgentLab.Adv.types && AgentLab.Adv.types.apiCall) {
       io.innerHTML = AgentLab.Adv.types.apiCall.demoHTML(FC_IO);
@@ -1227,12 +1662,25 @@ AgentLab.LabExecutor = (function () {
       $("pg-withtool-log").innerHTML = '<span class="dim">$ 已清空——再点上面的按钮试一次。</span>';
       $("pg-tool-fb").innerHTML = "";
     });
+
+    /* 原理默认收着：先做对比，想追问“为什么”时再展开 */
+    var whyBtn = $("pg-why-toggle"), whyBox = $("pg-tool-why");
+    if (whyBtn && whyBox) {
+      whyBtn.addEventListener("click", function () {
+        var open = whyBox.hidden;
+        whyBox.hidden = !open;
+        whyBtn.setAttribute("aria-expanded", open ? "true" : "false");
+        var txt = whyBtn.querySelector(".pf-reveal-txt");
+        if (txt) txt.textContent = open ? "收起原理" : "先看原理：没有工具，AI 会怎样？";
+      });
+    }
   }
 
   /* ---------- 工具选择游戏（单题闯关） ---------- */
   function bindToolGame() {
     AgentLab.Quiz.mount({
       host: "pg-toolgame-list",
+      card: "exe-desc",   /* 回看：工具描述写多细才够（游戏考的就是"描述与选择"） */
       color: "exe",
       name: "工具小达人",
       star: "pg-toolgame-score",
@@ -1251,35 +1699,116 @@ AgentLab.LabExecutor = (function () {
     });
   }
 
-  /* ---------- 工具地图：点工具 → 高亮对应类别卡 + 提示 ---------- */
-  function bindExeCatMap() {
-    var map = $("exe-cat-map");
-    if (!map) return;
-    var tip = $("exe-cat-tip");
-    var CAT_INFO = {
-      perception: { name: "感知工具", cls: "tc-perception", desc: "获取信息，不改变世界" },
-      execution:  { name: "执行工具", cls: "tc-execution",  desc: "真正对外部世界产生影响" }
-    };
-    map.addEventListener("click", function (e) {
-      var chip = e.target && e.target.closest ? e.target.closest(".tc-chip") : null;
-      if (!chip) return;
-      var info = CAT_INFO[chip.getAttribute("data-cat")];
-      if (!info) return;
-      var cards = document.querySelectorAll("#exe-cat-cards .tc-item");
-      for (var i = 0; i < cards.length; i++) cards[i].classList.remove("is-hit");
-      var target = document.querySelector("#exe-cat-cards ." + info.cls);
-      if (target) {
-        target.classList.add("is-hit");
-        target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  /* ---------- 四类验收：一行一个例子，直接点类别 ----------
+   * 原来的左右配对要“先点左边、再点右边、最后检查”，步骤多、两个 chip 堆也显得乱。
+   * 现在改成每行一道小题：点一下类别就判，错了立刻标出正确项并解释。
+   * “到点自己动”不在这道题里判——它是标签，单独用下一道 picker 练。 */
+  function bindExeCatPractice() {
+    var host = $("exe-cat-practice");
+    if (!host) return;
+
+    var DATA = [
+      { name: "天气查询", q: "把明天的天气读回来", icon: "cloud", ans: "rd", why: "信息被读进来，世界没变——读。" },
+      { name: "计算器", q: "算 25 × 4 + 10 等于多少", icon: "calc", ans: "cp", why: "只加工手上的数字，不读外部、也不改外部——算。" },
+      { name: "群发通知", q: "在班级群里发一条通知", icon: "send", ans: "ac", why: "群里真的多了一条消息，世界被改变了——做。" },
+      { name: "拆给小助手", q: "把长任务拆给两个小助手一起做", icon: "users", ans: "dp", why: "活交给了别的智能体——派。" },
+      { name: "联网搜索", q: "搜一下恐龙是什么", icon: "search", ans: "rd", why: "把网上的真实资料取进来，世界没变——读。" },
+      { name: "时间日期", q: "现在几点、今天星期几", icon: "clock", ans: "rd", why: "把当前时间读进来，世界没变——读。" },
+      { name: "翻译", q: "把“苹果”翻译成英语", icon: "lang", ans: "cp", why: "只加工手上的字句，外面没变——算。" },
+      { name: "提醒", q: "到时间提醒我带跳绳", icon: "bell", ans: "ac", why: "到点真的会去提醒人，世界被改变了——做（再贴一个「到点自己动」标签：响这件事是它自己发生的）。" }
+    ];
+    var OPTS = [
+      { k: "rd", t: "读" },
+      { k: "cp", t: "算" },
+      { k: "ac", t: "做" },
+      { k: "dp", t: "派" }
+    ];
+    var score = 0, answered = 0;
+
+    function labelOf(k) {
+      for (var i = 0; i < OPTS.length; i++) if (OPTS[i].k === k) return OPTS[i].t;
+      return k;
+    }
+
+    host.innerHTML =
+      '<div class="ecp-list">' +
+        DATA.map(function (it, i) {
+          return '<div class="ecp-row" data-i="' + i + '">' +
+            '<div class="ecp-q">' + U.icon(it.icon, 16) +
+              "<span><b>" + it.name + "</b><small>" + it.q + "</small></span></div>" +
+            '<div class="ecp-opts">' +
+              OPTS.map(function (o) {
+                return '<button type="button" class="ecp-opt" data-k="' + o.k + '">' + o.t + "</button>";
+              }).join("") +
+            "</div>" +
+            '<div class="ecp-why" hidden></div>' +
+          "</div>";
+        }).join("") +
+      "</div>" +
+      '<div class="ecp-bar">' +
+        '<span class="ecp-score" id="ecp-score" aria-live="polite">答对 0 / ' + DATA.length + "</span>" +
+        '<button type="button" class="ecp-reset" id="ecp-reset">重来</button>' +
+        '<span class="ecp-hint">点一下你认为对的那一类</span>' +
+      "</div>";
+
+    function updateScore() {
+      var el = $("ecp-score");
+      if (!el) return;
+      el.textContent = "答对 " + score + " / " + DATA.length;
+      el.classList.toggle("is-full", answered === DATA.length && score === DATA.length);
+      if (answered === DATA.length && score === DATA.length) el.textContent = "全对！";
+    }
+
+    host.addEventListener("click", function (e) {
+      var reset = e.target.closest(".ecp-reset");
+      if (reset) {
+        score = 0; answered = 0;
+        host.querySelectorAll(".ecp-row").forEach(function (row) {
+          row.classList.remove("is-done");
+          row.querySelectorAll(".ecp-opt").forEach(function (x) {
+            x.disabled = false;
+            x.classList.remove("is-ok", "is-no");
+          });
+          var why = row.querySelector(".ecp-why");
+          why.hidden = true;
+          why.innerHTML = "";
+        });
+        updateScore();
+        return;
       }
-      if (tip) {
-        tip.innerHTML = U.icon("check", 14) + ' <b>' + chip.textContent.replace(/\s+/g, " ").trim() +
-          '</b> 属于 <b>' + info.name + '</b>（' + info.desc + '）。';
-      }
+      var b = e.target.closest(".ecp-opt");
+      if (!b) return;
+      var row = b.closest(".ecp-row");
+      if (!row || row.classList.contains("is-done")) return;
+      var it = DATA[+row.getAttribute("data-i")];
+      var ok = b.getAttribute("data-k") === it.ans;
+      row.classList.add("is-done");
+      row.querySelectorAll(".ecp-opt").forEach(function (x) {
+        x.disabled = true;
+        if (x.getAttribute("data-k") === it.ans) x.classList.add("is-ok");
+      });
+      if (!ok) b.classList.add("is-no");
+      var why = row.querySelector(".ecp-why");
+      why.hidden = false;
+      why.innerHTML = ok
+        ? '<span class="ok">✓ 对！</span> ' + it.why
+        : '<span class="no">不对。</span> 正确答案是「' + labelOf(it.ans) + '」：' + it.why;
+      answered++;
+      if (ok) score++;
+      updateScore();
     });
   }
 
   /* ---------- 工具百宝箱（分组 + 能力计数） ---------- */
+  /* 试用弹窗同一时间只可能开一个，Esc 关闭交给这一个全局监听：
+   * 每次渲染只更新 tryModalState.close，不会累积重复的 keydown。 */
+  var tryModalState = { close: null };
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape" || !tryModalState.close) return;
+    e.preventDefault();
+    tryModalState.close();
+  });
+
   function bindToolbox() {
     var tools = AgentLab.Store.getTools();
 
@@ -1306,18 +1835,315 @@ AgentLab.LabExecutor = (function () {
       });
     });
     refreshCount();
+
+    /* ---------- 「试一试」：点工具名展开面板，点按钮真的执行一次 ----------
+     * 为什么走 AgentLab.Agent.tryTool：它和智能体跑一轮用的是同一份工具实现，
+     * 学生在这里看到的结果就是真实结果——不是另写一套演示数据糊弄人。
+     * 同时只展开一个面板，页面上不会堆着一排参数与结果。 */
+    var openTryId = null;
+
+    /* 打开 / 收起试用弹窗。同一时间只开一个；开着时锁住页面滚动，
+     * 关掉后焦点还给刚才点的那个工具名——键盘用户不会“掉”到页面背后。 */
+    var lastFocus = null;
+    function setTryOpen(id, open) {
+      var panel = $("tbx-try-" + id);
+      var btn = document.querySelector('#pg-toolbox [data-try="' + id + '"]');
+      if (panel) panel.hidden = !open;
+      if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) {
+        openTryId = id;
+        lastFocus = document.activeElement;
+        tryModalState.close = function () { setTryOpen(id, false); };
+        document.body.classList.add("tbx-modal-open");
+        /* 焦点先落到第一个能填的控件；没有就落到关闭按钮 */
+        var first = panel && (panel.querySelector(".tbx-modal-body input, .tbx-modal-body select") ||
+          panel.querySelector(".tbx-modal-x"));
+        if (first) setTimeout(function () {
+          try { first.focus({ preventScroll: true }); } catch (e) { try { first.focus(); } catch (e2) { } }
+        }, 0);
+      } else {
+        if (openTryId === id) openTryId = null;
+        /* 收起弹窗时把“查看输入参数”的子面板一起收掉：否则下次打开会看到上次的旧内容 */
+        var x = $("tbx-input-" + id);
+        if (x) x.hidden = true;
+        var b2 = panel && panel.querySelector("[data-try-input]");
+        if (b2) b2.setAttribute("aria-expanded", "false");
+        if (!openTryId) {
+          tryModalState.close = null;
+          document.body.classList.remove("tbx-modal-open");
+          if (lastFocus && lastFocus.focus) {
+            try { lastFocus.focus({ preventScroll: true }); } catch (e) { }
+          }
+          lastFocus = null;
+        }
+      }
+    }
+
+    function toggleTry(id) {
+      if (openTryId && openTryId !== id) setTryOpen(openTryId, false);
+      var panel = $("tbx-try-" + id);
+      if (!panel) return;
+      setTryOpen(id, panel.hidden);
+    }
+
+    /* ---------- 图形界面的几个小机制 ---------- */
+    /* 单选 chip：同一组里只亮一个；带 data-repaint 的（类别 / 图形 / 算法）
+     * 改完要重画参数区——换图形就换一组参数，界面不糊弄。 */
+    document.querySelectorAll('#pg-toolbox [data-chip]').forEach(function (c) {
+      c.addEventListener("click", function () {
+        var g = c.getAttribute("data-group");
+        /* 在“这一块试用面板”里取消同组高亮——面板已经搬到 body 下，不能再按 #pg-toolbox 查 */
+        var scope = c.closest(".tbx-try-input, .tbx-modal, .tbx-ui") || document;
+        scope.querySelectorAll('[data-chip][data-group="' + g + '"]').forEach(function (x) {
+          x.classList.remove("is-on");
+        });
+        c.classList.add("is-on");
+        if (c.getAttribute("data-repaint")) {
+          var host = c.closest(".tbx-ui");
+          if (host) paintDyn(host.getAttribute("data-ui"));
+        }
+      });
+    });
+
+    /* 动态参数区：换算的单位下拉 / 图形的边长 / 算法的参数 */
+    function paintDyn(id) {
+      var box = $("tbx-dyn-" + id);
+      var ui = TRY_UI[id];
+      if (box && ui && ui.dyn) box.innerHTML = ui.dyn(id);
+    }
+    Object.keys(TRY_UI).forEach(function (id) { paintDyn(id); });
+
+    /* 计算器小键盘：拼算式；= 直接运行 */
+    document.querySelectorAll('#pg-toolbox .tbx-key').forEach(function (b) {
+      b.addEventListener("click", function () {
+        var id = b.getAttribute("data-kpid") || "calc";
+        var k = b.getAttribute("data-kp");
+        var panel = $("tbx-try-" + id);
+        var input = panel && panel.querySelector('[data-f="' + id + '-expr"]');
+        if (!input) return;
+        if (k === "back") input.value = input.value.slice(0, -1);
+        else if (k === "clear") input.value = "";
+        else if (k === "run") { runTry(id, document.querySelector('[data-try-run="' + id + '"]')); return; }
+        else input.value += k;
+        input.focus();
+      });
+    });
+
+    /* 计时器：面板里真的倒计时（到点停住并提示） */
+    var tryTimerIv = {};
+    function startTryTimer(id, seconds, label) {
+      var box = $("tbx-count-" + id);
+      if (!box) return;
+      if (tryTimerIv[id]) { clearInterval(tryTimerIv[id]); tryTimerIv[id] = null; }
+      var total = Math.max(1, seconds), remain = total;
+      function mmss(n) {
+        var m = Math.floor(n / 60), s = n % 60;
+        return m + ":" + (s < 10 ? "0" + s : s);
+      }
+      function paint() {
+        box.innerHTML = '<div class="tbx-timer"><b>' + mmss(remain) + "</b>" +
+          '<div class="tbx-timer-bar"><i style="width:' + Math.round((1 - remain / total) * 100) + '%"></i></div></div>';
+      }
+      paint();
+      tryTimerIv[id] = setInterval(function () {
+        remain--;
+        if (remain <= 0) {
+          clearInterval(tryTimerIv[id]); tryTimerIv[id] = null;
+          box.innerHTML = '<div class="tbx-timer is-done"><b>时间到！</b><span>' +
+            (total >= 60 ? Math.round(total / 60) + " 分钟到了" : total + " 秒到了") + "</span></div>";
+          /* 到点真的响：和「智能体实验室」的计时器共用同一套响铃 */
+          if (AgentLab.Alarm) {
+            AgentLab.Alarm.ring({ text: "⏰ " + (label || (total >= 60 ? Math.round(total / 60) + " 分钟" : total + " 秒")) + " 到啦！" });
+          }
+          return;
+        }
+        paint();
+      }, 1000);
+    }
+
+    /* ---------- 「查看输入参数」 ----------
+     * 试用不经过大模型，那这次到底“输入了什么”？把执行器收到的那一份原样摊开：
+     * 函数名 + 参数（归一化后）+ 原话。面板里填的另列一份，两者的差异一眼能看出来。 */
+    function paintTryInput(id) {
+      var panel = $("tbx-try-" + id);
+      var box = $("tbx-input-" + id);
+      var ui = TRY_UI[id];
+      if (!panel || !box || !ui) return;
+      var inp = ui.read(panel, id) || { params: {}, text: "" };
+      var d = AgentLab.Agent.previewToolInput(id, inp.params || {}, inp.text || "");
+      var full = { function: d.fn || "", name: d.name, arguments: d.params, userText: d.userText };
+      var same = JSON.stringify(d.panelParams) === JSON.stringify(d.params);
+      /* 这件工具内部会不会自己调模型：翻译一定会，联网搜索只有降级才可能，其余不会。
+       * 同一块面板里说清楚，不再单开第二个“大模型上下文”弹层。 */
+      var calls = (AgentLab.Agent.modelCallsFor ? AgentLab.Agent.modelCallsFor(id, inp.params || {}) : []) || [];
+      var willCall = calls.filter(function (c) { return c.when === "run"; });
+
+      /* 提醒工具的参数里没有“时间”，学生很容易以为输入少了东西。
+       * 这里单独把“工具自己从原话里解析出来的时间”摊开——它确实不在 arguments 里。 */
+      var derivedHtml = "";
+      if (d.derived) {
+        var whenText = d.derived.ok
+          ? U.esc(d.derived.label) + "（" + U.esc(stampOf(d.derived.at)) + " 响铃）"
+          : "没解析出时间——这次只会记下内容，不会响铃";
+        derivedHtml = '<div class="tbx-ctx-block">' +
+          '<div class="tbx-ctx-cap"><b>时间为什么不在参数里？</b><span>' +
+            "提醒工具的 arguments 只装“提醒什么”；“什么时候响”是它自己<b>从原话里解析</b>出来的（" +
+            "parseRemindWhen：先找时长/日期/钟点，再换算成时间戳）。所以参数看着短，其实没缺东西。</span></div>" +
+          '<div class="tbx-in-rows">' +
+            '<div class="tbx-in-row"><b>原话</b><code>' + U.esc(d.userText) + "</code></div>" +
+            '<div class="tbx-in-row"><b>解析出的时间</b><code>' + whenText + "</code></div>" +
+          "</div>" +
+        "</div>";
+      }
+
+      /* 模型那一节：会调就列出请求体，不会调就用一句话交代，不再另开一个面板 */
+      var modelHtml = "";
+      if (willCall.length) {
+        modelHtml += '<div class="tbx-ctx-head is-model">' +
+          '<span class="tbx-ctx-tag">经过大模型</span>' +
+          "<span>翻译工具自己不会翻译——它内部就是把下面这份请求发给模型，再把译文原样返回。<b>但“翻什么、译成哪种语言”仍是你在面板里定的</b>，模型没有参与这部分。</span></div>";
+      } else if (calls.length) {
+        modelHtml += '<div class="tbx-ctx-head is-maybe">' +
+          '<span class="tbx-ctx-tag">可能经过</span>' +
+          "<span>主通道<b>不经过聊天大模型</b>：搜索接口只返回网页（标题 + 摘要 + 链接），不生成文字；只有联网失败、改走「知识兜底」时才会把下面这份请求发给模型。</span></div>";
+      } else {
+        modelHtml += '<div class="tbx-in-none">这次<b>不经过大模型</b>：参数是你在面板里填的，直接交给执行器——所以没配 Key 也能试。</div>';
+      }
+      calls.forEach(function (c) {
+        modelHtml += '<div class="tbx-ctx-block">' +
+          '<div class="tbx-ctx-cap"><b>' + U.esc(c.label) + '</b><span>' + U.esc(c.note || "") + "</span></div>" +
+          '<pre class="tbx-ctx-pre">' + U.esc(JSON.stringify(c.body, null, 2)) + "</pre>" +
+          "</div>";
+      });
+
+      /* 对照：同一句原话走「智能体实验室」，模型第一轮会收到什么（预览，不发送） */
+      var previewHtml = "";
+      if (AgentLab.Agent.previewRequest) {
+        previewHtml = '<details class="tbx-ctx-more">' +
+          "<summary>对照：换到「智能体实验室」里问同一句话，模型第一轮会收到什么？（预览，不会发出）</summary>" +
+          '<div class="tbx-ctx-cap"><span>真实对话和试用的差别就在这份请求里：多了一整份 <code>system</code>（规则 + 长期记忆 + 执行器要求）和 <code>tools</code>（已开启工具的说明书）。' +
+          "模型读完这些，才自己决定调哪件工具、参数填什么；而试用面板把这一步跳过了，参数是你直接填的。</span></div>" +
+          '<pre class="tbx-ctx-pre">' + U.esc(JSON.stringify(AgentLab.Agent.previewRequest(inp.text || ""), null, 2)) + "</pre>" +
+          "</details>";
+      }
+
+      box.innerHTML =
+        '<div class="tbx-ctx-head is-exe">' +
+          '<span class="tbx-ctx-tag">执行器收到的输入</span>' +
+          "<span>工具只认下面这几样：<b>函数名 + 参数 + 原话</b>。参数在这一步已经过“参数校验与兜底”（补默认值、对齐单位、从原话里纠正数字），所以可能和你在面板里填的不完全一样。</span>" +
+        "</div>" +
+        '<div class="tbx-ctx-block">' +
+          '<div class="tbx-ctx-cap"><b>完整输入</b><span>这就是执行器拿到的全部东西——它不知道大模型，也不知道界面。</span></div>' +
+          '<pre class="tbx-ctx-pre">' + U.esc(JSON.stringify(full, null, 2)) + "</pre>" +
+        "</div>" +
+        derivedHtml +
+        '<div class="tbx-ctx-block">' +
+          '<div class="tbx-ctx-cap"><b>面板里填的（归一化之前）</b><span>' +
+            (same ? "与上面完全一致，说明这次不需要补默认值或纠正数字。" : "和上面不一样的地方，就是执行器补上 / 改好的：以“完整输入”里那份为准。") +
+          "</span><code class=\"tbx-in-code\">" + U.esc(JSON.stringify(d.panelParams)) + "</code></div>" +
+        "</div>" +
+        modelHtml +
+        previewHtml;
+    }
+
+    function runTry(id, btn) {
+      var panel = $("tbx-try-" + id);
+      var out = $("tbx-try-out-" + id);
+      var ui = TRY_UI[id];
+      if (!panel || !out || !ui) return;
+      /* 点“运行”就是用户手势：解锁音频，计时器到点才响得出来 */
+      if (AgentLab.Alarm) AgentLab.Alarm.unlock();
+      var inp = ui.read(panel, id) || { params: {}, text: "" };
+      if (btn) { btn.disabled = true; btn.textContent = "正在执行…"; }
+      out.innerHTML = '<span class="tbx-try-wait">工具正在执行，请稍等…</span>';
+      if (id === "timer") startTryTimer(id, inp.params.seconds || 0, inp.params.label);
+
+      AgentLab.Agent.tryTool(id, inp.params || {}, inp.text || "").then(function (r) {
+        var params = (r && r.params) || inp.params || {};
+        /* 参数是谁填的，必须写清楚：这里是同学在面板里填的，不是模型。
+         * 只有翻译（内部调模型）和搜索的知识兜底（降级才走）会让模型参与。 */
+        var viaModel;
+        if (r && r.payload && r.payload.fallback) {
+          viaModel = "这一次联网没成功，走了「知识兜底」——<b>确实调用了大模型</b>";
+        } else if (id === "translate") {
+          viaModel = (r && r.payload && r.payload.needKey)
+            ? "这一次<b>没有</b>调用大模型：翻译需要先配 Key，现在只是演示流程"
+            : "这一次翻译工具<b>内部调用了 1 次大模型</b>（参数仍是你填的）";
+        } else {
+          viaModel = "这一次<b>没有经过大模型</b>——参数是你填的，直接交给执行器";
+        }
+        out.innerHTML =
+          '<div class="tbx-try-params"><b>原话</b>' + U.esc(inp.text || "") + "</div>" +
+          '<div class="tbx-try-params"><b>参数（你在面板里填的）</b><code>' + U.esc(JSON.stringify(params)) + "</code></div>" +
+          '<div class="tbx-try-result"><b>工具返回</b><div>' + U.esc((r && r.result) || "（没有返回结果）") + "</div></div>" +
+          '<div class="tbx-try-who"><span>' + viaModel + "</span></div>";
+        /* 「查看输入参数」若正开着，参数刚变过，跟着重算一遍 */
+        var inBox = $("tbx-input-" + id);
+        if (inBox && !inBox.hidden) paintTryInput(id);
+      }).catch(function (e) {
+        out.innerHTML = '<div class="tbx-try-err">' + U.icon("alert", 13) + " " +
+          U.esc((e && e.message) || "这次没跑通，请稍后再试。") + "</div>";
+      }).then(function () {
+        if (btn) { btn.disabled = false; btn.textContent = "运行这个工具"; }
+      });
+    }
+
+    document.querySelectorAll('#pg-toolbox [data-try]').forEach(function (b) {
+      b.addEventListener("click", function () { toggleTry(b.getAttribute("data-try")); });
+    });
+    document.querySelectorAll('#pg-toolbox [data-try-run]').forEach(function (b) {
+      b.addEventListener("click", function () { runTry(b.getAttribute("data-try-run"), b); });
+    });
+    /* 「查看输入参数」：只留这一个入口。每次展开都按当前控件值重算，
+     * 看到的永远是“这次会发给执行器的那一份”。 */
+    document.querySelectorAll('#pg-toolbox [data-try-input]').forEach(function (b) {
+      b.addEventListener("click", function () {
+        var id = b.getAttribute("data-try-input");
+        var box = $("tbx-input-" + id);
+        if (!box) return;
+        var open = box.hidden;
+        if (open) paintTryInput(id);
+        box.hidden = !open;
+        b.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open && box.scrollIntoView) {
+          try { box.scrollIntoView({ block: "nearest", behavior: "smooth" }); } catch (e) { }
+        }
+      });
+    });
+
+    /* 弹窗关闭：遮罩空白处、右上角 × 都走这一条 */
+    document.querySelectorAll('#pg-toolbox .tbx-modal [data-try-close]').forEach(function (b) {
+      b.addEventListener("click", function () { setTryOpen(b.getAttribute("data-try-close"), false); });
+    });
+
+    /* 试用弹窗搬到 body 下：卡片带 hover 位移（transform），
+     * 留在卡片里 position:fixed 会以卡片为参照系，弹窗位置会跟着卡片跑偏。
+     * 事件都绑在元素自己身上，搬家不影响；重新渲染时清掉上一轮的旧弹窗。 */
+    var host = document.getElementById("tbx-modal-host");
+    if (!host) {
+      host = document.createElement("div");
+      host.id = "tbx-modal-host";
+      document.body.appendChild(host);
+    }
+    host.innerHTML = "";
+    document.querySelectorAll("#pg-toolbox .tbx-modal").forEach(function (m) { host.appendChild(m); });
+    /* 重新渲染可能发生在弹窗开着的时候：状态一起复位，别留下锁滚动的 body */
+    openTryId = null;
+    tryModalState.close = null;
+    document.body.classList.remove("tbx-modal-open");
   }
 
   /* ---------- 小测验（单题闯关） ---------- */
   function bindQuiz() {
     AgentLab.Quiz.mount({
       host: "exe-quiz-body",
+      card: "sec-map-executor",   /* 章末综合小测（15 题覆盖整课）→ 回看本课学习地图，自己挑卡 */
       color: "exe",
       name: "工具小达人",
       star: "exe-quiz-score",
       restart: "exe-quiz-restart",
       questions: QUIZ,
-      hint: "再想想——可以回到工具五分类、Function Calling 和工具幻觉那几张卡片找答案。"
+      hint: "再想想——可以回到工具分类、Function Calling 和工具幻觉那几张卡片找答案。"
     });
   }
 
@@ -1343,10 +2169,10 @@ AgentLab.LabExecutor = (function () {
       links: [{ t: "有工具 vs 没工具", el: "pg-withtool" }]
     },
     {
-      id: "five", icon: "box", nav: "工具五分类", name: "工具五分类", en: "5 CATEGORIES OF TOOLS",
-      tip: "ai-agent-book 把工具分成五类：感知、执行、协作、事件触发、用户沟通——分类决定了“该给 Agent 配哪些工具”。",
-      analogy: "像文具盒：笔、尺子、胶水、剪刀、便签各有用途。你不会给一个只画画的人配剪刀。",
-      real: "五类各管一件事：<b>感知工具</b>（查天气 / 搜索——把信息读进来）、<b>执行工具</b>（算数换算 / 下单发消息——对世界或数据做出改变）、<b>协作工具</b>（委托子 Agent / 请求人工确认——分工）、<b>事件触发工具</b>（定时任务 / 新消息回调——外部驱动）、<b>用户沟通工具</b>（主动发消息 / 通知——连接用户）。配工具的原则是“按场景配必要的一组”，不是“什么都有”。",
+      id: "five", icon: "box", nav: "工具分类", name: "工具分类（读·算·做·派 + 标签）", en: "TOOL TAXONOMY",
+      tip: "ai-agent-book 第 4 章把工具分成五类（感知 / 执行 / 协作 / 事件触发 / 用户沟通）。本课按“做什么”重新排成四类：<b>读</b>（把信息拿进来）、<b>算</b>（只加工，不碰外面）、<b>做</b>（让外面真的变）、<b>派</b>（交给别的 Agent 或人）；再把“什么时候做”单独做成一个标签<b>「到点自己动」</b>。",
+      analogy: "像教室里的分工：有人看（读）、有人算（算）、有人动手（做）、有人去请别人帮忙（派）；闹钟到点响不是第五种人，它只是“到点自己动”的标签。",
+      real: "为什么这么排：书里的五类同时用了两个特征——<b>作用对象</b>（读 / 改）和<b>谁发起</b>（Agent 调用 / 外部触发），所以同一个“提醒”能同时像执行、事件触发和用户沟通。四类只问“它做了什么”，每个工具因此只有一个类；风险等级也按类给：<b>读</b>可以放开用，<b>算</b>基本无副作用，<b>做</b>会留下后果、必须加确认与审计，<b>派</b>还要管住被委托方。配工具的原则是“按场景配必要的一组”，不是“什么都有”。",
       quiz: { q: "为什么“工具越多越好”是错的？", a: "工具越多，可选项越多，模型选错的概率越高；而且每个工具的定义都要占用上下文。正确做法是按场景配最必要的一组，需要时再加。" },
       links: [{ t: "工具抢答游戏", el: "pg-toolgame" }]
     },
@@ -1383,19 +2209,19 @@ AgentLab.LabExecutor = (function () {
       links: [{ t: "预测多工具链式调用", el: "exe-chain" }]
     },
     {
-      id: "sense", icon: "eye", nav: "感知 vs 执行工具", name: "感知工具 vs 执行工具", en: "READ vs WRITE TOOLS",
-      tip: "工具分两类用途：一类“把世界读进来”（感知），一类“把决定做出去”（执行）——风险等级完全不同。",
-      analogy: "像眼睛和手：看错了可以再看（低风险）；手一挥可能打翻东西（高风险）。",
-      real: "<b>感知工具</b>（查询 / 搜索 / 读文件）只读、风险低，可以放开用；<b>执行工具</b>（下单 / 发消息 / 删除 / 转账）会改变真实世界，必须加人工确认、权限校验、额度限制与审计日志。",
-      quiz: { q: "为什么“删除文件”和“查询天气”要用完全不同的治理强度？", a: "因为可逆性不同：查天气看错了没有影响，删文件删错了无法撤销。治理强度应当按“操作的不可逆程度与影响范围”来定。" },
-      links: [{ t: "工具百宝箱", el: "pg-toolbox" }]
+      id: "sense", icon: "eye", nav: "读 / 算 / 做", name: "读、算、做：三类，三种风险", en: "READ / COMPUTE / ACT",
+      tip: "四类工具里，风险主要看“碰不碰外面”：<b>读</b>只拿信息、<b>算</b>只在内部加工、<b>做</b>会留下后果，<b>派</b>还要管住被委托的一方。",
+      analogy: "像看、算、动手：看错了可以再看（低风险）；算错了重算一遍（没有副作用）；手一挥可能打翻东西（高风险）。",
+      real: "<b>读</b>（查询 / 搜索 / 读文件）只读、风险低，可以放开用；<b>算</b>（计算 / 换算 / 翻译）不碰外部，基本没有副作用，但结果错了会误导决策，要有校验；<b>做</b>（下单 / 发消息 / 删除 / 转账）会改变真实世界，必须加人工确认、权限校验、额度限制与审计日志；<b>派</b>（子 Agent / 请人确认）还要管住被委托方有没有越权。",
+      quiz: { q: "为什么“删除文件”和“查询天气”要用完全不同的治理强度？", a: "因为可逆性不同：查天气看错了没有影响，删文件删错了无法撤销。治理强度应当按“操作的不可逆程度与影响范围”来定——而不是按模型说得有多确定。" },
+      links: [{ t: "工具分类", el: "exe-cat-cards" }, { t: "工具百宝箱", el: "pg-toolbox" }]
     },
     {
-      id: "event", icon: "clock", nav: "事件驱动工具", name: "事件驱动工具（Event-Driven）", en: "EVENT-DRIVEN TOOLS",
-      tip: "有些工具不是“被叫才做”，而是“到点自己动”：定时任务、消息回调、监控告警——这叫事件驱动。",
+      id: "event", icon: "clock", nav: "触发方式：到点自己动", name: "触发方式：到点自己动（Event-Driven）", en: "EVENT-DRIVEN",
+      tip: "它不是独立的一类工具，而是一个<b>标签</b>：有些事不是“被叫才做”，而是“到点/有事自己动”——定时任务、消息回调、监控告警。",
       analogy: "像闹钟与门铃：闹钟到点自己响（定时事件），门铃有人按才响（回调事件）——都不需要你一直守着。",
-      real: "事件驱动让 Agent 从“问答机器人”变成“常驻助手”：<b>定时触发</b>（每天 7:30 检查课表并提醒——这类“到点自己就跑”的定时规则，工程上叫 " + U.term("cron", 'cron 是 Linux 上一个经典的后台定时服务：写一行「<code>分 时 日 月 周</code>」格式的规则——比如 <code>30 7 * * *</code> 就表示“每天 7:30”——系统到点自动执行，不需要任何人提问。<br>所以“cron 类事件”＝按时间表自动触发的事件。Agent 的“主动服务”能力，很多就架在这类定时机制上。') + "）、<b>订阅回调</b>（有新邮件就处理）、<b>阈值告警</b>（库存低于阈值就补货）。工程上要处理重复触发、事件失序，以及“事件来了但用户不在”的情况。",
-      quiz: { q: "“每天早上 7:30 自动提醒今天值日”属于哪种触发？", a: "定时触发（cron 类事件）。它不需要用户提问，时间到了就执行——这正是 Agent 从被动回答走向主动服务的关键一步。" },
+      real: "事件驱动让 Agent 从“问答机器人”变成“常驻助手”：<b>定时触发</b>（每天 7:30 检查课表并提醒——这类“到点自己就跑”的定时规则，工程上叫 " + U.term("cron", 'cron 是 Linux 上一个经典的后台定时服务：写一行「<code>分 时 日 月 周</code>」格式的规则——比如 <code>30 7 * * *</code> 就表示“每天 7:30”——系统到点自动执行，不需要任何人提问。<br>所以“cron 类事件”＝按时间表自动触发的事件。Agent 的“主动服务”能力，很多就架在这类定时机制上。') + "）、<b>订阅回调</b>（有新邮件就处理）、<b>阈值告警</b>（库存低于阈值就补货）。注意：在本课的分类里它不占一个类——这些动作仍然是“<b>做</b>”（真的会执行、会留下后果），只是<b>出发方式</b>不同。工程上要处理重复触发、事件失序，以及“事件来了但用户不在”的情况。",
+      quiz: { q: "“每天早上 7:30 自动提醒今天值日”——它的类别和标签分别是什么？", a: "类别是“做”（真的会检查、会提醒，留下后果），标签是“到点自己动”（定时触发，没人叫它）。标签回答“什么时候做”，不是第五类。" },
       links: [{ t: "工具百宝箱", el: "pg-toolbox" }]
     },
     {
@@ -1469,7 +2295,7 @@ AgentLab.LabExecutor = (function () {
       resetLabel: "清空重来",
       jsonBody: function (msgs) {
         return {
-          model: AgentLab.Store.getApi().model || AgentLab.CONFIG.model,
+          model: (AgentLab.API.getSettings && AgentLab.API.getSettings().model) || AgentLab.CONFIG.model,
           messages: msgs,
           tools: [{
             type: "function",
@@ -1512,30 +2338,29 @@ AgentLab.LabExecutor = (function () {
       leftTitle: "① 先点左边一个工具：",
       rightTitle: "② 再点右边它属于哪一类：",
       left: [
-        { id: "t1", label: "天气查询", icon: "cloud", why: "只读：把外部信息读回来，属于感知工具。" },
-        { id: "t2", label: "联网搜索", icon: "search", why: "只读：从外部获取信息，属于感知工具。" },
-        { id: "t3", label: "时间日期", icon: "clock", why: "只读：读的是系统时钟，获取信息，也属于感知工具。" },
-        { id: "t4", label: "计算器", icon: "calc", why: "它对数据做“计算处理”，真正产出了新结果，属于执行工具。" },
-        { id: "t5", label: "提醒工具", icon: "timer", why: "它会在未来某个时间执行动作、改变计划，属于执行工具。" },
-        { id: "t6", label: "单位换算", icon: "ruler", why: "它把数值转换成另一种单位，属于执行工具（对数据做出改变）。" },
-        { id: "t7", label: "委托子 Agent 去查资料", icon: "users", why: "把活儿分给另一个智能体去做，属于协作工具（分工协作）。" },
-        { id: "t8", label: "定时任务：每天 7:30 检查课表", icon: "clock", why: "不需要用户提问，到点自己触发，属于事件触发工具。" },
-        { id: "t9", label: "主动发消息通知家长", icon: "send", why: "系统主动与用户连接，而不是等用户来问，属于用户沟通工具。" }
+        { id: "t1", label: "天气查询", icon: "cloud", why: "只读：把外部信息读回来，属于读。" },
+        { id: "t2", label: "联网搜索", icon: "search", why: "只读：从外部获取信息，属于读。" },
+        { id: "t3", label: "时间日期", icon: "clock", why: "只读：读的是系统时钟，获取信息，也属于读。" },
+        { id: "t4", label: "计算器", icon: "calc", why: "只加工手上的数字，不读外部、也不改外部，属于算。" },
+        { id: "t5", label: "单位换算", icon: "ruler", why: "把数值换成另一种单位，外面什么都没变，属于算。" },
+        { id: "t6", label: "提醒工具", icon: "bell", why: "它会真的记下一件事、到点响铃，留下后果，属于做（再贴「到点自己动」标签）。" },
+        { id: "t7", label: "主动发消息通知家长", icon: "send", why: "消息真的发出去了，留下后果，属于做（对象是人）。" },
+        { id: "t8", label: "委托子 Agent 去查资料", icon: "users", why: "活儿交给了另一个智能体，属于派。" },
+        { id: "t9", label: "定时任务：每天 7:30 检查课表", icon: "clock", why: "它真的会去检查、会执行，属于做；只是出发方式是「到点自己动」。" }
       ],
       right: [
-        { id: "per", label: "感知工具（把信息读进来）", icon: "eye" },
-        { id: "exe", label: "执行工具（改变世界）", icon: "hand" },
-        { id: "co", label: "协作工具（与其他 Agent 分工）", icon: "users" },
-        { id: "ev", label: "事件触发工具（外部事件驱动）", icon: "bell" },
-        { id: "us", label: "用户沟通工具（主动连接用户）", icon: "happy" }
+        { id: "rd", label: "读（把信息拿进来）", icon: "eye" },
+        { id: "cp", label: "算（只加工，不碰外面）", icon: "calc" },
+        { id: "ac", label: "做（让外面真的变）", icon: "hand" },
+        { id: "dp", label: "派（交给别的 Agent 或人）", icon: "users" }
       ],
-      pairs: { t1: "per", t2: "per", t3: "per", t4: "exe", t5: "exe", t6: "exe", t7: "co", t8: "ev", t9: "us" },
+      pairs: { t1: "rd", t2: "rd", t3: "rd", t4: "cp", t5: "cp", t6: "ac", t7: "ac", t8: "dp", t9: "ac" },
       checkLabel: "检查我配的类别",
       resetLabel: "重来",
       empty: "先点左边一个工具，再点右边它属于哪一类。",
       pickTip: "先在左边点一个工具，再点右边它属于哪一类",
-      passHtml: "五类工具的分工：<b>感知</b>把信息读进来、<b>执行</b>把决定做出去、<b>协作</b>找人分工、<b>事件触发</b>到点自己动、<b>用户沟通</b>主动连上人。配工具的原则是“按场景配必要的一组”，不是“什么都有”。",
-      failHtml: "口诀：它只是把信息<b>读进来</b>（感知）、真的<b>改变</b>了什么（执行），还是让别人做 / 到点自己做 / 主动找人（协作 / 事件触发 / 用户沟通）？"
+      passHtml: "四类看“做什么”：<b>读</b>把信息拿进来、<b>算</b>只在内部加工、<b>做</b>让外面真的变、<b>派</b>交给别人。再看“什么时候做”：到点/有事自己动 → 贴<b>「到点自己动」</b>标签（提醒、定时任务）。配工具的原则是“按场景配必要的一组”，不是“什么都有”。",
+      failHtml: "口诀：它碰外面的东西了吗？没碰 → <b>读</b>（拿进来）/ <b>算</b>（自己加工）；碰了 → <b>做</b>（自己动手）/ <b>派</b>（让别人动手）。"
     },
     desc: {
       title: "动手实验：同一件事，两种工具描述", hint: "换一份描述再对比", icon: "pen",
@@ -1637,15 +2462,15 @@ AgentLab.LabExecutor = (function () {
       title: "动手实验：这个工具该配多强的治理？", hint: "选两个答案", icon: "eye",
       emptyText: "先回答上面两个问题，系统会给出判断与理由。",
       questions: [
-        { key: "cat", q: "① 这个工具属于哪一类？—— delete_file（删除文件）", opts: [{ k: "read", t: "感知工具（只读，把信息读进来）" }, { k: "write", t: "执行工具（会改变真实世界）" }] },
-        { key: "gov", q: "② 该给它配多强的治理？", opts: [{ k: "loose", t: "宽松（和只读工具一样）" }, { k: "strict", t: "严格（权限 + 人工确认 + 审计）" }] }
+        { key: "cat", q: "① 这个工具属于哪一类？—— delete_file（删除文件）", opts: [{ k: "read", t: "读（只拿信息，世界不变）" }, { k: "act", t: "做（会改变真实世界）" }] },
+        { key: "gov", q: "② 该给它配多强的治理？", opts: [{ k: "loose", t: "宽松（和「读」一样）" }, { k: "strict", t: "严格（权限 + 人工确认 + 审计）" }] }
       ],
       decide: function (ans) {
-        var right = ans.cat === "write" && ans.gov === "strict";
+        var right = ans.cat === "act" && ans.gov === "strict";
         return (right ? '<span class="ok">✓ 判断正确：</span>' : '<span class="no">再想想：</span>') +
-          "<b>delete_file 是执行工具</b>，必须配<b>严格治理</b>。<br>" +
+          "<b>delete_file 属于「做」</b>，必须配<b>严格治理</b>。<br>" +
           '<span class="dim">理由：它<b>改变了真实世界</b>，而且不可撤销——删错就没有撤销键。所以要有权限校验、人工确认、以及审计日志。</span><br>' +
-          '<b>对照一下感知工具：</b>查询天气、搜索资料都是“只读”，看错了没有影响，可以放开用、连确认都不需要。<br>' +
+          '<b>对照一下「读」：</b>查询天气、搜索资料都是只读，看错了没有影响，可以放开用、连确认都不需要。<br>' +
           '<span class="dim">通用原则：治理强度 = 操作的<b>不可逆程度 × 影响范围</b>。删除文件、转账、群发消息都是最高一档。</span>';
       }
     },
@@ -1819,6 +2644,181 @@ AgentLab.LabExecutor = (function () {
     });
   }
 
+  /* ============================================================
+   * 故障注入台：三条真实可注入的故障，每条对应四道防线里的一道
+   *   ① 假数据   —— 工具真的返回了，但数据明显不合理（下红雨 / -999℃）
+   *   ② 超时失败 —— 工具调用直接失败
+   *   ③ 没有工具 —— 白名单里一个工具都不给
+   * 全部走真实调用路径（AgentLab.Agent.run），跑完立刻还原注入——绝不留坏状态。
+   * 判语只在能可靠判断时给结论（例如注入值是否出现在回答里），其余交给学生自己看。
+   * ============================================================ */
+  function bindExeInject() {
+    var host = $("exe-inject");
+    if (!host) return;
+    var Agent = AgentLab.Agent;
+
+    var INJ = [
+      {
+        id: "dirty", label: "让天气工具返回“假数据”（下红雨、-999℃）",
+        fence: "对应防线：结果验证——工具真返回了，格式也对，只是数据离谱",
+        q: "明天会下雨吗？",
+        probe: /红雨|-999/,
+        expect: "它多半会<b>一字不差地照抄</b>这份假数据——工具没报错，模型就不会怀疑数据。",
+        lesson: "所以“结果验证”必须在<b>程序侧</b>做（温度范围、单位、常识检查），不能指望模型自己看出来。"
+      },
+      {
+        id: "timeout", label: "让工具调用“超时失败”（网络断了）",
+        fence: "对应防线：等待回填 + 结构化错误回喂",
+        q: "明天会下雨吗？",
+        probe: /超时|失败|没查到|查不到|暂时|网络|稍后再试/,
+        expect: "重点看它有没有<b>如实说“这次没查到”</b>。",
+        lesson: "失败不可怕，可怕的是“工具还没回来，模型先把答案说了”——所以必须等 tool 消息回填才能生成。"
+      },
+      {
+        id: "notools", label: "白名单里“一个工具都不给”",
+        fence: "对应防线：白名单——没暴露的工具，它想调也调不到",
+        q: "明天会下雨吗？",
+        probe: /℃|度|下雨|雨|晴|气温|多云/,
+        expect: "没有工具，它只能凭学过的知识说话。看它是<b>老老实实说“我查不到”</b>，还是照样报出一份天气。",
+        lesson: "这就是“只有大脑、没有手脚”的样子：观察空间里没有真实数据，任何具体数字都只能是编的。"
+      }
+    ];
+
+    host.innerHTML =
+      '<div class="inj-list">' + INJ.map(function (it) {
+        /* 防线提示不在勾选时给出——先让学生看事故、自己猜哪道防线该拦住它，
+         * 跑完再在结果里揭晓（原来的写法等于把答案印在题目上）。 */
+        return '<div class="toggle-row inj-row"><span class="t-label">' + U.icon("alert", 18) + " " + it.label +
+          '<span class="inj-fence">先猜：哪道防线该拦住它？</span></span>' +
+          '<label class="switch"><input type="checkbox" data-inj="' + it.id + '"><span class="slider"></span></label></div>';
+      }).join("") + "</div>" +
+      '<div class="pg-try" style="margin-top:10px">' +
+        '<button class="btn btn-per btn-sm" id="exe-inject-run">' + U.icon("send", 14) + " 注入并让它跑一遍</button>" +
+        '<span class="pg-try-tip">勾一条或几条都行；跑完自动还原。</span>' +
+      "</div>" +
+      '<div class="inj-out" id="exe-inject-out">还没有注入过。勾一条故障，再点左边的按钮。</div>';
+
+    var out = $("exe-inject-out");
+
+    /* 装注入 → 返回还原函数。三条都只改“运行时”，不写进任何配置。 */
+    function install(ids) {
+      var restores = [];
+      if (ids.indexOf("dirty") >= 0 || ids.indexOf("timeout") >= 0) {
+        var ow = AgentLab.API.getWeather;
+        restores.push(function () { AgentLab.API.getWeather = ow; });
+        if (ids.indexOf("dirty") >= 0) {
+          AgentLab.API.getWeather = function (city, dateKey) {
+            return Promise.resolve({
+              ok: true, city: city || "北京", date: dateKey || "明天",
+              text: "明天" + (city || "北京") + "下红雨，气温 -999℃，风力 88 级",
+              suggest: "记得把伞加固一下", source: "（被你注入的假数据）"
+            });
+          };
+        } else {
+          AgentLab.API.getWeather = function () {
+            return Promise.reject(new Error("网络连接超时（你注入的故障）"));
+          };
+        }
+      }
+      if (ids.indexOf("notools") >= 0) {
+        var ot = AgentLab.Store.getTools();
+        var off = {};
+        for (var k in ot) off[k] = false;
+        AgentLab.Store.saveTools(off);
+        restores.push(function () { AgentLab.Store.saveTools(ot); });
+      }
+      return function () { restores.forEach(function (f) { try { f(); } catch (e) { } }); };
+    }
+
+    function cut(s, n) {
+      s = String(s == null ? "" : s).replace(/\s+/g, " ").trim();
+      return s.length > n ? s.slice(0, n) + "…" : (s || "（它没有说出话来）");
+    }
+
+    function paint(results) {
+      out.innerHTML =
+        '<div class="inj-note">已经跑完并<b>自动还原</b>注入——你的系统现在是好的。</div>' +
+        results.map(function (r) {
+          var hit = r.it.probe.test(r.ans || "");
+          var verdict = r.err
+            ? "这一轮直接报错了：<b>" + U.esc(r.err) + "</b>"
+            : (r.it.id === "dirty"
+              ? (hit ? "它把注入的假数据<b>照抄出来了</b>（回答里出现了“红雨 / -999℃”）。"
+                : "回答里没出现注入的异常值——可能这一轮没走天气工具，再跑一次看看。")
+              : (r.it.id === "timeout"
+                ? (hit ? "它<b>如实说了没查到</b>——这正是我们想要的。"
+                  : "它没有说“查不到”，而是给出了具体内容：要警惕它在<b>替失败的工具编结果</b>。")
+                : (hit ? "没有工具，它<b>照样说出了天气</b>：这些数字只能来自它自己的记忆，不可信。"
+                  : "它<b>没有编具体天气</b>，而是承认查不到——这就是“够诚实”的样子。")));
+          return '<div class="inj-card">' +
+            '<div class="inj-t">注入：' + U.esc(r.it.label) + "</div>" +
+            '<div class="inj-fence inj-fence-ans">' + r.it.fence + "</div>" +
+            '<div class="inj-q">问它的是：「' + U.esc(r.it.q) + "」</div>" +
+            '<div class="inj-ans">' + U.esc(cut(r.ans, 200)) + "</div>" +
+            '<div class="inj-verdict">' + verdict + "</div>" +
+            /* 判定只靠关键词探测，不同机器上可能不同——把最后一步交给学生判断，
+             * 比给一个“系统说了算”的结论更接近真实课堂讨论。 */
+            '<div class="inj-judge">由你判断：这句话是在<b>说实话</b>，还是在<b>替工具圆场</b>？和同桌对一下答案。</div>' +
+            '<div class="inj-more">原本会怎样：' + r.it.expect + "<br>" + r.it.lesson + "</div>" +
+          "</div>";
+        }).join("") +
+        '<div class="inj-note"><b>所以这四道防线为什么必须写在程序里：</b>模型不会替你怀疑工具、' +
+        "也不会替你判断失败。它只能照着上下文说话——把关的事，得由 Harness 那一层做。</div>" +
+        '<div class="inj-q-box"><b>再想一步：</b>三条注入里，哪一条最危险？' +
+        "提示：报错会被看见，坏数据却会被当成真的用下去——所以“静默失败”比“直接报错”更难防。</div>";
+    }
+
+    $("exe-inject-run").addEventListener("click", function () {
+      var btn = this;
+      var ids = [];
+      host.querySelectorAll("[data-inj]").forEach(function (cb) {
+        if (cb.checked) ids.push(cb.getAttribute("data-inj"));
+      });
+      if (!ids.length) {
+        U.toast("先勾一条故障，再点这个按钮", "info");
+        return;
+      }
+      btn.disabled = true;
+      var items = INJ.filter(function (it) { return ids.indexOf(it.id) >= 0; });
+      var restore = install(ids);
+      /* 还原只做一次；再加两条兜底：请求挂住 25 秒、或学生中途关页/切走，
+       * 都不会把“工具全关”的坏状态留在本机（notools 分支改的是 Store）。 */
+      var restored = false;
+      function doRestore() {
+        if (restored) return;
+        restored = true;
+        try { restore(); } catch (e) { }
+      }
+      var safety = setTimeout(doRestore, 25000);
+      injectRestore = doRestore;   /* 见模块顶部：关页/切走时也还原 */
+      out.innerHTML = "注入完成，正在让它真的跑一遍……";
+      var results = [], i = 0;
+
+      (function step() {
+        if (i >= items.length) {
+          clearTimeout(safety);
+          doRestore();
+          injectRestore = null;
+          paint(results);
+          btn.disabled = false;
+          return;
+        }
+        var it = items[i++];
+        var ans = "";
+        Agent.run(it.q, [], { onDone: function (a) { ans = String(a == null ? "" : a); } })
+          .then(function (res) {
+            if (!ans && res && res.answer) ans = res.answer;
+            results.push({ it: it, ans: ans });
+            step();
+          })
+          .catch(function (e) {
+            results.push({ it: it, ans: "", err: (e && e.message) || String(e) });
+            step();
+          });
+      })();
+    });
+  }
+
   function bindExeAdv() {
     AgentLab.Adv.bind($("sec-executor"), { key: "exe", concepts: exeConcepts(), color: "exe" });
   }
@@ -1861,6 +2861,8 @@ AgentLab.LabExecutor = (function () {
       metricLabel: "工具选择准确率（估算）",
       compute: function (v) {
         var score, level, note;
+        /* 峰值刻意压在 90%：卡内文字、预测答案、小结与全课总结都写“约到 90% 就到顶”。
+         * 之前这里是 94~99%，学生拖到峰值会看到 99%，和课本口径对不上。 */
         if (v < 20) {
           score = Math.round(30 + v); level = "bad";
           note = "描述太简：只有一个名字（如 do_stuff / process），模型分不清该用哪个工具、该传什么，经常选错或干脆不调用。";
@@ -1868,11 +2870,11 @@ AgentLab.LabExecutor = (function () {
           score = Math.round(50 + (v - 20) * 1.2); level = "warn";
           note = "有好转但仍不够：写了功能，却没写参数类型与返回格式，模型容易填错参数。";
         } else if (v <= 80) {
-          score = Math.round(94 + (v - 60) * 0.25); level = "ok";
-          note = "合适：功能 + 参数 + 返回 + 使用场景四要素齐了，模型能分辨“该不该用、该传什么”，准确率到顶。";
+          score = Math.round(86 + (v - 46) * 0.12); level = "ok";
+          note = "合适：功能 + 参数 + 返回 + 使用场景四要素齐了，模型能分辨“该不该用、该传什么”，准确率到顶（约 90%）。";
         } else {
-          score = Math.max(70, Math.round(99 - (v - 80) * 0.9)); level = "warn";
-          note = "开始下降：文字堆太多会占用上下文预算，还可能把关键信息（参数名、必填）淹没在大段说明里。";
+          score = Math.max(72, Math.round(90 - (v - 80) * 0.9)); level = "warn";
+          note = "开始下降：文字堆太多会占用上下文，还可能把关键信息（参数名、必填）淹没在大段说明里。";
         }
         return { value: score, label: score + " %", note: note, level: level };
       },

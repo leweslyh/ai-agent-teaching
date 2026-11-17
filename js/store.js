@@ -99,6 +99,9 @@ AgentLab.Store = (function () {
     saveApi: function (api) {
       return write(KEYS.api, api);
     },
+    resetApi: function () {
+      localStorage.removeItem(KEYS.api);
+    },
 
     /* ---------- 云端能力密钥（语音识别 + 图片识别共用同一个 Key） ---------- */
     getCloud: function () {
@@ -106,6 +109,9 @@ AgentLab.Store = (function () {
     },
     saveCloud: function (cloud) {
       return write(KEYS.cloud, cloud);
+    },
+    resetCloud: function () {
+      localStorage.removeItem(KEYS.cloud);
     }
   };
 })();

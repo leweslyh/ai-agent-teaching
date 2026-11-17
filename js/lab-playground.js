@@ -306,6 +306,14 @@ AgentLab.LabPlayground = (function () {
         }) +
         '<div id="pg-ab"></div>') +
 
+      /* 规则版 vs 模型版（对应评审"实验维度"第 2 条：同一句话两种规划器真对照）
+       * 为什么必须真跑两遍：上面那张对照卡是剧本（结果由代码预设），
+       * 学生很容易记成"关掉规划器 = 没有规划"。这一张让同一句话真的跑两遍——
+       * 一遍模型规划、一遍本地规则接手——把两次的决策摆在一起，结论由学生自己看出来。 */
+      LP.card("brain", "实验：同一句话跑两遍——“模型自己想办法” vs “老师写死的规则”",
+        "同一句话，真的跑两遍：<b>第一遍</b>让模型读工具说明书后自己决定调什么、怎么拆；<b>第二遍</b>把规划器关掉，改由<b>本地规则</b>接手（就是老师写死的关键词判断）。两遍的结果都摆出来，自己比一比：<b>“关掉规划器”关掉的到底是“规划”，还是“让模型来规划”？</b>",
+        '<div id="pg-rulesab"></div>') +
+
       /* 多步任务示例：专门用来体现「规划器」到底在干什么。
        * 两条路都留着：离线逐步演示（内置轨迹，教室环境不依赖 API Key）+ 一键真实跑同一句话。
        * 前面 7 条建议都是单意图单工具 —— 正好当对照组：那种题关掉规划器也做得成。 */
@@ -347,6 +355,7 @@ AgentLab.LabPlayground = (function () {
        * 现在改成裸块，并换上智能体实验室的专属紫 card-pg，标题也从"核心结论"改成课次名。 */
       '<div class="lesson-summary card-pg">' +
         '<h3>' + U.icon("check", 18) + " 课堂小结（L13 综合实战）</h3>" +
+        U.designCta(7, "把设计单真的跑一次：模型自己挑工具、工具在本机真的执行——看它有没有按你写的规则干活") +
         '<div class="summary-core"><b>智能体 = LLM + 上下文 + 工具</b>，由 <b>Harness</b> 把它编排成一个能自我循环的系统：观察 → 推理 → 行动 → 再观察。四个组件各管一段：感知器把世界变成上下文，规划器决定怎么做，记忆器决定记住什么，执行器把决定变成真实动作。判断它好不好，不能靠“感觉”，要靠<b>固定题集 + 明确指标 + 前后对比</b>；出了错，要靠<b>轨迹</b>倒推是哪一环的问题。<br><b>最后再钉一遍口径：</b>“规划器”是<b>决策职责</b>（每轮都参与，产出是动作）；“思考模式”是<b>模型的能力开关</b>（只决定推理过程可不可见）。关掉思考模式≠关掉规划器——前者只是“看不见规划”，后者才是“不由模型规划”。</div>' +
         '<div class="summary-points">' +
           '<div class="sp-item"><span class="sp-icon" style="background:var(--c-pg)">' + U.icon("refresh", 14) + '</span><div><b>循环是关键：</b>能不能“看结果再决策”，是智能体与聊天机器人的分界线</div></div>' +
@@ -367,6 +376,7 @@ AgentLab.LabPlayground = (function () {
     bindPgCtx();
     bindPgSwitch();
     bindPgAb();      /* 全班对照实验：A 组关记忆 / B 组关规划 */
+  bindPgRulesAb(); /* 同一句话两遍真跑：模型规划 vs 本地规则 */
     bindPgMulti();   /* 多步任务示例：离线逐步演示 + 真机实跑 */
     bindPgEval();
     bindPgTrace();
@@ -993,23 +1003,10 @@ AgentLab.LabPlayground = (function () {
    * 每个计时器各持自己的 interval，取消/到点时只结束自己那一个。 */
   var timerIntervals = [];
 
+  /* 响铃统一走 AgentLab.Alarm：它在页面第一次交互时就把 AudioContext 唤醒了，
+   * 到点再播放才响得出来（到点才 new AudioContext 会被浏览器的自动播放策略拦住）。 */
   function beep() {
-    try {
-      var AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return;
-      var ctx = new AC();
-      [0, 0.35, 0.7, 1.05, 1.4].forEach(function (t) {
-        var osc = ctx.createOscillator();
-        osc.type = "sine";
-        osc.frequency.value = 880;
-        var g = ctx.createGain();
-        g.gain.setValueAtTime(0.0001, ctx.currentTime + t);
-        g.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + t + 0.02);
-        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + t + 0.28);
-        osc.connect(g); g.connect(ctx.destination);
-        osc.start(ctx.currentTime + t); osc.stop(ctx.currentTime + t + 0.3);
-      });
-    } catch (e) { /* 声音不可用不影响功能 */ }
+    if (AgentLab.Alarm) AgentLab.Alarm.chime(3);
   }
 
   function fmtTime(s) {
@@ -1018,6 +1015,8 @@ AgentLab.LabPlayground = (function () {
   }
 
   function startTimer(totalSec, label, pomodoro, remindText) {
+    /* 开始计时就等于拿到了用户手势：顺手把音频解锁，到点才能真的响。 */
+    if (AgentLab.Alarm) AgentLab.Alarm.unlock();
     var box = $("pg-msgs");
     var d = document.createElement("div");
     d.className = "msg ai timer-bar";
@@ -1043,9 +1042,15 @@ AgentLab.LabPlayground = (function () {
         var i = timerIntervals.indexOf(iv); if (i >= 0) timerIntervals.splice(i, 1);
         numEl.textContent = "时间到！";
         d.classList.add("timer-done");
-        beep();
         var remindMsg = remindText ? ("⏰ 时间到！该" + remindText + "啦！") : ("⏰ " + label + " 到啦！");
         var tailMsg = pomodoro ? "番茄工作法建议：休息 5 分钟，站起来活动活动，再继续下一轮专注。" : (remindText ? "" : "休息一下，喝口水吧。");
+        /* 响铃 + 顶部横幅 + 对话里的一条消息：声音、视觉、文字三重提醒，
+         * 教室里哪怕有一项被忽略（静音 / 看别处），也不会错过。 */
+        if (AgentLab.Alarm) {
+          AgentLab.Alarm.ring({ text: remindMsg });
+        } else {
+          beep();
+        }
         addMsg("ai", remindMsg + tailMsg);
       } else {
         numEl.textContent = fmtTime(remain);
@@ -1072,14 +1077,35 @@ AgentLab.LabPlayground = (function () {
     el.className = "pipe-state is-" + state;
   }
 
-  /* 执行器调用：单独渲染成“调用 + 结果”两段小卡，比一行文字更好看也更清楚 */
+  /* 执行器调用：单独渲染成“调用 + 结果”两段小卡，比一行文字更好看也更清楚。
+   * 结果较长时（最典型就是联网搜索：一次带回好几条网页的标题 + 摘要 + 链接）
+   * **默认折叠**，只露一行「结果 · 查看搜索结果（N 字）」，点开才展开——
+   * 否则一屏聊天里全是一列网址，后面的对话和回答都被顶到很远的地方。 */
+  var FOLD_RESULT_CHARS = 140;
+
   function addToolMsg(tool) {
     var box = $("pg-msgs");
     var d = document.createElement("div");
     d.className = "msg ai tool-note";
+    var result = String(tool.result || "");
+    var isSearch = /联网搜索/.test(tool.name || "");
+    var fold = result.length > FOLD_RESULT_CHARS;
+    var body;
+    if (fold) {
+      var n = tool.payload && tool.payload.count;
+      var label = isSearch
+        ? "查看搜索结果" + (n ? "（" + n + " 条）" : "（" + result.length + " 字）")
+        : "查看完整结果（" + result.length + " 字）";
+      body = '<details class="tool-fold">' +
+        "<summary><b>结果</b>" + label + "，点开看</summary>" +
+        '<div class="tool-result">' + U.esc(result) + "</div>" +
+        "</details>";
+    } else {
+      body = '<div class="tool-result"><b>结果</b>' + U.esc(result) + "</div>";
+    }
     d.innerHTML = '<span class="who">' + U.icon("wrench", 14) + " 执行器 · " + U.esc(tool.name || "工具") + "</span>" +
       '<div class="tool-call"><b>调用</b>' + U.esc(tool.summary || "") + "</div>" +
-      '<div class="tool-result"><b>结果</b>' + U.esc(tool.result || "") + "</div>";
+      body;
     box.appendChild(d);
     box.scrollTop = box.scrollHeight;
     return d;
@@ -1394,6 +1420,8 @@ AgentLab.LabPlayground = (function () {
     if (busy) return;
     text = (text || "").trim();
     if (!text) return;
+    /* 发消息属于用户手势：顺手解锁音频，之后计时器到点才响得出来 */
+    if (AgentLab.Alarm) AgentLab.Alarm.unlock();
     busy = true;
     $("pg-input").value = "";
     $("pg-send").disabled = true;
@@ -2288,6 +2316,114 @@ AgentLab.LabPlayground = (function () {
     AgentLab.Adv.types.race.bind(host, PG_AB_DEMO);
   }
 
+  /* ============================================================
+   * 同一句话两遍真跑：模型规划 vs 本地规则
+   * 关键：两遍都调用 AgentLab.Agent.run，只改 Agent.flags.planner 一个变量，
+   * 其余（记忆、工具、系统提示）完全一样——这就是「单变量对照」。
+   * 无 Key 时两遍都会落到规则引擎：不假装有差别，如实说明，
+   * 并顺势点出"规则版就是没配 Key 时的兜底引擎"。
+   * ============================================================ */
+  function bindPgRulesAb() {
+    var host = $("pg-rulesab");
+    if (!host) return;
+    var Agent = AgentLab.Agent;
+
+    host.innerHTML =
+      '<div class="pg-try">' +
+        '<button class="btn btn-brain btn-sm" id="pg-rulesab-run">' + U.icon("send", 14) + " 同一句话跑两遍</button>" +
+        '<span class="pg-try-tip" id="pg-rulesab-q">用的是上面输入框里的那句话（没填就用那句春游的复杂任务）。</span>' +
+      "</div>" +
+      '<div id="pg-rulesab-out" class="pg-ab2-out">还没有跑过。点左边按钮，同一句话会被真的执行两遍。</div>';
+
+    var out = $("pg-rulesab-out");
+
+    function sentence() {
+      var box = $("pg-input");
+      var t = box && box.value ? box.value.trim() : "";
+      return t || PG_COMPLEX_TASK;
+    }
+
+    /* 跑一遍：只改 planner 这一个开关，其余照旧；钩子全部本地化，
+     * 不碰工作台（否则两遍的动画会互相覆盖，也看不出对照）。 */
+    function runOnce(plannerOn) {
+      var info = { engine: "", picks: [], rounds: 0, tools: 0, answer: "", error: "" };
+      var backup = Agent.flags.planner;
+      Agent.flags.planner = plannerOn;
+      var hooks = {
+        onEngine: function (mode) { info.engine = mode; },
+        onPlan: function (d) {
+          if (d && d.names && d.names.length) info.picks.push(d.names.join(" + "));
+        },
+        onDone: function (a) { if (!info.answer) info.answer = String(a == null ? "" : a); }
+      };
+      return Agent.run(sentence(), [], hooks).then(function (res) {
+        Agent.flags.planner = backup;
+        info.rounds = (res && res.rounds) || 0;
+        info.tools = (res && res.tools) || 0;
+        return info;
+      }).catch(function (e) {
+        Agent.flags.planner = backup;
+        info.error = (e && e.message) || String(e);
+        return info;
+      });
+    }
+
+    function cut(s, n) {
+      s = String(s == null ? "" : s).replace(/\s+/g, " ").trim();
+      return s.length > n ? s.slice(0, n) + "…" : (s || "（没有内容）");
+    }
+    function engineLabel(info) {
+      return info.engine === "llm" ? "模型（读工具说明书后自己决定）"
+        : (info.engine === "rules" ? "本地规则（老师写死的关键词判断）" : "未记录");
+    }
+
+    function paint(a, b) {
+      var bothRules = (a.engine !== "llm" && b.engine !== "llm");
+      var rows = [
+        ["这一轮<b>谁在做决定</b>", engineLabel(a), engineLabel(b)],
+        ["它<b>拆成了几轮</b>", a.rounds ? (a.rounds + " 轮") : "—", b.rounds ? (b.rounds + " 轮") : "—"],
+        ["它<b>打算用哪些工具</b>", a.picks.length ? U.esc(a.picks.join(" ｜ ")) : "（没记录到工具决策）", b.picks.length ? U.esc(b.picks.join(" ｜ ")) : "（规则版没有“多轮决策”，只有一次判断）"],
+        ["它<b>最后怎么回答</b>", U.esc(cut(a.answer, 110)), U.esc(cut(b.answer, 110))]
+      ];
+      out.innerHTML =
+        (bothRules
+          ? '<div class="pg-ab2-note">两遍的引擎都是<b>本地规则</b>——因为这台设备没配 DeepSeek Key，模型那一遍也被规则兜底了。' +
+            '这本身就说明一件事：<b>规则版就是“没有模型可用时”的兜底引擎</b>。配上 Key 再跑一次，两栏才会真的不一样。</div>'
+          : "") +
+        '<table class="cmp-table"><thead><tr><th>对照项</th><th>第一遍：模型规划（规划器 ON）</th><th>第二遍：本地规则（规划器 OFF）</th></tr></thead><tbody>' +
+          rows.map(function (r) {
+            return "<tr><td><b>" + r[0] + "</b></td><td>" + r[1] + "</td><td>" + r[2] + "</td></tr>";
+          }).join("") +
+        "</tbody></table>" +
+        '<div class="pg-ab2-note"><b>所以：“关掉规划器”关掉的不是「规划」这件事，而是「让模型来规划」。</b>' +
+        "规则版是按关键词匹配的 if-else（就在 <code>js/agent.js</code> 里），一句里塞进三件事时，它常常只抓住第一件；" +
+        "模型版是它自己把工具说明书读了一遍再决定。真实系统里两种会叠着用：<b>规则兜底</b>（确定、快、不花钱）" +
+        "＋<b>模型决策</b>（灵活、能处理没见过的说法）。</div>" +
+        '<div class="pg-ab2-q"><b>再想一步：</b>换一句<b>只有一个意图</b>的话（比如“明天会下雨吗”）再跑两遍——' +
+        "如果两遍都对，那说明规则版也不是没用。那它的“够用边界”到底在哪里？把两次的结果记下来，就是你自己得出的结论。</div>";
+
+      if (a.error || b.error) {
+        out.innerHTML += '<div class="pg-ab2-note">（其中一遍报错：' + U.esc(a.error || b.error) + "）</div>";
+      }
+    }
+
+    $("pg-rulesab-run").addEventListener("click", function () {
+      var btn = this;
+      btn.disabled = true;
+      out.innerHTML = "正在跑第一遍（让模型规划）……跑完再跑第二遍，稍等。";
+      runOnce(true).then(function (a) {
+        out.innerHTML = "第二遍：关掉规划器，本地规则接手……";
+        return runOnce(false).then(function (b) {
+          paint(a, b);
+          btn.disabled = false;
+        });
+      }).catch(function (e) {
+        out.innerHTML = "跑失败了：" + U.esc((e && e.message) || e);
+        btn.disabled = false;
+      });
+    });
+  }
+
   /* ---------- 多步任务示例：离线逐步演示 + 真机实跑 ---------- */
   function bindPgMulti() {
     var demo = $("pg-multi-demo");
@@ -2690,6 +2826,7 @@ AgentLab.LabPlayground = (function () {
   function bindPgQuiz() {
     AgentLab.Quiz.mount({
       host: "pg-quiz-body",
+      card: "sec-map-playground",   /* 章末综合验收 → 回看本课学习地图 */
       color: "brain",
       name: "智能体小达人",
       star: "pg-quiz-score",

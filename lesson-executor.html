@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>执行器小课堂 · 五年级大屏课堂版</title>
+<meta name="description" content="执行器实验室前 5 张卡的大屏课堂版：执行器、工具与分类、三个工具试用、有/没工具对比、Function Calling。">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/lesson-executor.css">
+</head>
+<body class="lesson-page">
+
+<!-- ================= 顶栏 ================= -->
+<header class="ls-top">
+  <div class="ls-top-in">
+    <a class="ls-brand" href="index.html">
+      <span class="ls-logo">手</span>
+      <span><b>执行器小课堂</b><small>五年级 · 大屏课堂版</small></span>
+    </a>
+    <nav class="ls-nav" id="ls-nav" aria-label="六关导航"></nav>
+    <div class="ls-tools">
+      <button type="button" class="ls-tool-btn" id="ls-smaller" aria-label="字小一点">A−</button>
+      <span class="ls-scale-label" id="ls-scale-label">115%</span>
+      <button type="button" class="ls-tool-btn" id="ls-bigger" aria-label="字大一点">A+</button>
+      <button type="button" class="ls-tool-btn is-ghost" id="ls-full">全屏</button>
+    </div>
+  </div>
+</header>
+
+<div class="ls-main">
+
+  <!-- ================= 首屏 ================= -->
+  <section class="ls-hero">
+    <h1>执行器小课堂</h1>
+  </section>
+
+  <!-- ================= 复用的六张卡 ================= -->
+  <div class="ls-scale" id="ls-scale">
+    <div class="ls-stage" id="ls-stage">
+      <div id="sec-executor"></div>
+    </div>
+  </div>
+
+  <!-- ================= 老师提示 ================= -->
+  <details class="ls-teacher">
+    <summary>老师提示（上课前看一眼）</summary>
+    <div class="inner">
+      <b>这一页是什么：</b>它没有另写一套内容——直接调用执行器实验室的渲染与交互，只保留六张卡，并按课堂顺序重排：<b>执行器 → 工具与分类 → 试用工具 → 有/没工具 → 工具从哪来 → Function Calling</b>。<br>
+      <b>大屏：</b>右上角「A− / A+」调字号（85%～150%，会记住），「全屏」进入投影模式；右下角「上一张 / 下一张」用来控制节奏。<br>
+      <b>需要联网：</b>天气查询、网页搜索。<b>天气不用钥匙</b>；<b>网页搜索需要 DeepSeek Key</b>，在「智能体实验室」或主站右上角「设置」里填一次即可（本页与主站共用同一个 Key）。<br>
+      <b>没有 Key 也能上：</b>计算器、工具分类、Function Calling 实验都不依赖 Key；有/没工具对照会用内置示例回答，天气仍是真实数据。<br>
+      <b>建议节奏：</b>第 1 关 5′ · 第 2 关 10′ · 第 3 关 9′ · 第 4 关 7′ · 第 5 关 6′ · 第 6 关 8′。
+    </div>
+  </details>
+
+  <footer class="ls-foot">
+    内容复用「执行器实验室」· <a href="index.html">回到完整系统</a>
+  </footer>
+</div>
+
+<!-- 六关翻页 -->
+<div class="ls-pager" id="ls-pager" hidden>
+  <button type="button" class="ls-pager-btn" id="ls-prev" aria-label="上一张">‹</button>
+  <span class="ls-pager-pos" id="ls-pager-pos">1 / 6</span>
+  <button type="button" class="ls-pager-btn" id="ls-next" aria-label="下一张">›</button>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/store.js"></script>
+<script src="js/api.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/adv-classroom.js"></script>
+<script src="js/quiz-flow.js"></script>
+<script src="js/agent.js"></script>
+<script src="js/lab-perception.js"></script>
+<script src="js/lab-executor.js"></script>
+<script src="js/lesson-executor.js"></script>
+</body>
+</html>

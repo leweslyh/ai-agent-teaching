@@ -35,7 +35,9 @@ AgentLab.Adv = (function () {
   /* 内置迷你测验：交给通用单题引擎（一题一题出现 + 结尾点评） */
   function bindMiniQuiz(host, items, wrongHint, color) {
     if (!host || !items || !items.length) return;
-    AgentLab.Quiz.mini(host, items, { color: color || "per", hint: wrongHint });
+    /* noBack：进阶课堂的每个概念旁本来就挂了「去对应的实验」链接，
+   * 结果页再放一个「回看」会把学生甩出这堂课、跳到别的卡上，所以这里关掉。 */
+  AgentLab.Quiz.mini(host, items, { color: color || "per", hint: wrongHint, noBack: true });
   }
 
   /* ---------- 引擎：结构 ---------- */
@@ -252,12 +254,27 @@ AgentLab.Adv = (function () {
       }
       function drawChips() {
         chipsBox.innerHTML = d.chips.map(function (o) {
-          return '<button class="adv-chip ' + (o.on ? "on" : "off") + '" data-id="' + o.id + '">' +
-            (o.on ? U.icon(d.onIcon || "eye", 14) : U.icon(d.offIcon || "xmark", 14)) + " " + o.label + "</button>";
+          /* locked（可选）：红线条目，不允许被打开——点击只给解释，不翻状态。
+           * 用途：隐私 / 临时情绪这类“打开了也不该存”的信息，不能让学生点出一个绿勾。 */
+          return '<button class="adv-chip ' + (o.on ? "on" : "off") + (o.locked ? " locked" : "") + '"' +
+            (o.locked ? ' title="红线：这类信息不进长期记忆"' : "") + ' data-id="' + o.id + '">' +
+            (o.locked ? U.icon("lock", 14) : (o.on ? U.icon(d.onIcon || "eye", 14) : U.icon(d.offIcon || "xmark", 14))) +
+            " " + o.label + "</button>";
         }).join("");
         chipsBox.querySelectorAll(".adv-chip").forEach(function (b) {
           b.addEventListener("click", function () {
             var id = b.getAttribute("data-id");
+            var chip = null;
+            d.chips.forEach(function (o) { if (o.id === id) chip = o; });
+            if (chip && chip.locked) {
+              if (resultBox) {
+                resultBox.innerHTML = d.lockedHtml
+                  ? d.lockedHtml.split("{label}").join(chip.label)
+                  : '<span class="no">✗ 红线：这类信息永远不进长期记忆。</span>' +
+                    (d.lockedTail || "它不是“开关没打开”，而是“根本不该存”——正确做法是当场用完即弃。");
+              }
+              return;
+            }
             d.chips.forEach(function (o) { if (o.id === id) o.on = !o.on; });
             drawChips();
             drawView();
@@ -1032,11 +1049,22 @@ AgentLab.Adv = (function () {
             d.items.map(function (it) { return "· <b>" + it.label + "</b>：" + it.why; }).join("<br>");
           U.toast("选得全对！", "success");
         } else {
+          /* 做错时也要逐条说清“为什么”——只报“漏了/多了”等于让学生靠排除法猜；
+           * 对小学生尤其如此：错了必须当场拿到解释，而不是做对之后才看到。 */
+          var detail = [];
+          miss.forEach(function (it) {
+            detail.push("· 漏掉的<b>「" + it.label + "」</b>：" + (it.why || "这条其实该选。"));
+          });
+          wrong.forEach(function (it) {
+            detail.push("· 多选的<b>「" + it.label + "」</b>：" + (it.why || "这条其实不该选。"));
+          });
           out.innerHTML = '<span class="no">✗ 还差一点：</span>' +
-            (miss.length ? "漏掉了 " + miss.map(function (it) { return "【" + it.label + "】"; }).join("、") + "。" : "") +
-            (wrong.length ? "多选了 " + wrong.map(function (it) { return "【" + it.label + "】"; }).join("、") + "。" : "") +
+            (miss.length ? "漏掉了 " + miss.length + " 项" : "") +
+            (miss.length && wrong.length ? "，" : "") +
+            (wrong.length ? "多选了 " + wrong.length + " 项" : "") + "。" +
             (d.failHtml ? "<br>" + d.failHtml : "") +
-            '<br><span class="dim">点「' + (d.resetLabel || "重来") + "」可以再试一次。</span>";
+            (detail.length ? "<br>" + detail.join("<br>") : "") +
+            '<br><span class="dim">看完解释，点「' + (d.resetLabel || "重来") + '」再选一次——这次边选边说理由。</span>';
         }
       });
 
@@ -2524,7 +2552,9 @@ AgentLab.Adv = (function () {
       }
       function rowsOf() {
         return d.items.map(function (it) {
-          return { it: it, rel: relOf(it), pts: scoreOf(it) };
+          /* dec 是“时间衰减”这一项的系数：榜单把它显示出来，学生才能把
+           * 相关性 × 衰减 × 重要性 真的乘一遍（学习目标里写的是“会算”）。 */
+          return { it: it, rel: relOf(it), dec: 1 / (1 + it.days / half()), pts: scoreOf(it) };
         });
       }
 
@@ -2559,7 +2589,8 @@ AgentLab.Adv = (function () {
           return '<button type="button" class="' + cls + '" data-id="' + r.it.id + '">' +
             '<span class="adv-rank-name">' + (revealed ? "<b>" + (i + 1) + "&nbsp;</b> " : "") + r.it.label + "</span>" +
             '<span class="adv-rank-meta">' + (r.it.days === 0 ? "今天记的" : r.it.days + " 天前记的") +
-              "　·　重要性 " + r.it.imp + "/5" + (revealed ? "　·　相关性 " + r.rel + "/100" : "") + "</span>" +
+              "　·　重要性 " + r.it.imp + "/5" +
+              (revealed ? "　·　相关性 " + r.rel + "/100　·　衰减 ×" + r.dec.toFixed(2) : "") + "</span>" +
             (revealed
               ? '<span class="adv-rank-bar"><i style="width:' + r.pts + '%"></i></span><b class="adv-rank-pts">' + r.pts + " 分</b>"
               : "") +

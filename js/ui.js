@@ -555,6 +555,17 @@ AgentLab.UI = (function () {
     '</span>';
   }
 
+  /* 解释性补充折叠：把第二层说明收进 <details>，主线保持清爽。
+   * 只用原生 details，无需额外 JS；title 纯文本（会转义），body 允许 HTML。 */
+  function noteFold(title, html, hint) {
+    return '<details class="note-fold">' +
+      '<summary>' + esc(title) +
+        (hint ? '<span style="margin-left:6px;font-weight:400;color:var(--c-sub);font-size:12px">' + esc(hint) + '</span>' : '') +
+      '</summary>' +
+      '<div class="nf-body">' + html + '</div>' +
+    '</details>';
+  }
+
   document.addEventListener("click", function (e) {
     var t = e.target;
     var btn = (t && t.closest) ? t.closest(".termq") : null;
@@ -581,6 +592,11 @@ AgentLab.UI = (function () {
     /* 目标常常是卡内某个小容器，闪烁整张卡片比闪烁一个小方块更容易被看见 */
     var target = (opt && opt.self) ? el : ((el.closest && el.closest(".card")) || el);
     if (!target || typeof target.scrollIntoView !== "function") return false;
+    /* 目标卡是「本课学习地图 / 本课学习目标」这类默认折叠的卡时，先自动展开：
+     * 否则学生跳过去只看到一行标题，还得自己再点一下才知道该回看什么。
+     * opt.noExpand = true 可关掉这个行为（例如只想高亮、不想改折叠状态）。 */
+    var foldBtn = (!opt || !opt.noExpand) ? target.querySelector(".brief-head") : null;
+    if (foldBtn && target.classList.contains("is-folded")) foldBtn.click();
     try {
       target.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (e) {
@@ -592,10 +608,32 @@ AgentLab.UI = (function () {
     return true;
   }
 
+  /* ---------- 「去我的设计单」入口（跨栏目整合主线） ----------
+   * 八个板块各自成关，学生容易学一关丢一关。每个实验室末尾放一行这个入口，
+   * 把这一课学到的东西指到《我的智能体设计单》里对应的那一步——八课连成一条线。
+   * 只产出 HTML（不在渲染期绑事件）；点开是独立原型页，带 ?step= 会直接跳到那一步。 */
+  function designCta(step, what) {
+    return '<div class="sheet-cta">' + icon("bookopen", 17) +
+      "<span><b>把这一课用上：</b>《我的智能体设计单》第 " + step + " 步要" + esc(what) + "。</span>" +
+      '<a class="sheet-cta-btn" href="prototype/design-sheet.html?step=' + step +
+      '" target="_blank" rel="noopener">去写我的设计单 →</a></div>';
+  }
+
   /* ---------- 本课学习地图（每页开篇的「认知地图 + 页内导航」） ----------
    * 依据：ai-agent-book 每章开篇必有一张「本章知识脉络图」——先给地图、再讲细节。
    * 本系统七个板块原先都是直接进第一张卡，学生看不到全局、也不知道自己走到哪了。
    * 只产出 HTML，不在渲染期绑定事件；点击统一交给文件末尾那份 document 级委托。 */
+  /* ---------- 归因 + 迁移：实验卡结尾的固定两问 ----------
+   * 只给“小结”学生记住的是答案，不是判断方法；补上“为什么猜错 / 换个场景还成立吗”。
+   * 纯文字、不带输入框：课堂上是“先和同桌说一句”，不引入新的存储与判分。 */
+  function reflect(why, transfer) {
+    return '<div class="reflect-box">' +
+      '<div class="reflect-head">' + icon("chat", 14) + ' 想一想（先和同桌说一句，再往下走）</div>' +
+      '<div class="reflect-q"><b>① 归因：</b>' + (why || "你刚才为什么这么猜？是卡片里的哪一句话让你这么想的？") + '</div>' +
+      '<div class="reflect-q"><b>② 迁移：</b>' + (transfer || "换一个场景，这个结论还成立吗？什么情况下会不成立？") + '</div>' +
+      '</div>';
+  }
+
   function sectionMap(opt) {
     opt = opt || {};
     var groups = opt.groups || [];
@@ -615,8 +653,11 @@ AgentLab.UI = (function () {
           return '<div class="sec-map-group">' +
             '<span class="sec-map-glabel"><i>' + (gi + 1) + '</i>' + esc(g.label || "") + '</span>' +
             '<span class="sec-map-items">' + (g.items || []).map(function (it) {
-              /* 节点只留题目：不再输出说明小字（it.note 视为废弃字段，保留在数据里不参与渲染） */
-              var inner = '<span class="sec-map-t">' + esc(it.t || "") + '</span>';
+              /* 节点只留题目：不再输出说明小字（it.note 视为废弃字段，保留在数据里不参与渲染）。
+               * it.tag（可选）用于标注「必做 8′ / 选做」这类课时分层信息；
+               * it.opt 为真时用弱化样式，让两课时主线一眼可辨。 */
+              var inner = '<span class="sec-map-t">' + esc(it.t || "") + '</span>' +
+                (it.tag ? '<span class="sec-map-tag' + (it.opt ? " is-opt" : "") + '">' + esc(it.tag) + '</span>' : "");
               /* 带 el 的节点可点（跳转 + 高亮）；不带的只作展示，不误导学生去点 */
               return it.el
                 ? '<button type="button" class="sec-map-node" data-jump="' + esc(it.el) + '">' + inner + '</button>'
@@ -649,6 +690,10 @@ AgentLab.UI = (function () {
       if (el.classList.contains("lesson-goal")) goal = el;
     });
     if (!map || !goal) return;
+
+    /* 给地图补一个稳定 id：章末综合小测的「回看」按钮要跳到这里让学生自己挑卡。
+     * 地图原本只有 class，而 jumpTo 只认 id；id 由栏目 id 推导，保证与栏目一一对应。 */
+    if (!map.id) map.id = "sec-map-" + sec.id.replace(/^sec-/, "");
 
     /* 语义色提到容器上：两块共用同一套 --sm-c/t/l/i，标题与序号球的颜色自动一致 */
     var wrap = document.createElement("div");
@@ -719,7 +764,10 @@ AgentLab.UI = (function () {
     opts.forEach(function (o) { if (o.k === opt.ans) ansText = String(o.t || ""); });
     predState[id] = {
       ans: opt.ans, ansText: ansText, why: opt.why || "",
-      hint: opt.hint || "", picked: null
+      hint: opt.hint || "", picked: null,
+      /* conf：学生自己的把握程度（true=很确定 / false=不太确定 / null=没表态）。
+       * 只记「猜没猜中」是不够的——记下把握程度，才看得见“过度自信”。 */
+      conf: null
     };
     return '<div class="predict-bar" data-predict="' + esc(id) + '" data-color="' + esc(opt.color || "per") + '">' +
       '<div class="predict-head">' + icon("target", 15) +
@@ -727,6 +775,11 @@ AgentLab.UI = (function () {
       '<div class="predict-opts">' + opts.map(function (o) {
         return '<button type="button" class="predict-opt" data-k="' + esc(o.k) + '">' + o.t + '</button>';
       }).join("") + '</div>' +
+      /* 把握程度：选完预测才出现（先选答案、再问有多确定，顺序不能反） */
+      '<div class="predict-conf" hidden><span>你有多确定？</span>' +
+        '<button type="button" class="predict-cf" data-cf="1">很确定</button>' +
+        '<button type="button" class="predict-cf" data-cf="0">不太确定</button>' +
+      '</div>' +
       '<div class="predict-fb">' + icon("info", 13) + ' 选一个你的预测；跑完这里会告诉你猜中没有。</div>' +
     '</div>';
   }
@@ -743,18 +796,21 @@ AgentLab.UI = (function () {
     if (st.picked == null) {
       box.classList.add("is-skip");
       fb.innerHTML = icon("info", 13) + ' 这次没下注。正确答案是：<b>' + st.ansText + '</b>' +
-        (st.why ? '<br>' + st.why : "");
+        (st.why ? '<br>' + st.why : "") +
+        '<div class="predict-calib">下次先猜一个再跑：<b>猜过再验证</b>，比直接看答案记得牢得多。</div>';
       return true;
     }
     if (st.picked === st.ans) {
       box.classList.add("is-right");
-      fb.innerHTML = '<span class="fb-ok">' + icon("check", 14) + ' 猜中了！</span>' + (st.why || "");
+      fb.innerHTML = '<span class="fb-ok">' + icon("check", 14) + ' 猜中了！</span>' + (st.why || "") +
+        recordCalib(box, true, st.conf);
       celebrate(box.querySelector('.predict-opt[data-k="' + st.picked + '"]'));
     } else {
       box.classList.add("is-wrong");
       fb.innerHTML = '<span class="fb-no">' + icon("xmark", 14) + ' 没猜中——正确答案是「' + st.ansText + '」</span>' +
         (st.why ? '<br>' + st.why : "") +
-        (st.hint ? '<br><span class="predict-hint">' + st.hint + '</span>' : "");
+        (st.hint ? '<br><span class="predict-hint">' + st.hint + '</span>' : "") +
+        recordCalib(box, false, st.conf);
     }
     return true;
   }
@@ -773,7 +829,28 @@ AgentLab.UI = (function () {
       return;
     }
 
-    /* ② 预测条：记录选择；展开对照之前可以反复改 */
+    /* ② 预测条 · 把握程度（选完预测后才出现，展开对照之前可以改） */
+    var cf = t.closest(".predict-cf");
+    if (cf) {
+      var barC = cf.closest(".predict-bar");
+      if (!barC || barC.classList.contains("is-done")) return;
+      var stC = predState[barC.getAttribute("data-predict")];
+      if (!stC) return;
+      stC.conf = cf.getAttribute("data-cf") === "1";
+      Array.prototype.forEach.call(barC.querySelectorAll(".predict-cf"), function (b) {
+        b.classList.toggle("on", b === cf);
+      });
+      var pickedBtn = barC.querySelector(".predict-opt.on");
+      var fbC = barC.querySelector(".predict-fb");
+      if (fbC) {
+        fbC.innerHTML = icon("check", 13) + " 已记录：" +
+          (pickedBtn ? "预测「<b>" + esc(pickedBtn.textContent) + "</b>」、" : "") +
+          "把握程度「<b>" + (stC.conf ? "很确定" : "不太确定") + "</b>」——跑完再回来看猜中没有。";
+      }
+      return;
+    }
+
+    /* ③ 预测条：记录选择；展开对照之前可以反复改 */
     var pick = t.closest(".predict-opt");
     if (!pick) return;
     var bar = pick.closest(".predict-bar");
@@ -784,20 +861,290 @@ AgentLab.UI = (function () {
     Array.prototype.forEach.call(bar.querySelectorAll(".predict-opt"), function (b) {
       b.classList.toggle("on", b === pick);
     });
+    var confRow = bar.querySelector(".predict-conf");
+    if (confRow) confRow.hidden = false;
     var fb = bar.querySelector(".predict-fb");
     if (fb) {
       fb.innerHTML = icon("check", 13) + ' 已记录你的预测：<b>' + pick.textContent +
-        '</b> —— 跑完再回来看看猜中没有。';
+        '</b> —— 再点一下<b>你有多确定</b>（这一步才是校准的关键），然后跑实验。';
     }
   });
+
+  /* ---------- 预测校准：把「猜得准不准」和「当时有多确定」记在一起 ----------
+   * 为什么补这一步：只记猜没猜中，学生点错了也不心疼；
+   * 把把握程度也记下来，才能让他看见「过度自信」——
+   * 说了很确定却错了，比单纯猜错更值得记住。统计按栏目累计、只存本机。 */
+  var PSTAT = "predict_stats";
+  function readPStat() {
+    try { return (window.AgentLab && AgentLab.Store && AgentLab.Store.get(PSTAT, null)) || {}; } catch (e) { return {}; }
+  }
+  function writePStat(o) {
+    try { if (window.AgentLab && AgentLab.Store) AgentLab.Store.set(PSTAT, o); } catch (e) { }
+  }
+  function secKeyOf(el) {
+    var s = (el && el.closest) ? el.closest("section") : null;
+    return (s && s.id) ? s.id.replace(/^sec-/, "") : "其它";
+  }
+  /* 记一笔并返回评语 + 本页小计（HTML 片段） */
+  function recordCalib(box, right, conf) {
+    var key = secKeyOf(box);
+    var all = readPStat();
+    var d = all[key] || { n: 0, ok: 0, cn: 0, cok: 0, wn: 0, wok: 0 };
+    d.n++;
+    if (right) d.ok++;
+    if (conf === true) { d.cn++; if (right) d.cok++; }
+    if (conf === false) { d.wn++; if (right) d.wok++; }
+    all[key] = d;
+    writePStat(all);
+
+    var line;
+    if (conf === true) {
+      line = right
+        ? "你说了「很确定」，而且猜对了——这种判断可以信。"
+        : "你说了「很确定」，结果没猜中：<b>这就是“过度自信”</b>，比单纯猜错更值得记住。";
+    } else if (conf === false) {
+      line = right
+        ? "你说了「不太确定」，却猜对了——你的直觉比自己以为的更准。"
+        : "你说了「不太确定」，也没猜中——知道自己不确定，这本身就是好判断。";
+    } else {
+      line = "这次没说“你有多确定”，所以看不出这是真懂还是碰巧。下次先点一下把握程度。";
+    }
+    var tally = "本页预测战绩：猜中 <b>" + d.ok + "/" + d.n + "</b>" +
+      (d.cn ? "｜「很确定」时对了 <b>" + d.cok + "/" + d.cn + "</b>" : "") +
+      (d.wn ? "｜「不太确定」时对了 <b>" + d.wok + "/" + d.wn + "</b>" : "");
+    return '<div class="predict-calib"><b>校准：</b>' + line +
+      '<span class="predict-tally">' + tally + "</span></div>";
+  }
+
+  /* ============================================================
+   * 到点响铃（计时器 / 提醒共用）
+   * ------------------------------------------------------------
+   * 为什么单独做成一个模块：浏览器规定“没有用户交互就不许自动发声”。
+   * 如果等到 25 分钟后计时器到点才 new AudioContext()，那个上下文一定是
+   * suspended 状态，表现就是“倒计时走完了却没声音”。
+   * 正确做法：页面一有交互（点按钮、按键盘）就把音频上下文创建/唤醒并一直复用，
+   * 到点再播放这份已经解锁的上下文，才能真的响。
+   * ============================================================ */
+  var Alarm = (function () {
+    var ctx = null;
+    var hideTimer = null;
+
+    function ensureCtx() {
+      if (ctx) return ctx;
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      try { ctx = new AC(); } catch (e) { ctx = null; }
+      return ctx;
+    }
+
+    /* 用户一有交互就调用（也可以在任何点击处理里主动调用）：把音频上下文唤醒。 */
+    function unlock() {
+      var c = ensureCtx();
+      if (!c) return null;
+      if (c.state === "suspended") { try { c.resume(); } catch (e) { } }
+      return c;
+    }
+
+    /* 真正的发声：把音符排进一个已经运行的上下文 */
+    function play(c, times) {
+      var t0 = c.currentTime + 0.05;
+      times = times || 3;
+      for (var i = 0; i < times; i++) {
+        var at = t0 + i * 0.46;
+        [880, 1174.7].forEach(function (f, j) {
+          var o = c.createOscillator(), g = c.createGain();
+          o.type = "sine";
+          o.frequency.setValueAtTime(f, at + j * 0.18);
+          g.gain.setValueAtTime(0.0001, at + j * 0.18);
+          g.gain.exponentialRampToValueAtTime(0.3, at + j * 0.18 + 0.03);
+          g.gain.exponentialRampToValueAtTime(0.0001, at + j * 0.18 + 0.32);
+          o.connect(g); g.connect(c.destination);
+          o.start(at + j * 0.18); o.stop(at + j * 0.18 + 0.34);
+        });
+      }
+      /* 最后补一记更长的“咚”，让提示更明显 */
+      var end = t0 + times * 0.46;
+      var o2 = c.createOscillator(), g2 = c.createGain();
+      o2.type = "sine";
+      o2.frequency.setValueAtTime(660, end);
+      g2.gain.setValueAtTime(0.0001, end);
+      g2.gain.exponentialRampToValueAtTime(0.3, end + 0.04);
+      g2.gain.exponentialRampToValueAtTime(0.0001, end + 0.75);
+      o2.connect(g2); g2.connect(c.destination);
+      o2.start(end); o2.stop(end + 0.8);
+    }
+
+    /* “叮—咚”门铃：两音一组，默认敲三组。纯 WebAudio，不需要任何音频文件。
+     * 关键：先确认上下文真的在 running 再排音符。往挂起的上下文里排，
+     * 有些浏览器不会补播，表现就是“完全没声音”。 */
+    function chime(times) {
+      var c = ensureCtx();
+      if (!c) return false;
+      if (c.state === "running") { play(c, times); return true; }
+      var go = function () { play(c, times); };
+      try {
+        var p = c.resume();
+        if (p && typeof p.then === "function") {
+          p.then(go).catch(function () { /* 仍被拦：顶部横幅照样看得见 */ });
+        } else {
+          go();
+        }
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    /* 设置里的「测试响铃」：响一声，并把“到底能不能响、为什么”说清楚 */
+    function test() {
+      var c = ensureCtx();
+      if (!c) {
+        toast("这个浏览器不支持网页音频（Web Audio），请换 Chrome / Edge 试试", "error");
+        return false;
+      }
+      var ok = chime(2);
+      setTimeout(function () {
+        if (c.state === "running") {
+          toast("已播放测试铃声。没听到就检查：系统音量 / 标签页是否静音 / 耳机或音响是否接好", "success");
+        } else {
+          toast("浏览器把声音拦住了（音频状态：" + c.state + "）。请在页面上随便点一下，再点一次「测试响铃」", "error");
+        }
+      }, 450);
+      return ok;
+    }
+
+    /* 当前音频状态：running / suspended / none —— 排查“没声音”时最先看这个 */
+    function state() { return ctx ? ctx.state : "none"; }
+
+    /* 顶部提示条：响铃时同时给一个“看得见”的提醒。
+     * 停留时间：默认 8 秒后自动收起；鼠标停在上面（正在看）就先不收，移开重新计时；
+     * 也可以随时点「知道了」手动关闭。
+     * 如果此刻音频还没 running（浏览器把自动播放拦住了），
+     * 额外给一个「🔔 开启声音」按钮——点它属于用户手势，能当场把声音放出来。 */
+    var AUTO_HIDE_MS = 8000;
+
+    function banner(text, onStop) {
+      var el = document.getElementById("alarm-bar");
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "alarm-bar";
+        el.className = "alarm-bar";
+        el.setAttribute("role", "alert");
+        document.body.appendChild(el);
+      }
+
+      function hide() {
+        el.classList.remove("show");
+        if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+      }
+      function armAutoHide() {
+        if (hideTimer) clearTimeout(hideTimer);
+        hideTimer = setTimeout(hide, AUTO_HIDE_MS);
+      }
+
+      var needSound = state() !== "running";
+      el.innerHTML = '<span class="alarm-ico">⏰</span><span class="alarm-txt"></span>' +
+        (needSound ? '<button type="button" class="alarm-stop alarm-retry">🔔 开启声音</button>' : "") +
+        '<button type="button" class="alarm-stop alarm-dismiss">知道了</button>';
+      el.querySelector(".alarm-txt").textContent = text || "时间到！";
+      el.classList.add("show");
+
+      /* 手动关闭 */
+      el.querySelector(".alarm-dismiss").addEventListener("click", function () {
+        hide();
+        if (onStop) { try { onStop(); } catch (e) { } }
+      });
+
+      var rb = el.querySelector(".alarm-retry");
+      if (rb) rb.addEventListener("click", function () {
+        unlock();
+        chime(3);
+        rb.remove();
+        armAutoHide();          // 点了按钮说明还在关注，重新给 8 秒
+        setTimeout(function () {
+          if (state() !== "running") {
+            toast("浏览器仍然拦着声音：请确认标签页没有静音、系统音量已打开，或换 Chrome / Edge 打开本页", "error");
+          }
+        }, 500);
+      });
+
+      /* 鼠标停在横幅上时不自动收（正在读），移开后再重新计时 */
+      el.onmouseenter = function () {
+        if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+      };
+      el.onmouseleave = armAutoHide;
+
+      armAutoHide();
+    }
+
+    /* 立刻响：声音 + 顶部提示条 + 一条 toast（标签页在后台时标题也闪一下） */
+    function ring(opts) {
+      opts = opts || {};
+      var text = opts.text || opts.title || "时间到！";
+      /* 排查用：控制台会写一行当前音频状态（running 才可能出声） */
+      try { console.info("[Alarm] 响铃，音频状态 =", state()); } catch (e) { }
+      chime(opts.times || 3);
+      banner(text, opts.onStop);
+      if (opts.toast !== false) { try { toast(text, "success"); } catch (e) { } }
+      try {
+        if (document.title.indexOf("⏰") !== 0) {
+          var oldTitle = document.title;
+          document.title = "⏰ " + String(text).replace(/\s+/g, " ").slice(0, 24);
+          setTimeout(function () { document.title = oldTitle; }, 6000);
+        }
+      } catch (e) { }
+    }
+
+    /* 定时响：seconds 或 at（时间戳）二选一；返回 { cancel } */
+    function schedule(opts) {
+      opts = opts || {};
+      var delay = opts.at ? (opts.at - Date.now()) : (opts.seconds || 0) * 1000;
+      delay = Math.max(0, delay);
+      var t = setTimeout(function () {
+        ring({ text: opts.text || "时间到！", onStop: opts.onStop });
+        if (opts.onFire) { try { opts.onFire(); } catch (e) { } }
+      }, delay);
+      return { cancel: function () { clearTimeout(t); } };
+    }
+
+    /* 页面交互时解锁音频（捕获阶段，任何点击/按键都算）。
+     * 不只听“第一次”：只要还没 running，就继续在下一次交互时重试（最多 5 次），
+     * 免得第一次点击碰上浏览器还没准备好、之后再也不唤醒了。 */
+    function boot() {
+      var tries = 0;
+      var onGesture = function () {
+        tries++;
+        unlock();
+        if ((ctx && ctx.state === "running") || tries >= 5) {
+          document.removeEventListener("pointerdown", onGesture, true);
+          document.removeEventListener("touchstart", onGesture, true);
+          document.removeEventListener("keydown", onGesture, true);
+        }
+      };
+      document.addEventListener("pointerdown", onGesture, true);
+      document.addEventListener("touchstart", onGesture, true);
+      document.addEventListener("keydown", onGesture, true);
+    }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+    else boot();
+
+    return { unlock: unlock, chime: chime, ring: ring, schedule: schedule, test: test, state: state };
+  })();
+
+  /* 同时挂到 AgentLab 顶层：工具代码（agent.js / lab-*.js）读的是 AgentLab.Alarm，
+   * 以前只挂在 AgentLab.UI 下，导致 `if (AgentLab.Alarm)` 永远为假——
+   * 测试响铃（走 UI.Alarm）能响，计时器 / 提醒到点却悄悄什么都没做。 */
+  AgentLab.Alarm = Alarm;
 
   return {
     $: $, esc: esc, delay: delay, showSection: showSection,
     typewriter: typewriter, toast: toast, celebrate: celebrate, md: md,
     icon: icon, addScore: addScore, tex: tex, texToPlain: texToPlain,
-    term: term,
-    jumpTo: jumpTo, sectionMap: sectionMap,
+    term: term, noteFold: noteFold,
+    jumpTo: jumpTo, sectionMap: sectionMap, designCta: designCta,
     predict: predict, predictResolve: predictResolve,
-    foldBrief: foldBrief
+    reflect: reflect,
+    foldBrief: foldBrief,
+    Alarm: Alarm
   };
 })();

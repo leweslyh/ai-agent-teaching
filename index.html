@@ -8,6 +8,20 @@
 </head>
 <body>
 
+<!-- 启动兜底：这个站的内容全部由 JS 渲染，脚本一旦没跑起来就是一片空白。
+     与其把学生丢在白屏前，不如直接说清楚“发生了什么、该怎么办”。 -->
+<noscript>
+  <div class="boot-msg">
+    <b>这个学习系统需要浏览器开启 JavaScript 才能运行。</b>
+    <div>请在浏览器设置里开启 JavaScript（或用 Chrome / Edge 打开），然后刷新本页。</div>
+  </div>
+</noscript>
+<div id="boot-error" class="boot-msg" style="display:none">
+  <b>页面没能完整加载。</b>
+  <span id="boot-error-msg"></span>
+  <div>先按 <b>Ctrl + F5</b> 强制刷新一次；如果还是不行，请告诉老师（可能是网络不通，或文件没同步全）。</div>
+</div>
+
 <!-- ================= 顶部导航 ================= -->
 <header class="topbar">
   <div class="topbar-inner">
@@ -119,7 +133,15 @@
       </small>
     </label>
     </form>
+    <div class="sound-field">
+      <span class="sound-title">声音提醒 · 计时器 / 提醒到点响铃</span>
+      <div class="sound-row">
+        <button type="button" class="btn btn-ghost" id="set-sound-test">🔔 测试响铃</button>
+        <span class="sound-state" id="set-sound-state">点一下测试：听到“叮咚”就说明能响</span>
+      </div>
+    </div>
     <div class="m-actions">
+      <button class="btn btn-ghost" id="set-clear" style="margin-right:auto;color:#b03a2e">清除已保存密钥</button>
       <button class="btn btn-ghost" id="set-cancel">取消</button>
       <button class="btn btn-brain" id="set-save">保存</button>
     </div>
@@ -149,5 +171,42 @@
 <script src="js/lab-works.js"></script>
 <script src="js/reveal.js"></script>
 <script src="js/main.js"></script>
+
+<!-- 启动兜底（放在最后：前面的脚本都已声明完，这里才判断得出“有没有跑起来”）
+     为什么需要：全站内容由 JS 渲染，任何一个文件 404 都会让页面变成空白，
+     而空白页对五年级学生来说是“没法报告的问题”。这里把它变成一句能读懂的话。 -->
+<script>
+(function () {
+  function show(msg) {
+    var box = document.getElementById("boot-error");
+    if (!box || box.getAttribute("data-shown") === "1") return;
+    box.setAttribute("data-shown", "1");
+    var s = document.getElementById("boot-error-msg");
+    if (s && msg) s.textContent = msg;
+    box.style.display = "";
+  }
+  /* ① 资源加载失败 / 脚本报错。必须用捕获阶段，否则 <script> 的 error 事件到不了这里 */
+  window.addEventListener("error", function (e) {
+    var t = e.target;
+    if (t && t.tagName === "SCRIPT") {
+      show("（没能加载脚本：" + (t.getAttribute("src") || "?") + "）");
+    } else if (t && t.tagName === "IMG") {
+      /* 单张配图失败不打断整页：底下还有正文，不必吓学生 */
+    } else if (e && e.message) {
+      /* file:// 或跨源情况下，浏览器只肯给出 "Script error." 这种没法读的信息，
+       * 那就换成学生能懂、老师能行动的一句话。 */
+      var m = String(e.message);
+      show(/^script error/i.test(m)
+        ? "（有一个脚本没能运行——多半是文件缺失或没同步全）"
+        : "（脚本报错：" + m + "）");
+    }
+  }, true);
+  /* ② 3 秒后首页还是空的 → 渲染没跑起来（比白屏有用得多） */
+  setTimeout(function () {
+    var cover = document.getElementById("sec-cover");
+    if (cover && cover.children.length === 0) show("（首页内容没有渲染出来）");
+  }, 3000);
+})();
+</script>
 </body>
 </html>

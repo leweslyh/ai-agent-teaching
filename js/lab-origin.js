@@ -691,7 +691,7 @@ AgentLab.LabOrigin = (function () {
             '<button class="ta-fig-btn is-on" data-fig="cn">中文重绘版</button>' +
             '<button class="ta-fig-btn" data-fig="en">论文英文原图</button>' +
           '</div>' +
-          '<img src="images/transformer-architecture.svg" alt="Transformer 经典架构图（中文重绘）" class="ta-image" id="ta-fig-img" title="点击放大查看">' +
+          '<img loading="lazy" decoding="async" src="images/transformer-architecture.svg" alt="Transformer 经典架构图（中文重绘）" class="ta-image" id="ta-fig-img" title="点击放大查看">' +
           '<div class="ta-source" id="ta-fig-src">📐 本教学系统重绘 · 结构依据 Vaswani et al., "Attention Is All You Need", NeurIPS 2017</div>' +
         '</div>' +
         '<div class="ta-explain">' +
@@ -1163,6 +1163,7 @@ AgentLab.LabOrigin = (function () {
      * 加上 card-ori 之后，style.css 里那条 .lesson-summary.card-ori h3 也终于生效。 ===== */
     html += '<div class="lesson-summary card-ori">' +
       '<h3>' + U.icon("check", 18) + ' 课堂小结（L01+L02）</h3>' +
+      U.designCta(1, "选定一个真实场景、写清它服务的是谁") +
       '<div class="summary-core"><b>核心结论：</b>智能体能力 = <b>感知能力</b>（能获取什么信息）+ <b>行动能力</b>（能调用什么工具）+ <b>规划能力</b>（怎么决定做什么）。把 AI 的 70 多年串起来看，是一条很清楚的线：<b>能查会算</b>的专家系统 → <b>会看会听</b>的深度学习 → <b>会说话</b>的大模型 → 今天<b>会做事</b>的智能体。而真正的分水岭，不是"会不会说话"，是<b>有没有那四样零件、能不能自己把一件事做完</b>。</div>' +
       '<div class="summary-points">' +
         '<div class="sp-item"><span class="sp-icon">' + U.icon("clock", 14) + '</span><div><b>AI 的来路（L01）：</b>图灵测试（1950）→ 达特茅斯会议（1956）→ 专家系统 → AI 冬天 → 深度学习（2012）→ AlphaGo（2016）→ Transformer（2017）→ ChatGPT（2022）→ AI Agent（今天）。每一次爆发，都是<b>数据、算法、算力</b>三根支柱同时变强的结果——只强一根，AI 还是"笨"的。</div></div>' +
@@ -1633,6 +1634,7 @@ AgentLab.LabOrigin = (function () {
   function bindQuiz() {
     AgentLab.Quiz.mount({
       host: "ori-quiz-content",
+      card: "sec-map-origin",   /* 章末综合小测（覆盖 L01-L02）→ 回看本课学习地图 */
       color: "ori",
       name: "AI 起源小达人",
       star: "ori-quiz-score",

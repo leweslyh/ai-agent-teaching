@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>我的智能体设计单 · 原型</title>
+<!-- 复用主站设计系统：语义色、卡片、按钮、提示条都直接用 style.css，风格与八个板块一致 -->
+<link rel="stylesheet" href="../css/style.css">
+<style>
+/* ============================================================
+ * 「我的智能体设计单」原型样式（前缀 mds-，避免与主站样式冲突）
+ * 为什么单开一段：主站的 .card 是「讲一段知识」，这里是「填一份表」，
+ * 需要表单行、步骤条、右侧实时预览这些主站没有的排布。
+ * ============================================================ */
+body { background: #f7f8fb; }
+.mds-wrap { max-width: 1180px; margin: 0 auto; padding: 22px 18px 80px; }
+
+/* 顶部条 */
+.mds-top { display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+.mds-top h1 { font-size: 24px; font-weight: 900; color: var(--c-ink, #2B2B33); margin: 0; }
+.mds-top p { margin: 6px 0 0; font-size: 13.5px; line-height: 1.8; color: #5a5a66; max-width: 660px; }
+.mds-badge { display: inline-block; margin-left: 8px; background: #e8f4ee; color: #1f7a4d; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 800; vertical-align: middle; }
+.mds-top-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* 两栏：左表单 / 右实时预览 */
+.mds-grid { display: grid; grid-template-columns: 1fr 380px; gap: 18px; align-items: start; }
+@media (max-width: 1000px) { .mds-grid { grid-template-columns: 1fr; } }
+
+/* 步骤卡 */
+.mds-step { display: block; background: #fff; border: 1.5px solid #e6e6ee; border-radius: 14px; padding: 14px 16px; margin-bottom: 12px; }
+.mds-step.on { border-color: var(--c-works, #2fa37a); }
+.mds-step-h { display: flex; align-items: center; gap: 9px; }
+.mds-step-no { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%; background: var(--c-works, #2fa37a); color: #fff; font-size: 14px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+.mds-step-t { font-size: 15.5px; font-weight: 800; color: var(--c-ink, #2B2B33); }
+.mds-step-role { margin-left: auto; font-size: 12px; font-weight: 700; color: #8a8a99; background: #f4f5f9; border-radius: 999px; padding: 2px 9px; }
+.mds-step-d { font-size: 13px; line-height: 1.8; color: #5a5a66; margin: 8px 0 10px; }
+.mds-step-d b { color: #2b6cb0; }
+
+/* 表单行 */
+.mds-field { margin-top: 10px; }
+.mds-label { display: block; font-size: 13px; font-weight: 800; color: #4a4a55; margin-bottom: 5px; }
+.mds-label small { font-weight: 600; color: #8a8a99; }
+.mds-field input[type="text"], .mds-field textarea {
+  width: 100%; box-sizing: border-box; font-family: inherit; font-size: 13.5px; line-height: 1.8;
+  border: 1.5px solid #e2e2ec; border-radius: 10px; padding: 8px 11px; background: #fff; color: #2B2B33; resize: vertical;
+}
+.mds-field textarea { min-height: 62px; }
+.mds-field input:focus, .mds-field textarea:focus { outline: none; border-color: var(--c-works, #2fa37a); box-shadow: 0 0 0 3px rgba(47, 163, 122, .12); }
+.mds-hint { font-size: 12px; color: #8a8a99; margin-top: 4px; line-height: 1.7; }
+
+/* 选项胶囊 */
+.mds-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.mds-chip { border: 1.5px solid #e2e2ec; background: #fff; color: #4a4a55; border-radius: 999px; padding: 5px 13px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.mds-chip:hover { border-color: var(--c-works, #2fa37a); }
+.mds-chip.on { background: var(--c-works, #2fa37a); border-color: var(--c-works, #2fa37a); color: #fff; }
+
+/* 工具条目：勾选后长出「工具描述」输入框 */
+.mds-tool { border: 1.5px dashed #e2e2ec; border-radius: 11px; padding: 10px 12px; margin-top: 8px; }
+.mds-tool.on { border-style: solid; border-color: #cdeadd; background: #f7fdfa; }
+.mds-tool-h { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 800; color: #2B2B33; }
+.mds-tool-h label { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+.mds-tool-key { font-size: 11.5px; font-weight: 700; color: #8a8a99; background: #f4f5f9; border-radius: 999px; padding: 1px 8px; margin-left: auto; }
+.mds-tool .mds-field { margin-top: 8px; }
+
+/* 体检项 */
+.mds-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.8; color: #4a4a55; padding: 5px 0; cursor: pointer; }
+.mds-check input { margin-top: 3px; flex: 0 0 auto; }
+.mds-score { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.mds-score-bar { flex: 1; height: 12px; border-radius: 999px; background: #edeef4; overflow: hidden; }
+.mds-score-bar > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--c-works, #2fa37a), var(--c-per, #3b82f6)); transition: width .3s ease; }
+.mds-score-t { font-size: 13.5px; font-weight: 800; color: #2B2B33; white-space: nowrap; }
+
+/* 右侧实时预览 */
+.mds-side { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 12px; }
+.mds-card { display: block; background: #fff; border: 1.5px solid #e6e6ee; border-radius: 14px; padding: 14px 16px; }
+.mds-card h3 { margin: 0 0 8px; font-size: 14.5px; font-weight: 900; color: var(--c-ink, #2B2B33); display: flex; align-items: center; gap: 7px; }
+.mds-pv { font-size: 12.5px; line-height: 1.85; color: #4a4a55; white-space: pre-wrap; word-break: break-word; background: #fafbfd; border: 1px solid #eef0f6; border-radius: 10px; padding: 10px 12px; max-height: 46vh; overflow: auto; margin: 0; }
+.mds-pv b { color: #1f7a4d; }
+.mds-empty { color: #a0a0ad; }
+
+/* 折叠「完整岗位说明书」 */
+.mds-fold > summary { cursor: pointer; font-size: 13px; font-weight: 800; color: #2b6cb0; padding: 4px 0; }
+.mds-pre { font-size: 12.5px; line-height: 1.85; white-space: pre-wrap; background: #fbf7ef; border: 1px solid #efe6d6; border-radius: 10px; padding: 10px 12px; margin: 6px 0 0; }
+
+/* 「跑一次」结果 */
+.mds-run-out { margin-top: 10px; font-size: 13.5px; line-height: 1.9; color: #2B2B33; background: #f7f9ff; border: 1px solid #e6ecfb; border-radius: 10px; padding: 11px 13px; min-height: 46px; }
+.mds-run-out .mds-deg { display: inline-block; background: #fdf1e0; color: #a8762a; border-radius: 999px; padding: 1px 9px; font-size: 11.5px; font-weight: 800; margin-bottom: 6px; }
+
+/* ⑦ 调用轨迹：把「模型自己决定的每一步」摆出来，而不是只给一个最终答案 */
+.mds-trace { margin-top: 12px; font-size: 13px; line-height: 1.8; }
+.mds-trace > b { display: block; margin-bottom: 6px; font-size: 13.5px; color: var(--c-ink, #2B2B33); }
+.mds-trace-i { display: flex; gap: 9px; background: #fbfcff; border: 1px solid #e8eefb; border-radius: 10px; padding: 9px 11px; margin-bottom: 7px; }
+.mds-trace-n { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; background: var(--c-per, #3b82f6); color: #fff; font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+.mds-trace-fn { margin-left: 7px; font-size: 11.5px; color: #8a8a99; background: #f1f3f8; border-radius: 999px; padding: 1px 8px; }
+.mds-trace-args, .mds-trace-res { font-size: 12.5px; white-space: pre-wrap; }
+.mds-trace-args { color: #6b6b78; }
+.mds-trace-res { color: #1f7a4d; }
+.mds-foot { margin-top: 18px; font-size: 12.5px; color: #8a8a99; line-height: 1.9; }
+
+/* 从实验室带 ?step=N 跳过来时的「来意条」与目标步骤高亮 */
+.mds-from { background: #eef8f3; border: 1.5px solid #cdeadd; border-radius: 12px; padding: 10px 13px; margin-bottom: 12px; font-size: 13.5px; line-height: 1.8; color: #2B2B33; }
+.mds-hit { animation: mdsHit 1.6s ease-out 2; }
+@keyframes mdsHit {
+  0%   { box-shadow: 0 0 0 0 rgba(47, 163, 122, .45); }
+  100% { box-shadow: 0 0 0 12px rgba(47, 163, 122, 0); }
+}
+</style>
+</head>
+<body>
+
+<div class="mds-wrap">
+  <div class="mds-top">
+    <div>
+      <h1>我的智能体设计单<span class="mds-badge">原型</span></h1>
+      <p>前面八课你一直在“操作”别人的智能体。这一页换你自己当设计者：<b>选场景 → 写目标 → 挑工具并写说明书 → 定记忆规则 → 亲手写岗位说明书 → 自评导出</b>。填完可以直接把这份设计单送进实验室跑一次，看看别人（AI）按你的说明书能不能把活干对。</p>
+    </div>
+    <div class="mds-top-actions">
+      <button class="btn btn-ghost btn-sm" id="mds-load">载入示例</button>
+      <button class="btn btn-ghost btn-sm" id="mds-clear">清空</button>
+      <button class="btn btn-brain btn-sm" id="mds-export">导出设计单</button>
+    </div>
+  </div>
+
+  <div class="mds-grid">
+    <!-- ============ 左：六步表单 ============ -->
+    <div id="mds-form">
+
+      <!-- ① 场景 -->
+      <div class="mds-step" data-step="1">
+        <div class="mds-step-h"><span class="mds-step-no">1</span><span class="mds-step-t">我的智能体要帮谁、做什么？</span><span class="mds-step-role">场景</span></div>
+        <div class="mds-step-d">先选一个真实场景（或者自己写一个）。<b>场景越具体越好</b>——“帮同学”太模糊，“帮我们班下午的值日生提醒打扫哪几个区”就清楚了。</div>
+        <div class="mds-chips" id="mds-scene"></div>
+        <div class="mds-field">
+          <label class="mds-label" for="mds-users">它服务的人是谁？<small>（写具体的人，不写“用户”）</small></label>
+          <input type="text" id="mds-users" placeholder="例：我们班下午的值日生">
+        </div>
+      </div>
+
+      <!-- ② 一句话目标 -->
+      <div class="mds-step" data-step="2">
+        <div class="mds-step-h"><span class="mds-step-no">2</span><span class="mds-step-t">一句话说清它要干成什么</span><span class="mds-step-role">规划器</span></div>
+        <div class="mds-step-d">这就是给智能体的“任务说明书”。四要素齐全，它才不容易跑偏：<b>帮谁 · 做什么 · 做到什么程度 · 什么情况先说“不知道”</b>。</div>
+        <div class="mds-field">
+          <textarea id="mds-goal" placeholder="例：帮我们班的值日生在每天放学前 10 分钟提醒该扫哪几个区，并给出每区的负责人；如果查不到当天安排，就说“查不到，请问老师”，不要猜。"></textarea>
+        </div>
+        <div class="mds-field">
+          <span class="mds-label">四要素体检 <small>（自己逐条检查，四个都打勾才算说清楚）</small></span>
+          <label class="mds-check"><input type="checkbox" data-ck="who"> 说清了<b>帮谁</b></label>
+          <label class="mds-check"><input type="checkbox" data-ck="what"> 说清了<b>做什么</b></label>
+          <label class="mds-check"><input type="checkbox" data-ck="how"> 说清了<b>做到什么程度</b>（时间、格式、数量）</label>
+          <label class="mds-check"><input type="checkbox" data-ck="unknown"> 说清了<b>查不到时怎么办</b></label>
+        </div>
+      </div>
+
+      <!-- ③ 工具 + 工具描述 -->
+      <div class="mds-step" data-step="3">
+        <div class="mds-step-h"><span class="mds-step-no">3</span><span class="mds-step-t">它需要哪些“手脚”？（挑工具 + 写说明书）</span><span class="mds-step-role">执行器</span></div>
+        <div class="mds-step-d">勾选需要的工具后，<b>每个工具下面都要写一句“给 AI 看的说明书”</b>：能干什么、要什么参数、什么时候用它。写得含糊，AI 就会选错工具、传错参数——这一步是整份设计单最容易被跳过、也最值钱的地方。</div>
+        <div id="mds-tools"></div>
+      </div>
+
+      <!-- ④ 记忆规则 -->
+      <div class="mds-step" data-step="4">
+        <div class="mds-step-h"><span class="mds-step-no">4</span><span class="mds-step-t">它该记住什么、绝不该记什么？</span><span class="mds-step-role">记忆器</span></div>
+        <div class="mds-step-d">记忆让智能体越用越顺手，但也会一直影响它后面的回答——所以“不该记什么”必须写下来。</div>
+        <div class="mds-field">
+          <label class="mds-label" for="mds-mem-yes">该记的（长期记忆）</label>
+          <textarea id="mds-mem-yes" placeholder="例：值日表的轮换顺序；每个同学负责的区；上次谁替过班。"></textarea>
+        </div>
+        <div class="mds-field">
+          <label class="mds-label" for="mds-mem-no">绝不该记的（隐私红线）</label>
+          <textarea id="mds-mem-no" placeholder="例：家庭住址、家长电话、同学的身体情况、家庭私事。"></textarea>
+        </div>
+        <div class="mds-hint">提示：凡是“泄露出去会让同学不舒服”的，一律写进右边这一栏。</div>
+      </div>
+
+      <!-- ⑤ 岗位说明书 -->
+      <div class="mds-step" data-step="5">
+        <div class="mds-step-h"><span class="mds-step-no">5</span><span class="mds-step-t">亲手写它的“岗位说明书”（规则）</span><span class="mds-step-role">上下文工程</span></div>
+        <div class="mds-step-d">这一栏就是你写给 AI 的<b>岗位说明书</b>——它会出现在每一次对话的最前面（也就是 system 指令）。三条规则分开写，比混成一段更难被忽略。</div>
+        <div class="mds-field">
+          <label class="mds-label" for="mds-rule-can">① 它能做什么</label>
+          <textarea id="mds-rule-can" placeholder="例：可以查值日表、提醒时间、把结果整理成一张小表。"></textarea>
+        </div>
+        <div class="mds-field">
+          <label class="mds-label" for="mds-rule-cant">② 它不能做什么（不许越界）</label>
+          <textarea id="mds-rule-cant" placeholder="例：不许替同学做决定、不许催着骂人、不许编造没查到的信息、不许记录隐私。"></textarea>
+        </div>
+        <div class="mds-field">
+          <label class="mds-label" for="mds-rule-tone">③ 它说话的风格</label>
+          <textarea id="mds-rule-tone" placeholder="例：像高年级同学一样简短友好，一次最多说 3 句，先给结论再给理由。"></textarea>
+        </div>
+        <details class="mds-fold">
+          <summary>看看拼好的完整岗位说明书（这就是真正发给 AI 的那段）</summary>
+          <pre class="mds-pre" id="mds-sys-pre"></pre>
+        </details>
+        <details class="mds-fold">
+          <summary>看看真正发出去的「工具参数」——你写的说明书就在里面</summary>
+          <pre class="mds-pre" id="mds-tools-pre"></pre>
+          <div class="mds-hint">每个工具的 <code>description</code> 就是你第 3 步写的那句话；没勾选的工具不会出现在这里，模型也就不知道有它。</div>
+        </details>
+      </div>
+
+      <!-- ⑥ 自评 + 导出 -->
+      <div class="mds-step" data-step="6">
+        <div class="mds-step-h"><span class="mds-step-no">6</span><span class="mds-step-t">自评：这份设计单过关了吗？</span><span class="mds-step-role">评估</span></div>
+        <div class="mds-step-d">先自己检查一遍，再导出。<b>能说清“为什么当初这么设计”，才算真的会设计。</b></div>
+        <div id="mds-checks"></div>
+        <div class="mds-score">
+          <div class="mds-score-bar"><i id="mds-score-fill"></i></div>
+          <span class="mds-score-t" id="mds-score-t">0 / 6 项</span>
+        </div>
+        <div class="mds-hint" id="mds-score-hint">把这些填完，设计单就可以交出去了。</div>
+      </div>
+
+      <!-- ⑦ 送进实验室跑一次 -->
+      <div class="mds-card" style="margin-top:12px">
+        <h3>⑦ 把这份设计单送进实验室跑一次</h3>
+        <div class="mds-step-d">用你写的岗位说明书 + 工具说明书，去问它一个真实问题。<b>这一步是来真的</b>：你写的说明书会作为接口的 <code>tools</code> 参数发给模型，模型自己决定调哪个工具、传什么参数，工具在本机真的执行，结果再回给模型——这就是 ReAct 循环。看它是按你的规则干活，还是像没看过说明书一样自说自话。</div>
+        <div class="mds-field">
+          <label class="mds-label" for="mds-test">我想问它一句话</label>
+          <input type="text" id="mds-test" placeholder="例：今天下午谁值日？要扫哪几个区？">
+        </div>
+        <button class="btn btn-per btn-sm" id="mds-run" style="margin-top:10px">跑一次看看</button>
+        <div class="mds-run-out" id="mds-run-out">还没有跑过。填完前面五步，再回来点「跑一次看看」。</div>
+        <div id="mds-trace"></div>
+        <details class="mds-fold" id="mds-req-wrap" style="display:none">
+          <summary>看看这一轮真正发出去的请求（system 指令 + tools 参数）</summary>
+          <pre class="mds-pre" id="mds-req-pre"></pre>
+        </details>
+      </div>
+
+    </div>
+
+    <!-- ============ 右：实时预览 ============ -->
+    <div class="mds-side">
+      <div class="mds-card">
+        <h3>设计单预览（实时）</h3>
+        <pre class="mds-pv" id="mds-preview"></pre>
+      </div>
+      <div class="mds-card">
+        <h3>交给老师的两个问题</h3>
+        <div class="mds-hint" style="margin:0">
+          1. 你这份设计单里，<b>哪一条规则如果去掉，智能体就会做错事</b>？<br>
+          2. 换一个场景（比如帮值日生 → 帮图书管理员），哪几条还能用？
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mds-foot">
+    原型说明：本页是独立文件（<code>prototype/design-sheet.html</code>），复用主站 <code>css/style.css</code> 的设计语言，数据只存在本机浏览器（<code>agentlab_design_sheet</code>），不上传任何服务器。<br>
+    导出后是一份 Markdown 设计单，可贴进班级文档、打印带走——这就是学生在整个系统里“带走的东西”。
+  </div>
+</div>
+
+<script src="../js/config.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/api.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+/* ============================================================
+ * 「我的智能体设计单」原型逻辑
+ * 设计原则（对应评审建议）：
+ *   1. 学生是设计者，不是操作员——提示词 / 工具描述 / 记忆规则都由学生亲手写；
+ *   2. 写的东西要真的被使用——第 ⑦ 步把它拼成 system 指令真发给模型；
+ *   3. 有产出——可导出 Markdown，成为学习档案；
+ *   4. 无 Key 也能上——降级时明确标注“这是提前准备好的示例，不是刚刚算出来的”。
+ * ============================================================ */
+(function () {
+  var S = window.AgentLab.Store;
+  var U = window.AgentLab && window.AgentLab.UI;
+  var KEY = "design_sheet";
+
+  var SCENES = [
+    { id: "duty", name: "班级值日小管家", users: "我们班下午的值日生" },
+    { id: "trip", name: "周末出行小助手", users: "我们全家" },
+    { id: "homework", name: "作业检查小帮手", users: "我自己" },
+    { id: "library", name: "班级图书管理员", users: "全班借书的同学" },
+    { id: "other", name: "我自己想一个", users: "" }
+  ];
+
+  /* ============================================================
+   * 工具清单：每个工具都带三样东西
+   *   ① params —— 参数的 schema（模型要照着填）；
+   *   ② desc   —— 预设的「说明书」，只当占位提示用；学生写的那句才是真正发出去的 description；
+   *   ③ run    —— 本机真实执行体。设计单不是“交上去看看”，第 ⑦ 步会真的调用它。
+   * 其中 schedule / duty 读的是「记忆器」里学生自己填的班级知识库——
+   * 也就是说：记忆器里记了什么，这个智能体就真的能查到什么。
+   * ============================================================ */
+  var TOOLS = [
+    {
+      id: "schedule", fn: "query_class_schedule", name: "课表查询",
+      desc: "读班级课表：参数 day（星期几）；返回当天课程与值日安排。",
+      params: { day: { type: "string", desc: "星期几，例如 周一、今天、明天" } }, req: ["day"],
+      run: function (a) {
+        var kb = (S.getClassInfo && S.getClassInfo()) || {};
+        var s = String(kb.schedule || "").trim();
+        if (!s) return "查不到：班级知识库里的「课表」是空的（去记忆器里填一下就能查到了）";
+        return "班级课表：\n" + s + (String(kb.duty || "").trim() ? ("\n值日安排：" + kb.duty) : "");
+      }
+    },
+    {
+      id: "duty", fn: "query_duty_roster", name: "值日查询",
+      desc: "查值日安排：参数 dateKey；返回今天谁值日、负责哪几个区。查不到就说查不到，不要编。",
+      params: { dateKey: { type: "string", desc: "今天 / 明天 / 这周" } }, req: ["dateKey"],
+      run: function (a) {
+        var kb = (S.getClassInfo && S.getClassInfo()) || {};
+        var d = String(kb.duty || "").trim();
+        var r = String(kb.dutyrule || "").trim();
+        if (!d && !r) return "查不到记录（知识库里的「值日」与「值日规则」都是空的）";
+        return "值日：" + (d || "（没填）") + (r ? ("\n值日规则：" + r) : "") + "\n（查的是日期：" + (a.dateKey || "未给") + "）";
+      }
+    },
+    {
+      id: "weather", fn: "weather_query", name: "天气查询",
+      desc: "查某地某天的天气：参数 city、dateKey；返回温度、是否下雨。",
+      params: { city: { type: "string", desc: "城市名，例如 北京" }, dateKey: { type: "string", desc: "今天 / 明天" } }, req: ["city"],
+      run: function (a) {
+        /* 原型没有接真实天气服务：这里返回固定的示例数据，并在结果里标明"示例"，
+         * 不让学生以为这是刚查到的真实天气。 */
+        return "【示例数据·原型未接真实天气服务】" + (a.city || "北京") + " 明天 18~26℃，多云，不下雨。";
+      }
+    },
+    {
+      id: "calc", fn: "calculator", name: "计算器",
+      desc: "精确算数：参数 expr；只要需要算数就用它，不要自己心算。",
+      params: { expr: { type: "string", desc: "算式，用 + - * / ( ) 表示，例如 7*50" } }, req: ["expr"],
+      run: function (a) { return "计算结果：" + safeCalc(a.expr); }
+    },
+    {
+      id: "remind", fn: "reminder_set", name: "定时提醒",
+      desc: "记下一条提醒：参数 time、content；只做提醒这一件事。",
+      params: {
+        time: { type: "string", desc: "提醒时间，例如 15:50" },
+        content: { type: "string", desc: "提醒内容原文" }
+      }, req: ["time", "content"],
+      run: function (a) { return "已登记提醒：" + (a.time || "（没给时间）") + " → " + (a.content || "（没给内容）"); }
+    },
+    {
+      id: "search", fn: "web_search", name: "联网搜索",
+      desc: "查最新信息：参数 query；返回网页摘要，可能过期，要核对来源。",
+      params: { query: { type: "string", desc: "搜索关键词" } }, req: ["query"],
+      run: function (a) {
+        return "【原型未接联网搜索】收到查询词「" + (a.query || "") + "」，但没有返回任何网页内容——" +
+          "请按规则告诉同学“我查不到”，不要凭记忆编一个答案。";
+      }
+    },
+    {
+      id: "notice", fn: "send_class_notice", name: "班级群通知",
+      desc: "发消息到班级群：参数 content；高危动作，必须老师确认后才能发。",
+      params: { content: { type: "string", desc: "要发到群里的内容" } }, req: ["content"],
+      run: function (a) {
+        /* 高危工具故意“不执行”：这正是设计单里「它不能做什么」的现场验证——
+         * 学生能亲眼看到“不可逆的动作被拦下来了”。 */
+        return "【已拦截·未发送】这是会给全班发消息的不可逆动作，按你的规则需要老师确认。" +
+          "草稿内容：「" + (a.content || "") + "」";
+      }
+    }
+  ];
+  function findTool(fn) {
+    for (var i = 0; i < TOOLS.length; i++) if (TOOLS[i].fn === fn) return TOOLS[i];
+    return null;
+  }
+  /* 只允许数字与运算符，再用 Function 求值——比 eval 任意代码安全得多 */
+  function safeCalc(expr) {
+    var s = String(expr == null ? "" : expr);
+    if (!/^[\d\s+\-*/().%]+$/.test(s)) return "算式里出现了不认识的字符，没敢算（" + s + "）";
+    try { return String(Function('"use strict";return (' + s + ")")()); }
+    catch (e) { return "这个算式看不懂（" + s + "）"; }
+  }
+
+  /* ---------- 把学生的说明书装配成接口的 tools 参数 ----------
+   * 这一步是整个设计单与真实 Function Calling 的接缝：
+   * **学生在第 3 步写的那句话，就是这里每个工具对象的 description**——
+   * 模型选不选这个工具、参数填得对不对，读的就是这句话。
+   * 没勾选的工具根本不进这个数组，模型也就“不知道世上还有它”。 */
+  function toolSchemas() {
+    var out = [];
+    TOOLS.forEach(function (t) {
+      if (!Object.prototype.hasOwnProperty.call(state.tools, t.id)) return;
+      var props = {}, req = [];
+      for (var p in t.params) props[p] = { type: t.params[p].type, description: t.params[p].desc };
+      t.req.forEach(function (r) { req.push(r); });
+      out.push({
+        type: "function",
+        function: {
+          name: t.fn,
+          description: String(state.tools[t.id] || "").trim() || t.desc,
+          parameters: { type: "object", properties: props, required: req }
+        }
+      });
+    });
+    return out;
+  }
+
+  var CHECKS = [
+    { id: "c1", t: "我能用一句话说清它帮谁、做什么（第 2 步的四个勾都打上了）" },
+    { id: "c2", t: "每个选中的工具都写了“给 AI 看的说明书”，不是只有名字" },
+    { id: "c3", t: "我写明了它不该记的隐私信息（第 4 步右边那栏不是空的）" },
+    { id: "c4", t: "岗位说明书里“不能做什么”写得住，能拦住它乱来" },
+    { id: "c5", t: "跑过一次，知道它哪里没按我的规则做" },
+    { id: "c6", t: "我能说出：去掉哪一条规则，它就会做错事" }
+  ];
+
+  var state = {
+    scene: "", users: "", goal: "", four: {},
+    tools: {},              // { 工具id: 描述 }
+    memYes: "", memNo: "",
+    ruleCan: "", ruleCant: "", ruleTone: "",
+    checks: {}, test: ""
+  };
+
+  function $(id) { return document.getElementById(id); }
+
+  function load() {
+    var saved = null;
+    try { saved = S && S.get ? S.get(KEY, null) : null; } catch (e) { saved = null; }
+    if (saved) {
+      for (var k in state) if (Object.prototype.hasOwnProperty.call(saved, k)) state[k] = saved[k];
+      return true;
+    }
+    return false;
+  }
+  function save() { try { if (S && S.set) S.set(KEY, state); } catch (e) { } }
+
+  /* ---------- 渲染：场景 ---------- */
+  function renderScene() {
+    $("mds-scene").innerHTML = SCENES.map(function (s) {
+      return '<button class="mds-chip' + (state.scene === s.id ? " on" : "") + '" data-scene="' + s.id + '">' + s.name + "</button>";
+    }).join("");
+  }
+
+  /* ---------- 渲染：工具（勾选后才长出描述框） ---------- */
+  function renderTools() {
+    $("mds-tools").innerHTML = TOOLS.map(function (t) {
+      var on = Object.prototype.hasOwnProperty.call(state.tools, t.id);
+      return '<div class="mds-tool' + (on ? " on" : "") + '" data-tool="' + t.id + '">' +
+        '<div class="mds-tool-h"><label><input type="checkbox" data-tool-ck="' + t.id + '"' + (on ? " checked" : "") + "> " + t.name + "</label>" +
+        '<span class="mds-tool-key">调用名 ' + t.id + "</span></div>" +
+        (on
+          ? '<div class="mds-field"><label class="mds-label" for="mds-desc-' + t.id + '">给 AI 看的说明书 <small>（能干什么 · 要什么参数 · 什么时候用）</small></label>' +
+            '<textarea id="mds-desc-' + t.id + '" data-tool-desc="' + t.id + '" placeholder="' + t.desc.replace(/"/g, "&quot;") + '"></textarea></div>'
+          : "") +
+        "</div>";
+    }).join("");
+    TOOLS.forEach(function (t) {
+      var el = $("mds-desc-" + t.id);
+      if (el) el.value = state.tools[t.id] || "";
+    });
+  }
+
+  /* ---------- 渲染：自评 ---------- */
+  function renderChecks() {
+    $("mds-checks").innerHTML = CHECKS.map(function (c) {
+      return '<label class="mds-check"><input type="checkbox" data-check="' + c.id + '"' + (state.checks[c.id] ? " checked" : "") + "> " + c.t + "</label>";
+    }).join("");
+  }
+
+  /* ---------- 装配：岗位说明书（system 指令） ---------- */
+  function toolLines() {
+    var out = [];
+    TOOLS.forEach(function (t) {
+      if (Object.prototype.hasOwnProperty.call(state.tools, t.id)) {
+        out.push("- " + t.name + "：" + (state.tools[t.id] || "（这个工具还没写说明书——AI 只能靠名字猜，很容易用错）"));
+      }
+    });
+    return out;
+  }
+  function buildSystem() {
+    var who = state.users || "（还没写清楚服务谁）";
+    var parts = [
+      "你是「" + (sceneName() || "我的智能体") + "」，服务的对象是：" + who + "。",
+      "",
+      "【你的任务】",
+      state.goal || "（还没写目标）",
+      "",
+      /* 工具的「说明书」不写在这里——它去接口的 tools 参数里，
+       * 那才是模型真正读工具说明的地方（见下方「真正发出去的工具参数」）。
+       * 这里只留一句存在感，免得模型压根不知道有工具可用。 */
+      "【工具】",
+      toolLines().length ? "本次可用的工具见接口的 tools 参数；没列进去的工具，你就当它不存在。" : "本次没有接任何工具：只能凭已有知识回答，查不到就说“查不到”。",
+      "",
+      "【你能做什么】",
+      state.ruleCan || "（还没写）",
+      "",
+      "【你不能做什么】",
+      state.ruleCant || "（还没写）",
+      "",
+      "【你该记住什么】",
+      state.memYes || "（还没写）",
+      "",
+      "【你绝不该记录什么】",
+      state.memNo || "（还没写）",
+      "",
+      "【你说话的风格】",
+      state.ruleTone || "（还没写）"
+    ];
+    return parts.join("\n");
+  }
+  function sceneName() {
+    for (var i = 0; i < SCENES.length; i++) if (SCENES[i].id === state.scene) return SCENES[i].name;
+    return "";
+  }
+
+  /* ---------- 渲染：实时预览（Markdown） ---------- */
+  function buildMarkdown() {
+    var L = [];
+    L.push("# 我的智能体设计单");
+    L.push("");
+    L.push("**场景**：" + (sceneName() || "（未选）"));
+    L.push("**服务对象**：" + (state.users || "（未填）"));
+    L.push("");
+    L.push("## 1. 一句话目标");
+    L.push(state.goal || "（未填）");
+    L.push("");
+    L.push("## 2. 工具与说明书");
+    if (toolLines().length) { toolLines().forEach(function (x) { L.push(x); }); } else { L.push("（未选工具）"); }
+    L.push("");
+    L.push("## 3. 记忆规则");
+    L.push("- 该记：" + (state.memYes || "（未填）"));
+    L.push("- 不该记：" + (state.memNo || "（未填）"));
+    L.push("");
+    L.push("## 4. 岗位说明书（system 指令）");
+    L.push("```text");
+    L.push(buildSystem());
+    L.push("```");
+    L.push("");
+    L.push("## 5. 我的自评");
+    CHECKS.forEach(function (c) { L.push("- [" + (state.checks[c.id] ? "x" : " ") + "] " + c.t); });
+    L.push("");
+    L.push("## 6. 我设计时的取舍");
+    L.push("（写下你改过的那一版，以及为什么改——这一栏最像“真的设计者”）");
+    return L.join("\n");
+  }
+  function renderPreview() {
+    $("mds-preview").textContent = buildMarkdown();
+    $("mds-sys-pre").textContent = buildSystem();
+    var wire = toolSchemas();
+    $("mds-tools-pre").textContent = wire.length
+      ? JSON.stringify(wire, null, 2)
+      : "（一个工具都没勾选：模型会被告知“本次没有接任何工具”，只能凭已有知识回答。）";
+    var total = CHECKS.length, done = 0;
+    CHECKS.forEach(function (c) { if (state.checks[c.id]) done++; });
+    $("mds-score-fill").style.width = Math.round(done / total * 100) + "%";
+    $("mds-score-t").textContent = done + " / " + total + " 项";
+    $("mds-score-hint").textContent = done === total
+      ? "六项都过关了——导出交出去吧，再想想“去掉哪条规则会出错”。"
+      : (done >= 4 ? "快好了：剩下的那几项往往是最关键的（尤其是隐私与“不能做什么”）。"
+        : "先别急着导出：把没打勾的几项补上，设计单的分量完全不同。");
+  }
+
+  function renderAll() { renderScene(); renderTools(); renderChecks(); renderPreview(); }
+
+  /* ============================================================
+   * ⑦ 的真实执行：一轮最小 ReAct 循环（Function Calling）
+   *   system(学生写的岗位说明书) + user(问题) + tools(学生写的工具说明书)
+   *     ↓ 模型返回 tool_calls（它自己决定调哪个、传什么参数）
+   *   本机执行工具 → role:"tool" 回传结果 → 再问一次 → 直到模型不再要工具
+   * 最多 3 轮带工具；到上限后去掉 tools 再问一次，逼它给出答案（真实系统也这么兜底）。
+   * ============================================================ */
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+  function runAgentLoop(sys, q, wire) {
+    var messages = [{ role: "system", content: sys }, { role: "user", content: q }];
+    var trace = [], rounds = 0, firstReq = null;
+
+    function once(withTools) {
+      var body = {
+        model: (window.AgentLab.CONFIG && AgentLab.CONFIG.model) || "deepseek-chat",
+        messages: messages,
+        temperature: 0.3,
+        stream: false
+      };
+      if (withTools && wire.length) { body.tools = wire; body.tool_choice = "auto"; }
+      if (!firstReq) firstReq = body;
+
+      return AgentLab.API.callRaw({
+        method: "POST",
+        url: AgentLab.API.DEEPSEEK_URL || "https://api.deepseek.com/chat/completions",
+        headers: [{ k: "Content-Type", v: "application/json" }],
+        body: body
+      }).then(function (data) {
+        var msg = data && data.choices && data.choices[0] && data.choices[0].message;
+        if (!msg) throw new Error("模型没有返回内容");
+        var calls = msg.tool_calls;
+        if (!calls || !calls.length) {
+          return { answer: msg.content || "（模型没有给出正文）", trace: trace, rounds: rounds, firstReq: firstReq };
+        }
+        /* 接口要求：role:"tool" 必须紧跟一条带 tool_calls 的 assistant 消息 */
+        messages.push({ role: "assistant", content: msg.content || "", tool_calls: calls });
+        calls.forEach(function (c) {
+          var fn = (c.function && c.function.name) || "";
+          var args = {};
+          try { args = JSON.parse((c.function && c.function.arguments) || "{}"); } catch (e) { args = {}; }
+          var t = findTool(fn);
+          var result = t ? t.run(args) : ("没有这个工具：" + fn + "（模型想调一个你没提供的工具，被挡下了）");
+          trace.push({ fn: fn, label: t ? t.name : fn, args: args, result: result, known: !!t });
+          messages.push({ role: "tool", tool_call_id: c.id, content: String(result) });
+        });
+        rounds++;
+        if (rounds >= 4) {
+          return { answer: "（为了不无限循环，这一轮就停在这里：模型已经连续 4 次要工具了）", trace: trace, rounds: rounds, firstReq: firstReq };
+        }
+        return once(rounds < 3);
+      });
+    }
+    return once(true);
+  }
+
+  function traceHTML(trace) {
+    if (!trace.length) {
+      return '<div class="mds-trace"><b>调用轨迹</b><div class="mds-trace-i"><span class="mds-trace-n">—</span>' +
+        '<div><div><b>这一轮它一个工具都没调</b></div><div class="mds-trace-res">要么问题不需要查数据，' +
+        '要么你写的工具说明书没让它看出该用哪个——换个“要查真实信息”的问题再试一次。</div></div></div></div>';
+    }
+    return '<div class="mds-trace"><b>调用轨迹（模型自己决定的每一步）</b>' +
+      trace.map(function (s, i) {
+        return '<div class="mds-trace-i"><span class="mds-trace-n">' + (i + 1) + "</span><div>" +
+          "<div><b>模型选了：</b>" + esc(s.label) + '<span class="mds-trace-fn">' + esc(s.fn) + "</span></div>" +
+          '<div class="mds-trace-args">参数：' + esc(JSON.stringify(s.args)) + "</div>" +
+          '<div class="mds-trace-res">本机真实返回：' + esc(s.result) + "</div>" +
+          "</div></div>";
+      }).join("") + "</div>";
+  }
+
+  function demoTrace() {
+    return '<div class="mds-trace"><b>示例轨迹（未配置 Key——这是提前准备好的样子，不是刚跑出来的）</b>' +
+      '<div class="mds-trace-i"><span class="mds-trace-n">1</span><div><div><b>模型选了：</b>值日查询' +
+      '<span class="mds-trace-fn">query_duty_roster</span></div>' +
+      '<div class="mds-trace-args">参数：{"dateKey":"今天"}</div>' +
+      '<div class="mds-trace-res">本机真实返回：值日：第 3 组，负责教室和走廊（查的是日期：今天）</div></div></div>' +
+      '<div class="mds-trace-i"><span class="mds-trace-n">2</span><div><div><b>模型收尾：</b>它不再要工具，直接按你的规则回答</div>' +
+      '<div class="mds-trace-res">对照你的规则第 1 条（先给结论）与第 3 条（一次不超过 3 句）——' +
+      '真实跑起来时，这里就是它按规则组织出来的那句话。</div></div></div></div>';
+  }
+
+  /* ---------- 事件绑定 ---------- */
+  function bind() {
+    $("mds-scene").addEventListener("click", function (e) {
+      var b = e.target.closest ? e.target.closest("[data-scene]") : null;
+      if (!b) return;
+      var id = b.getAttribute("data-scene");
+      state.scene = (state.scene === id) ? "" : id;
+      SCENES.forEach(function (s) { if (s.id === state.scene && !state.users) { state.users = s.users; $("mds-users").value = s.users; } });
+      save(); renderScene(); renderPreview();
+    });
+
+    $("mds-users").addEventListener("input", function () { state.users = this.value; save(); renderPreview(); });
+    $("mds-goal").addEventListener("input", function () { state.goal = this.value; save(); renderPreview(); });
+    $("mds-mem-yes").addEventListener("input", function () { state.memYes = this.value; save(); renderPreview(); });
+    $("mds-mem-no").addEventListener("input", function () { state.memNo = this.value; save(); renderPreview(); });
+    $("mds-rule-can").addEventListener("input", function () { state.ruleCan = this.value; save(); renderPreview(); });
+    $("mds-rule-cant").addEventListener("input", function () { state.ruleCant = this.value; save(); renderPreview(); });
+    $("mds-rule-tone").addEventListener("input", function () { state.ruleTone = this.value; save(); renderPreview(); });
+    $("mds-test").addEventListener("input", function () { state.test = this.value; save(); });
+
+    document.addEventListener("change", function (e) {
+      var t = e.target;
+      if (!t || !t.getAttribute) return;
+      var ck = t.getAttribute("data-ck");
+      if (ck) { state.four[ck] = t.checked; save(); return; }
+      var tc = t.getAttribute("data-tool-ck");
+      if (tc) {
+        if (t.checked) { if (!Object.prototype.hasOwnProperty.call(state.tools, tc)) state.tools[tc] = ""; }
+        else { delete state.tools[tc]; }
+        save(); renderTools(); renderPreview(); return;
+      }
+      var ch = t.getAttribute("data-check");
+      if (ch) { state.checks[ch] = t.checked; save(); renderPreview(); }
+    });
+
+    document.addEventListener("input", function (e) {
+      var t = e.target;
+      if (!t || !t.getAttribute) return;
+      var td = t.getAttribute("data-tool-desc");
+      if (td) { state.tools[td] = t.value; save(); renderPreview(); }
+    });
+
+    /* ⑦ 真的把设计单发给模型，并真的让工具跑起来——
+     * 学生写的东西不是“交上去给老师看”，而是成为 AI 的行为约束与工具清单。 */
+    $("mds-run").addEventListener("click", function () {
+      var out = $("mds-run-out"), traceBox = $("mds-trace"), reqWrap = $("mds-req-wrap");
+      var q = state.test || "今天下午谁值日？要扫哪几个区？";
+      var sys = buildSystem(), wire = toolSchemas();
+      var hasKey = false;
+      try { var api = S.getApi(); hasKey = !!(api && api.key && api.key.length > 10); } catch (e2) { hasKey = false; }
+
+      traceBox.innerHTML = "";
+      reqWrap.style.display = "none";
+
+      if (!hasKey || !(window.AgentLab && AgentLab.API && AgentLab.API.callRaw)) {
+        out.innerHTML = '<span class="mds-deg">示例演示（未配置 DeepSeek Key）</span><br>' +
+          "没有 Key，这一句没法真发给模型、工具也不会被执行。配上 Key 再点一次，你会看到三件事：" +
+          "<b>模型自己挑了工具</b>、<b>工具在本机真的跑了</b>、<b>它按你写的规则收尾</b>；" +
+          "把某条工具说明书改含糊，下一次它就可能挑错工具。";
+        traceBox.innerHTML = demoTrace();
+        return;
+      }
+      out.innerHTML = "正在把「岗位说明书 + 工具说明书」发给模型，等它决定调什么……";
+      runAgentLoop(sys, q, wire).then(function (r) {
+        out.innerHTML = '<span class="mds-deg">真实调用 · 共 ' + r.rounds + " 轮 ReAct" + (wire.length ? "" : " · 本轮没有接工具") + "</span><br>" + esc(r.answer);
+        traceBox.innerHTML = traceHTML(r.trace);
+        if (r.firstReq) {
+          $("mds-req-pre").textContent = JSON.stringify(r.firstReq, null, 2);
+          reqWrap.style.display = "";
+        }
+      }).catch(function (err) {
+        out.innerHTML = '<span class="mds-deg">调用失败</span><br>' + esc((err && err.message) ? err.message : String(err));
+      });
+    });
+
+    /* 载入示例：让老师一眼看到“填满的”设计单长什么样 */
+    $("mds-load").addEventListener("click", function () {
+      state.scene = "duty";
+      state.users = "我们班下午的值日生";
+      state.goal = "帮我们班的值日生在每天放学前 10 分钟提醒该扫哪几个区，并给出每区负责人；查不到当天安排就说“查不到，请问老师”，不要猜。";
+      state.four = { who: true, what: true, how: true, unknown: true };
+      state.tools = {
+        duty: "查今天的值日安排：谁值日、负责哪几个区。同学问“今天谁值日/扫哪里”就用它；查不到就说查不到，千万不要编一个。",
+        schedule: "读班级课表：参数 day（星期几）；返回当天课程。查不到就返回“无记录”，不要编。",
+        remind: "到点提醒：参数 time（如 15:50）、content；只负责提醒，不替同学做决定。",
+        notice: "发消息到班级群：参数 content；这是高危动作，必须老师在群里确认过才能发。"
+      };
+      state.memYes = "值日表的轮换顺序；每位同学负责的区域；上次替班的人。";
+      state.memNo = "家庭住址、家长电话、同学的身体情况、任何家庭私事。";
+      state.ruleCan = "可以查值日表、算清扫时间、按时提醒、把结果整理成一张小表。";
+      state.ruleCant = "不许替同学做决定；不许催人、不许用命令语气；不许编造没查到的信息；不许把隐私写进记忆。";
+      state.ruleTone = "像高年级同学一样简短友好，一次最多 3 句，先给结论再给理由。";
+      state.checks = { c1: true, c2: true, c3: true, c4: true, c5: false, c6: false };
+      state.test = "今天下午谁值日？要扫哪几个区？";
+      syncInputs(); save(); renderAll();
+      if (U && U.toast) U.toast("已载入示例设计单", "success");
+    });
+
+    $("mds-clear").addEventListener("click", function () {
+      if (!confirm("清空设计单？本机保存的内容会被删掉。")) return;
+      state = { scene: "", users: "", goal: "", four: {}, tools: {}, memYes: "", memNo: "", ruleCan: "", ruleCant: "", ruleTone: "", checks: {}, test: "" };
+      try { if (S && S.set) S.set(KEY, state); } catch (e) { }
+      syncInputs(); renderAll();
+    });
+
+    /* 导出：下载 .md（file:// 下 clipboard 常被拦，所以以下载为主、复制为辅） */
+    $("mds-export").addEventListener("click", function () {
+      var md = buildMarkdown();
+      try {
+        var blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "我的智能体设计单.md";
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        if (U && U.toast) U.toast("设计单已导出为 Markdown 文件", "success");
+      } catch (e) {
+        if (U && U.toast) U.toast("导出失败，请换用 Chrome/Edge 打开", "info");
+      }
+    });
+  }
+
+  function syncInputs() {
+    $("mds-users").value = state.users || "";
+    $("mds-goal").value = state.goal || "";
+    $("mds-mem-yes").value = state.memYes || "";
+    $("mds-mem-no").value = state.memNo || "";
+    $("mds-rule-can").value = state.ruleCan || "";
+    $("mds-rule-cant").value = state.ruleCant || "";
+    $("mds-rule-tone").value = state.ruleTone || "";
+    $("mds-test").value = state.test || "";
+    document.querySelectorAll("[data-ck]").forEach(function (i) { i.checked = !!state.four[i.getAttribute("data-ck")]; });
+  }
+
+  /* 从实验室跳过来时会带 ?step=N（各页「把这一课用上」入口带的参数）：
+   * 直接把学生送到那一步，并在顶部说明来意——不用自己在一长页里找。 */
+  function gotoStepFromUrl() {
+    var m = /[?&]step=(\d+)/.exec(location.search || "");
+    if (!m) return;
+    var n = parseInt(m[1], 10);
+    var el = document.querySelector('.mds-step[data-step="' + n + '"]');
+    if (!el) return;
+    var names = {
+      1: "选一个真实场景、写清它服务的是谁",
+      2: "用四要素写清“它要干成什么”",
+      3: "挑工具，并给每个工具写一句“给 AI 看的说明书”",
+      4: "写它该记什么、绝不该记什么",
+      5: "亲手写它的岗位说明书（能做什么 / 不能做什么 / 说话风格）",
+      6: "自评这份设计单",
+      7: "把设计单真的跑一次"
+    };
+    var bar = document.createElement("div");
+    bar.className = "mds-from";
+    bar.innerHTML = "<b>你是从实验室过来的：</b>这里就是第 " + n + " 步——" + (names[n] || "") +
+      "。填完可以点右上角「导出设计单」带走。";
+    var form = $("mds-form");
+    form.insertBefore(bar, form.firstChild);
+    el.classList.add("mds-hit");
+    setTimeout(function () {
+      if (el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 280);
+  }
+
+  load();
+  syncInputs();
+  renderAll();
+  bind();
+  gotoStepFromUrl();
+})();
+</script>
+</body>
+</html>

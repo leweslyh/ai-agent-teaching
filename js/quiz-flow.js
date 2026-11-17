@@ -4,9 +4,9 @@
  * 解决的问题：把散落在 7 个板块里的选择题（小测验 / 游戏题 / 判断题）
  * 从“一次性把 N 题铺满页面”改成“一题一题出现”的闯关流程：
  *   ① 一次只显示 1 题，答完这题才出下一题；
- *   ② 答对：即时判定 + 加星 + 庆祝动效 + 讲解，自动进入下一题；
+ *   ② 答对：即时判定 + 加星 + 庆祝动效 + 讲解，随后露出“下一题 →”按钮，由学生自己点（不自动跳）；
  *   ③ 答错：抖动提示，先给一次“再想想”的机会；第二次才揭示答案与讲解；
- *   ④ 全部答完：给出得分、等级点评、鼓励语、需要回顾的题目与“再来一次”。
+ *   ④ 全部答完：给出得分、等级点评、鼓励语、需要回顾的题目（可一键跳回对应的实验卡）与“再来一次”。
  *
  * 只依赖 AgentLab.UI（$ / icon / esc / celebrate / addScore / toast），
  * 不依赖任何 lab-*.js，可被任意板块调用。
@@ -24,6 +24,9 @@
  *     result: "qz-result",          // 可选：页面既有的结果容器 id
  *     name: "记忆小达人",            // 可选：点评里用的称号
  *     hint: "再想想，可以回到上面的实验里找线索。", // 可选：答错提示
+ *     autoNextMs: 0,               // 可选：答完自动进入下一题的毫秒数（默认 0 = 不自动跳，等学生点“下一题 →”）
+ *     card: "mem-map",             // 可选：本测要回顾的实验卡 id；不传则自动取本小测上方最近的一张卡
+ *     noBack: false,               // 可选：true = 结果页不出现「回看」按钮（小测就在卡内、或该卡自带跳转入口时用）
  *     onFinish: function (score, total) {} // 可选：结束回调
  *   });
  *
@@ -31,7 +34,7 @@
  *   题干：q | question          序号/前置：pre | scenario | scene
  *   选项：opts | options（元素为字符串，或 {t,k} / {html,key}）
  *   答案：ans | correct（数字=选项序号，字符串=选项 key 或选项原文，布尔=判断题）
- *   讲解：why                   提示：hint
+ *   讲解：why                   提示：hint        回看卡片：card（元素 id，可省）
  * ============================================================ */
 
 window.AgentLab = window.AgentLab || {};
@@ -112,7 +115,10 @@ window.AgentLab = window.AgentLab || {};
         opts: opts,
         ans: ans,
         why: q.why || "",
-        hint: q.hint || ""
+        hint: q.hint || "",
+        /* 这道题对应要回顾的卡片 id（可省）。省了就不渲染单题的回看按钮，
+         * 由结尾那句「回到上面的实验卡」统一兜底——不造点了没反应的假按钮。 */
+        card: q.card || ""
       };
     });
   }
@@ -185,9 +191,36 @@ window.AgentLab = window.AgentLab || {};
     var total = qs.length;
     var state = { idx: 0, score: 0, tries: 0, wrong: [], retried: [], done: false, timer: null };
 
-    /* 自动进入下一题的等待时长：留足读讲解、看错题的时间（课堂节奏，20 秒）。
-     * 期间“下一题 →”按钮已显示，想快点进可以直接点（点击会取消这个定时器）。 */
-    var AUTO_NEXT_MS = 20000;
+    /* 答完一题后**不再自动跳题**：只把“下一题 →”露出来，由学生自己点。
+     * 原因是课堂节奏：20 秒自动跳会在学生读讲解、同桌讨论时把题带走。
+     * 需要自动节奏的调用方显式传 cfg.autoNextMs（毫秒），默认 0 = 等学生点击。 */
+    var AUTO_NEXT_MS = (cfg.autoNextMs > 0) ? cfg.autoNextMs : 0;
+
+    /* 结尾「回看这张卡」的跳转目标：
+     * ① 调用方显式传 cfg.card（最准，题与卡一一对应时用）；
+     * ② 没传就自动取本小测所在卡片**上方最近的一张卡**（同一 section 内、位于小测之前），
+     *    并临时补一个 id——因为 U.jumpTo 只认 id；
+     * ③ 都找不到就返回空串，此时不渲染按钮，避免出现点了没反应的假按钮。 */
+    var backSeq = 0;
+    function autoBackCard() {
+      var hostCard = host.closest ? host.closest(".card") : null;
+      if (!hostCard) return "";
+      var scope = (hostCard.closest ? hostCard.closest("section") : null) || document.body;
+      var before = Array.prototype.filter.call(scope.querySelectorAll(".card"), function (c) {
+        return c !== hostCard && !!(hostCard.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_PRECEDING);
+      });
+      var last = before[before.length - 1];
+      if (!last) return "";
+      if (!last.id) last.id = "quiz-back-" + (++backSeq);
+      return last.id;
+    }
+    /* 目标的最终解析放在结尾（finish）而不是挂载时：章末综合小测要跳的
+     * 「本课学习地图」是栏目首次激活时才折叠生成的，挂载那一刻页面上还没有它。
+     * 这里只保留规则，等到真要显示按钮时再解析。 */
+    function resolveBack() {
+      if (cfg.card && document.getElementById(cfg.card)) return cfg.card;
+      return autoBackCard();
+    }
 
     function clearTimer() { if (state.timer) { clearTimeout(state.timer); state.timer = null; } }
 
@@ -245,8 +278,10 @@ window.AgentLab = window.AgentLab || {};
       if (b) {
         b.style.display = "";
         b.textContent = (state.idx + 1 >= total) ? "看结果 →" : "下一题 →";
+        /* 不自动跳题了，得让按钮自己被看见——轻微呼吸动画提示“该你了” */
+        b.classList.add("flow-next-on");
       }
-      state.timer = setTimeout(advance, afterMs);
+      if (afterMs > 0) state.timer = setTimeout(advance, afterMs);
     }
 
     function advance() {
@@ -327,15 +362,30 @@ window.AgentLab = window.AgentLab || {};
       var names = state.wrong.concat(state.retried).sort(function (a, b) { return a - b; });
       var g = grade(state.score, total, cfg.name, names.length > 0);
       var pct = Math.round(state.score / total * 100);
+      /* 回看目标是「本课学习地图」时换一套话术：章末综合小测覆盖整课，
+       * 与其机械地跳“最后一张卡”，不如把学生送到地图上自己挑要回看的卡。 */
+      var backCard = resolveBack();
+      var backIsMap = /^sec-map-/.test(String(backCard || ""));
       var wrongList = names.length
         ? '<div class="fr-tips"><b>需要回顾的题（共 ' + names.length + " 题）：</b>" +
             names.map(function (n) {
               var q = qs[n - 1];
               var t = String(q.q).replace(/<[^>]+>/g, "");
               var tag = state.wrong.indexOf(n) >= 0 ? "两次都没选对" : "第二次才选对";
+              /* 这题标了 card 就给一个精确跳转；没标就不给单题按钮，由下面的统一兜底 */
+              var goto = (q.card && !cfg.noBack)
+                ? ' <button class="fr-goto" data-goto="' + esc(q.card) + '">↑ 回看这张卡</button>'
+                : "";
               return '<div class="fr-tip-item">· 第 ' + n + " 题：" + esc(t.slice(0, 32)) + (t.length > 32 ? "…" : "") +
-                ' <span class="fr-tag">' + tag + "</span></div>";
-            }).join("") + "</div>"
+                ' <span class="fr-tag">' + tag + "</span>" + goto + "</div>";
+            }).join("") +
+            ((backCard && !cfg.noBack)
+              ? '<div class="fr-tip-item fr-goto-row">· ' +
+                (backIsMap ? "去本课学习地图，自己挑要回看的那张卡：" : "回上面的实验卡，把这几题涉及的操作亲手做一遍，") +
+                '<button class="fr-goto" data-goto="' + esc(backCard) + '">↑ ' +
+                (backIsMap ? "打开学习地图" : "回到实验卡") + "</button></div>"
+              : "") +
+            "</div>"
         : "";
 
       var html =
@@ -359,6 +409,16 @@ window.AgentLab = window.AgentLab || {};
       }
       if (barEl) barEl.style.width = "100%";
       if (countEl) countEl.textContent = "已答完 " + total + "/" + total + " 题";
+
+      /* 「回看这张卡」：复用公共的 U.jumpTo（滚动 + 闪烁整张卡）。
+       * jumpTo 找不到元素会静默返回 false，此时给一句提示，别让学生以为点了没反应。 */
+      (resultEl || host).querySelectorAll("[data-goto]").forEach(function (b) {
+        b.addEventListener("click", function () {
+          var id = b.getAttribute("data-goto");
+          if (U.jumpTo && U.jumpTo(id)) U.toast("已跳回对应的实验卡，做完再回来试试", "info");
+          else U.toast("没找到这张卡，往上翻一翻吧", "info");
+        });
+      });
 
       var again = (resultEl || host).querySelector("[data-flow-again]");
       if (again) again.addEventListener("click", reset);
@@ -398,7 +458,9 @@ window.AgentLab = window.AgentLab || {};
       judge: o.judge,
       hint: o.hint,
       star: o.star,
-      restart: o.restart
+      restart: o.restart,
+      noBack: o.noBack,
+      card: o.card
     });
   }
 

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工具调用小课堂 · 五年级大屏课堂版</title>
+<meta name="description" content="第08课 AI 如何调用工具的大屏课堂版：回顾三课、本课地图、一个接口长什么样、四步法、搜索抓取、出行小助手需求清单、高德一把钥匙开很多门（Web 服务 19 个 API）、请求↔响应四象限、排错实录、编写与运行。">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/lesson-tools.css?v=20261189">
+</head>
+<body class="lesson-page">
+
+<!-- ================= 顶栏 ================= -->
+<header class="ls-top">
+  <div class="ls-top-in">
+    <a class="ls-brand" href="index.html">
+      <span class="ls-logo">具</span>
+      <span><b>工具调用小课堂</b><small>五年级 · 大屏课堂版</small></span>
+    </a>
+    <nav class="ls-nav" id="ls-nav" aria-label="十关导航"></nav>
+    <div class="ls-tools">
+      <button type="button" class="ls-tool-btn" id="ls-smaller" aria-label="字小一点">A−</button>
+      <span class="ls-scale-label" id="ls-scale-label">115%</span>
+      <button type="button" class="ls-tool-btn" id="ls-bigger" aria-label="字大一点">A+</button>
+      <button type="button" class="ls-tool-btn is-ghost" id="ls-full">全屏</button>
+    </div>
+  </div>
+</header>
+
+<div class="ls-main">
+
+  <!-- ================= 首屏 ================= -->
+  <section class="ls-hero">
+    <h1>工具调用小课堂</h1>
+    <p>先回顾三课：<b>会看 → 看明白 → 会点单</b>。今天补最后一环——<b>手到底伸向哪里？</b></p>
+    <p class="ls-hero-note">只看一件事：<b>一个接口长什么样</b>——<b>地址</b> · <b>钥匙</b> · <b>参数</b> · <b>返回</b>；第 ⑧ 关会<b>真发一次请求</b>，让你看见同一次调用在四个视角里各是什么样。</p>
+  </section>
+
+  <!-- ================= 十张卡 ================= -->
+  <div class="ls-scale" id="ls-scale">
+    <div class="ls-stage" id="ls-stage">
+      <div id="sec-tools"></div>
+    </div>
+  </div>
+
+  <!-- ================= 老师提示 ================= -->
+  <details class="ls-teacher">
+    <summary>老师提示（上课前看一眼）</summary>
+    <div class="inner">
+      <b>这一页是什么：</b>第 08 课的大屏课堂版，十关对应教案第一学时与第二学时：<b>回顾三课 → 本课地图 → 一个接口长什么样 → 四步法 → 搜索 vs 抓取 → 出行小助手需求清单 → 高德一把钥匙开很多门 → 请求↔响应（真实调用） → 排错实录 → 编写与运行</b>。前九关在第一学时（40′），第十关是第二学时的编写与运行。<br>
+      <b>第 ⑧ 关是真的：</b>模型一轮一轮来——先根据输入点单，拿到工具结果后可能继续点单（比如先 IP 定位拿城市、再查天气），直到能直接作答，最多 4 轮；每轮之间的工具由程序执行，四块里每一行都来自网络返回。所以<b>上课前必须先在首页右上角「设置」里填好 DeepSeek Key</b>，否则它只会显示"发出去的样子"，不会假造响应。<b>外部工具全部是高德 Web 服务 API</b>，所以还要在那一关输入<b>Web 服务类型的高德 Key</b>；没填时工具会如实返回"没有高德 Key"，不会偷换别的接口。高德 IP 定位只解析 IPv4，手机热点/校园网常是 IPv6 出口，这时程序会再用 <code>myip.ipip.net</code> 兜底（会把出口 IP 发给该站点，介意可在讲解时跳过这一步）。<br>
+      <b>大屏：</b>右上角「A− / A+」调字号（85%～150%，会记住），「全屏」进投影模式；右下角「上一张 / 下一张」控节奏；键盘 ← → 也能翻。<br>
+      <b>建议节奏（第一学时 40′）：</b>回顾 2′ · 地图 1′ · 接口长相 3′ · 四步法 3′ · 搜索抓取 6′ · 需求清单 3′ · 一把钥匙开很多门 8′ · 真实调用 8′ · 排错 6′；<b>第二学时：</b>编写运行 6′（其余时间给学生动手）。<br>
+      <b>四处可点：</b>第 ⑤ 关切换「只提问题 / 给了网址」；第 ⑦ 关点「数一数：几把钥匙」；第 ⑧ 关先拨工具开关看左下请求体怎么变，再点<b>左上「用户输入」卡里的「发送」</b>（推荐顺序：关掉天气、只留路线看它只点一只 → 全关掉看它只能凭印象 → 再全打开连调两只）；第 ⑨ 关对照 Console / Network 那张表。四块展示区都是固定高度，内容长了拖右侧滑块往下看。<br>
+      <b>上课前务必准备：</b>在高德开放平台申请 <b>Web 服务</b> Key（每组一个，5～6 人共用）发到学生桌面；自己先填一遍 DeepSeek Key + 高德 Key，把第 ⑧ 关点通一次。
+    </div>
+  </details>
+
+  <footer class="ls-foot">
+    《AI智能体科普实践课》第 08 课 · <a href="index.html">回到完整系统</a>
+  </footer>
+</div>
+
+<!-- 十关翻页 -->
+<div class="ls-pager" id="ls-pager" hidden>
+  <button type="button" class="ls-pager-btn" id="ls-prev" aria-label="上一张">‹</button>
+  <span class="ls-pager-pos" id="ls-pager-pos">1 / 10</span>
+  <button type="button" class="ls-pager-btn" id="ls-next" aria-label="下一张">›</button>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/store.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/api.js"></script>
+<script src="js/lesson-tools.js?v=20261189"></script>
+</body>
+</html>
